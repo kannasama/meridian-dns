@@ -5,6 +5,7 @@
 #include <future>
 #include <mutex>
 #include <queue>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -18,7 +19,19 @@ class ThreadPool {
   ~ThreadPool();
 
   template <typename F, typename... Args>
-  auto submit(F&& fnTask, Args&&... args) -> std::future<decltype(fnTask(args...))>;
+  auto submit(F&& fnTask, Args&&... args) -> std::future<decltype(fnTask(args...))> {
+    using ReturnType = decltype(fnTask(args...));
+    auto spTask = std::make_shared<std::packaged_task<ReturnType()>>(
+        std::bind(std::forward<F>(fnTask), std::forward<Args>(args)...));
+    auto fut = spTask->get_future();
+    {
+      std::lock_guard lock(_mtx);
+      if (_bStopping) throw std::runtime_error("ThreadPool is shutting down");
+      _qTasks.emplace([spTask]() { (*spTask)(); });
+    }
+    _cv.notify_one();
+    return fut;
+  }
 
   void shutdown();
 
