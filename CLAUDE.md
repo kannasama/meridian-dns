@@ -12,8 +12,9 @@ architectural decisions, and development roadmap so context transfers across mac
 - **Phase 4 complete:** Authentication & Authorisation (commit `efaa82f`)
 - **Phase 5 complete:** DAL: Core Repositories + CRUD API Routes
 - **Phase 6 complete:** PowerDNS Provider + Core Engines
-- **Next task:** Phase 7 — Deployment Pipeline + GitOps
-- **Tests:** 164 total (84 pass, 80 skip — DB integration tests need `DNS_DB_URL`)
+- **Phase 7 complete:** Deployment Pipeline + GitOps
+- **Next task:** Phase 8
+- **Tests:** 180 total (89 pass, 91 skip — DB integration tests need `DNS_DB_URL`)
 
 Build and test:
 ```bash
@@ -22,10 +23,7 @@ cmake --build build --parallel
 build/tests/dns-tests
 ```
 
-Startup sequence: steps 1–5, 7a, 8, 9, 10, 11 wired in `src/main.cpp`. Remaining deferred:
-- Step 6: GitOpsMirror → Phase 7
-- Step 7: ThreadPool → Phase 7
-- Step 12: Background task queue → Phase 7
+Startup sequence: all steps wired in `src/main.cpp` (steps 1–12 complete).
 
 ---
 
@@ -135,16 +133,22 @@ provider state.
 
 ---
 
-### Phase 7 — Deployment Pipeline + GitOps
+### Phase 7 — Deployment Pipeline + GitOps ← COMPLETE
 
 **Goal:** End-to-end zone push with audit trail and Git history.
 
-- `src/core/DeploymentEngine.cpp` — expand → diff → push → snapshot → GitOps → audit
-- `src/core/RollbackEngine.cpp` — restore snapshot → push → audit
-- `src/core/ThreadPool.cpp` — `std::jthread` pool, `submit()` → `std::future<Result>`
+**Deliverables:**
+- `src/core/ThreadPool.cpp` — `std::jthread` pool, `submit()` → `std::future<T>` (6 unit tests)
+- `src/dal/RecordRepository.cpp` — `deleteAllByZoneId()`, `upsertById()` for rollback support
 - `src/gitops/GitOpsMirror.cpp` — `initialize()`, `commit()`, `pull()` via libgit2
-- `src/api/RecordRoutes.cpp`, `DeploymentRoutes.cpp`, `AuditRoutes.cpp`
-- `src/main.cpp` — wire remaining startup steps 6, 7, 10, 11, 12
+- `src/core/DeploymentEngine.cpp` — lock → preview → push → audit → snapshot → GitOps
+- `src/core/RollbackEngine.cpp` — full restore or cherry-pick from deployment snapshot
+- `src/api/routes/RecordRoutes.cpp` — `POST /zones/{id}/preview`, `POST /zones/{id}/push`
+- `src/api/routes/DeploymentRoutes.cpp` — history, snapshot diff, rollback endpoints
+- `src/api/routes/AuditRoutes.cpp` — query, NDJSON export, purge endpoints
+- `src/main.cpp` — all startup steps 1–12 wired (GitOpsMirror, ThreadPool, DeploymentEngine, RollbackEngine)
+
+**Tests:** 180 total (89 pass, 91 skip — 17 new tests added in Phase 7)
 
 ---
 
@@ -223,7 +227,7 @@ only for non-owning references.
 | `docs/TUI_DESIGN.md` | TUI client design spec |
 | `scripts/db/001_initial_schema.sql` | Full PostgreSQL schema (11 tables) |
 | `scripts/db/002_add_indexes.sql` | 11 performance indexes |
-| `src/main.cpp` | Startup sequence (steps 1–5, 7a, 8, 10, 11 done; 6, 7, 9, 12 deferred) |
+| `src/main.cpp` | Startup sequence (all steps 1–12 wired; Phase 7 complete) |
 | `include/common/Types.hpp` | Core data types: `DnsRecord`, `PreviewResult`, `RequestContext` |
 | `include/common/Errors.hpp` | `AppError` hierarchy |
 | `tests/unit/` | Unit tests (MaintenanceScheduler, SamlReplayCache, JWT, Crypto) |
