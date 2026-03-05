@@ -1,6 +1,7 @@
 #include "api/routes/VariableRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "dal/VariableRepository.hpp"
 
@@ -15,33 +16,6 @@ VariableRoutes::VariableRoutes(dns::dal::VariableRepository& varRepo,
 VariableRoutes::~VariableRoutes() = default;
 
 namespace {
-
-void requireRole(const common::RequestContext& rcCtx, const std::string& sMinRole) {
-  if (sMinRole == "admin" && rcCtx.sRole != "admin") {
-    throw common::AuthorizationError("INSUFFICIENT_ROLE", "Admin role required");
-  }
-  if (sMinRole == "operator" && rcCtx.sRole == "viewer") {
-    throw common::AuthorizationError("INSUFFICIENT_ROLE",
-                                     "Operator or admin role required");
-  }
-}
-
-common::RequestContext authenticate(const dns::api::AuthMiddleware& am,
-                                    const crow::request& req) {
-  return am.authenticate(req.get_header_value("Authorization"),
-                         req.get_header_value("X-API-Key"));
-}
-
-crow::response jsonResponse(int iStatus, const nlohmann::json& j) {
-  crow::response resp(iStatus, j.dump(2));
-  resp.set_header("Content-Type", "application/json");
-  return resp;
-}
-
-crow::response errorResponse(const common::AppError& e) {
-  nlohmann::json jErr = {{"error", e._sErrorCode}, {"message", e.what()}};
-  return crow::response(e._iHttpStatus, jErr.dump(2));
-}
 
 nlohmann::json variableRowToJson(const dns::dal::VariableRow& row) {
   nlohmann::json j = {
@@ -125,9 +99,7 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
         } catch (const common::AppError& e) {
           return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
-          nlohmann::json jErr = {{"error", "invalid_json"},
-                                 {"message", "Invalid JSON body"}};
-          return crow::response(400, jErr.dump(2));
+          return invalidJsonResponse();
         }
       });
 
@@ -167,9 +139,7 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
         } catch (const common::AppError& e) {
           return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
-          nlohmann::json jErr = {{"error", "invalid_json"},
-                                 {"message", "Invalid JSON body"}};
-          return crow::response(400, jErr.dump(2));
+          return invalidJsonResponse();
         }
       });
 

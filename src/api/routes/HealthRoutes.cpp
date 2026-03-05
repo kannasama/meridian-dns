@@ -1,5 +1,7 @@
 #include "api/routes/HealthRoutes.hpp"
 
+#include "api/RouteHelpers.hpp"
+
 #include <crow.h>
 #include <nlohmann/json.hpp>
 
@@ -11,10 +13,7 @@ HealthRoutes::~HealthRoutes() = default;
 void HealthRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/health")
       .methods(crow::HTTPMethod::GET)([](const crow::request& /*req*/) {
-        nlohmann::json jResp = {{"status", "ok"}};
-        auto resp = crow::response(200, jResp.dump());
-        resp.set_header("Content-Type", "application/json");
-        return resp;
+        return jsonResponse(200, {{"status", "ok"}});
       });
 }
 
