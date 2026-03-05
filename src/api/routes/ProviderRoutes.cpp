@@ -1,6 +1,7 @@
 #include "api/routes/ProviderRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "dal/ProviderRepository.hpp"
@@ -58,10 +59,10 @@ void ProviderRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sEndpoint = jBody.value("api_endpoint", "");
           std::string sToken = jBody.value("token", "");
 
-          if (sName.empty() || sType.empty() || sEndpoint.empty() || sToken.empty()) {
-            throw common::ValidationError("MISSING_FIELDS",
-                                          "name, type, api_endpoint, and token are required");
-          }
+          RequestValidator::validateProviderName(sName);
+          RequestValidator::validateProviderType(sType);
+          RequestValidator::validateRequired(sEndpoint, "api_endpoint");
+          RequestValidator::validateRequired(sToken, "token");
 
           int64_t iId = _prRepo.create(sName, sType, sEndpoint, sToken);
           return jsonResponse(201, {{"id", iId}});
@@ -114,10 +115,8 @@ void ProviderRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sName = jBody.value("name", "");
           std::string sEndpoint = jBody.value("api_endpoint", "");
 
-          if (sName.empty() || sEndpoint.empty()) {
-            throw common::ValidationError("MISSING_FIELDS",
-                                          "name and api_endpoint are required");
-          }
+          RequestValidator::validateProviderName(sName);
+          RequestValidator::validateRequired(sEndpoint, "api_endpoint");
 
           std::optional<std::string> oToken;
           if (jBody.contains("token") && !jBody["token"].is_null()) {

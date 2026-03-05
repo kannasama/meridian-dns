@@ -1,6 +1,7 @@
 #include "api/routes/VariableRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "dal/VariableRepository.hpp"
@@ -84,10 +85,9 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sType = jBody.value("type", "");
           std::string sScope = jBody.value("scope", "global");
 
-          if (sName.empty() || sValue.empty() || sType.empty()) {
-            throw common::ValidationError("MISSING_FIELDS",
-                                          "name, value, and type are required");
-          }
+          RequestValidator::validateVariableName(sName);
+          RequestValidator::validateVariableValue(sValue);
+          RequestValidator::validateRequired(sType, "type");
 
           std::optional<int64_t> oZoneId;
           if (jBody.contains("zone_id") && !jBody["zone_id"].is_null()) {
@@ -130,9 +130,7 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
           auto jBody = nlohmann::json::parse(req.body);
           std::string sValue = jBody.value("value", "");
 
-          if (sValue.empty()) {
-            throw common::ValidationError("MISSING_FIELDS", "value is required");
-          }
+          RequestValidator::validateVariableValue(sValue);
 
           _varRepo.update(iId, sValue);
           return jsonResponse(200, {{"message", "Variable updated"}});

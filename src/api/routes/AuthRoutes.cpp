@@ -1,6 +1,7 @@
 #include "api/routes/AuthRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "security/AuthService.hpp"
@@ -24,10 +25,8 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sUsername = jBody.value("username", "");
           std::string sPassword = jBody.value("password", "");
 
-          if (sUsername.empty() || sPassword.empty()) {
-            throw common::ValidationError("MISSING_FIELDS",
-                                          "username and password are required");
-          }
+          RequestValidator::validateUsername(sUsername);
+          RequestValidator::validatePassword(sPassword);
 
           std::string sToken = _asService.authenticateLocal(sUsername, sPassword);
 

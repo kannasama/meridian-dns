@@ -1,6 +1,7 @@
 #include "api/routes/ZoneRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "dal/ZoneRepository.hpp"
@@ -74,9 +75,9 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sName = jBody.value("name", "");
           int64_t iViewId = jBody.value("view_id", int64_t{0});
 
-          if (sName.empty() || iViewId == 0) {
-            throw common::ValidationError("MISSING_FIELDS",
-                                          "name and view_id are required");
+          RequestValidator::validateZoneName(sName);
+          if (iViewId == 0) {
+            throw common::ValidationError("MISSING_FIELDS", "view_id is required");
           }
 
           std::optional<int> oRetention;
@@ -121,9 +122,7 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
 
-          if (sName.empty()) {
-            throw common::ValidationError("MISSING_FIELDS", "name is required");
-          }
+          RequestValidator::validateZoneName(sName);
 
           std::optional<int> oRetention;
           if (jBody.contains("deployment_retention") &&

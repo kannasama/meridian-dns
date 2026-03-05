@@ -1,6 +1,7 @@
 #include "api/routes/RecordRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "common/Types.hpp"
@@ -82,10 +83,10 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sValueTemplate = jBody.value("value_template", "");
           int iPriority = jBody.value("priority", 0);
 
-          if (sName.empty() || sType.empty() || sValueTemplate.empty()) {
-            throw common::ValidationError("MISSING_FIELDS",
-                                          "name, type, and value_template are required");
-          }
+          RequestValidator::validateRecordName(sName);
+          RequestValidator::validateRecordType(sType);
+          RequestValidator::validateTtl(iTtl);
+          RequestValidator::validateValueTemplate(sValueTemplate);
 
           int64_t iId = _rrRepo.create(iZoneId, sName, sType, iTtl,
                                        sValueTemplate, iPriority);
@@ -128,10 +129,10 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sValueTemplate = jBody.value("value_template", "");
           int iPriority = jBody.value("priority", 0);
 
-          if (sName.empty() || sType.empty() || sValueTemplate.empty()) {
-            throw common::ValidationError("MISSING_FIELDS",
-                                          "name, type, and value_template are required");
-          }
+          RequestValidator::validateRecordName(sName);
+          RequestValidator::validateRecordType(sType);
+          RequestValidator::validateTtl(iTtl);
+          RequestValidator::validateValueTemplate(sValueTemplate);
 
           _rrRepo.update(iRecordId, sName, sType, iTtl, sValueTemplate, iPriority);
           return jsonResponse(200, {{"message", "Record updated"}});
