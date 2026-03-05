@@ -24,6 +24,7 @@ target_link_libraries(dns-core PUBLIC
   spdlog::spdlog
   PkgConfig::LIBGIT2
   Crow::Crow
+  httplib::httplib
 )
 
 # ── dns-orchestrator executable ─────────────────────────────────────────────

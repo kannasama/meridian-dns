@@ -11,8 +11,9 @@ architectural decisions, and development roadmap so context transfers across mac
 - **Phase 3.5 complete:** HTTP library migration to Crow (CrowCpp v1.3.1)
 - **Phase 4 complete:** Authentication & Authorisation (commit `efaa82f`)
 - **Phase 5 complete:** DAL: Core Repositories + CRUD API Routes
-- **Next task:** Phase 6 — PowerDNS Provider + Core Engines
-- **Tests:** 129 total (58 pass, 71 skip — DB integration tests need `DNS_DB_URL`)
+- **Phase 6 complete:** PowerDNS Provider + Core Engines
+- **Next task:** Phase 7 — Deployment Pipeline + GitOps
+- **Tests:** 164 total (84 pass, 80 skip — DB integration tests need `DNS_DB_URL`)
 
 Build and test:
 ```bash
@@ -21,10 +22,9 @@ cmake --build build --parallel
 build/tests/dns-tests
 ```
 
-Startup sequence: steps 1–5, 7a, 8, 10, 11 wired in `src/main.cpp`. Remaining deferred:
+Startup sequence: steps 1–5, 7a, 8, 9, 10, 11 wired in `src/main.cpp`. Remaining deferred:
 - Step 6: GitOpsMirror → Phase 7
 - Step 7: ThreadPool → Phase 7
-- Step 9: ProviderFactory → Phase 6
 - Step 12: Background task queue → Phase 7
 
 ---
@@ -115,17 +115,23 @@ serves requests. All entities persist to PostgreSQL with encrypted provider toke
 
 ---
 
-### Phase 6 — PowerDNS Provider + Core Engines
+### Phase 6 — PowerDNS Provider + Core Engines ← COMPLETE
 
-**Goal:** Connect to a real DNS provider; diff and expand variables.
+**Summary:** Connected to a real DNS provider (PowerDNS REST API v1), implemented variable
+template expansion engine, and three-way diff computation between desired state and live
+provider state.
 
-- `src/providers/PowerDnsProvider.cpp` — PowerDNS REST API v1
-- `src/providers/ProviderFactory.cpp` — wire `provider_type::powerdns`
-- `src/core/VariableEngine.cpp` — `expand()`, `validate()`, `listDependencies()` for `{{var}}`
-- `src/core/DiffEngine.cpp` — three-way diff → `PreviewResult` with drift flag
-- `src/api/HealthRoutes.cpp` — `GET /api/v1/health`
+**Deliverables:**
+- `src/providers/PowerDnsProvider.cpp` — full PowerDNS REST API v1 client via cpp-httplib
+- `src/providers/ProviderFactory.cpp` — creates `IProvider` instances by type string
+- `src/core/VariableEngine.cpp` — `listDependencies()`, `expand()`, `validate()` for `{{var}}`
+- `src/core/DiffEngine.cpp` — three-way diff → `PreviewResult` with drift detection
+- `src/api/routes/HealthRoutes.cpp` — `GET /api/v1/health` (no auth required)
+- `CMakeLists.txt` — added cpp-httplib v0.18.7 via FetchContent for HTTP client
+- `src/main.cpp` — wired Step 9 (core engines), HealthRoutes into ApiServer
 
-Reuse: `DnsRecord`, `PushResult`, `PreviewResult`, `RecordDiff` from `include/common/Types.hpp`.
+**Tests:** 35 new tests (8 VariableEngine unit, 9 VariableEngine integration, 4 ProviderFactory,
+8 PowerDNS JSON parsing + record ID, 8 DiffEngine diff algorithm, -2 replaced placeholders)
 
 ---
 

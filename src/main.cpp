@@ -7,6 +7,7 @@
 #include "api/ApiServer.hpp"
 #include "api/AuthMiddleware.hpp"
 #include "api/routes/AuthRoutes.hpp"
+#include "api/routes/HealthRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
 #include "api/routes/VariableRoutes.hpp"
@@ -14,7 +15,9 @@
 #include "api/routes/ZoneRoutes.hpp"
 #include "common/Config.hpp"
 #include "common/Logger.hpp"
+#include "core/DiffEngine.hpp"
 #include "core/MaintenanceScheduler.hpp"
+#include "core/VariableEngine.hpp"
 #include "dal/ApiKeyRepository.hpp"
 #include "dal/AuditRepository.hpp"
 #include "dal/ConnectionPool.hpp"
@@ -36,7 +39,7 @@
 
 // Startup sequence from ARCHITECTURE.md §11.4
 //
-// Phase 5 implements steps 1-5, 7a, 8, 10, 11. Steps 6, 7, 9, 12 remain deferred.
+// Phase 6 implements steps 1-5, 7a, 8, 9, 10, 11. Steps 6, 7, 12 remain deferred.
 
 namespace {
 // Global pointer for signal handler access
@@ -155,8 +158,11 @@ int main() {
     auto srcCache = std::make_unique<dns::security::SamlReplayCache>();
     spLog->info("Step 8: SamlReplayCache initialized");
 
-    // ── Step 9: ProviderFactory — deferred to Phase 6 ────────────────────
-    spLog->warn("Step 9: ProviderFactory — not yet implemented");
+    // ── Step 9: Core engines ─────────────────────────────────────────────
+    auto veEngine = std::make_unique<dns::core::VariableEngine>(*varRepo);
+    auto deEngine = std::make_unique<dns::core::DiffEngine>(
+        *zrRepo, *vrRepo, *rrRepo, *prRepo, *veEngine);
+    spLog->info("Step 9: Core engines initialized (VariableEngine, DiffEngine)");
 
     // ── Step 10: Construct auth layer + route handlers ────────────────────
     auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
@@ -173,10 +179,11 @@ int main() {
     auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware);
     auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(*rrRepo, *amMiddleware);
     auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
+    auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
-        crowApp, *authRoutes, *providerRoutes, *viewRoutes,
+        crowApp, *authRoutes, *healthRoutes, *providerRoutes, *viewRoutes,
         *zoneRoutes, *recordRoutes, *variableRoutes);
 
     apiServer->registerRoutes();

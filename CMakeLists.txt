@@ -38,6 +38,16 @@ set(CROW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(CROW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(Crow)
 
+# ── cpp-httplib (HTTP client for provider REST calls) ────────────────────
+FetchContent_Declare(httplib
+  GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+  GIT_TAG        v0.18.7
+  GIT_SHALLOW    TRUE
+)
+set(HTTPLIB_REQUIRE_OPENSSL ON CACHE BOOL "" FORCE)
+set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(httplib)
+
 # ── Subdirectories ─────────────────────────────────────────────────────────
 add_subdirectory(src)
 add_subdirectory(tests)

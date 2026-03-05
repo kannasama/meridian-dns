@@ -1,6 +1,7 @@
 #include "api/ApiServer.hpp"
 #include "api/AuthMiddleware.hpp"
 #include "api/routes/AuthRoutes.hpp"
+#include "api/routes/HealthRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
 #include "api/routes/VariableRoutes.hpp"
@@ -79,11 +80,12 @@ class CrudRoutesTest : public ::testing::Test {
     _zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*_zrRepo, *_amMiddleware);
     _recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(*_rrRepo, *_amMiddleware);
     _variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*_varRepo, *_amMiddleware);
+    _healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
 
     // Crow app + server
     _app = std::make_unique<crow::SimpleApp>();
     _apiServer = std::make_unique<dns::api::ApiServer>(
-        *_app, *_authRoutes, *_providerRoutes, *_viewRoutes,
+        *_app, *_authRoutes, *_healthRoutes, *_providerRoutes, *_viewRoutes,
         *_zoneRoutes, *_recordRoutes, *_variableRoutes);
     _apiServer->registerRoutes();
 
@@ -153,6 +155,7 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::api::AuthMiddleware> _amMiddleware;
   std::unique_ptr<dns::security::AuthService> _asService;
   std::unique_ptr<dns::api::routes::AuthRoutes> _authRoutes;
+  std::unique_ptr<dns::api::routes::HealthRoutes> _healthRoutes;
   std::unique_ptr<dns::api::routes::ProviderRoutes> _providerRoutes;
   std::unique_ptr<dns::api::routes::ViewRoutes> _viewRoutes;
   std::unique_ptr<dns::api::routes::ZoneRoutes> _zoneRoutes;
