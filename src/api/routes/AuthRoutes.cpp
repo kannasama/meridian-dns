@@ -1,12 +1,17 @@
 #include "api/routes/AuthRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RateLimiter.hpp"
+#include "api/RequestValidator.hpp"
+#include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "security/AuthService.hpp"
 
 #include <nlohmann/json.hpp>
 
 namespace dns::api::routes {
+
+static dns::api::RateLimiter g_rlLogin(5, std::chrono::seconds(60));
 
 AuthRoutes::AuthRoutes(dns::security::AuthService& asService,
                        const dns::api::AuthMiddleware& amMiddleware)
@@ -19,28 +24,26 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/auth/local/login").methods("POST"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          auto jBody = nlohmann::json::parse(req.body);
+         std::string sClientIp = req.get_header_value("X-Forwarded-For");
+         if (sClientIp.empty()) sClientIp = req.remote_ip_address;
+         if (!g_rlLogin.allow(sClientIp))
+           throw common::RateLimitedError("RATE_LIMITED",
+                                          "Too many login attempts. Try again later.");
+
+         auto jBody = nlohmann::json::parse(req.body);
           std::string sUsername = jBody.value("username", "");
           std::string sPassword = jBody.value("password", "");
 
-          if (sUsername.empty() || sPassword.empty()) {
-            nlohmann::json jErr = {{"error", "validation_error"},
-                                   {"message", "username and password are required"}};
-            return crow::response(400, jErr.dump(2));
-          }
+          RequestValidator::validateUsername(sUsername);
+          RequestValidator::validatePassword(sPassword);
 
           std::string sToken = _asService.authenticateLocal(sUsername, sPassword);
 
-          nlohmann::json jResp = {{"token", sToken}};
-          crow::response resp(200, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          return jsonResponse(200, {{"token", sToken}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode}, {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
-          nlohmann::json jErr = {{"error", "invalid_json"}, {"message", "Invalid JSON body"}};
-          return crow::response(400, jErr.dump(2));
+          return invalidJsonResponse();
         }
       });
 
@@ -48,19 +51,11 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/auth/local/logout").methods("POST"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
+          auto rcCtx = authenticate(_amMiddleware, req);
 
-          // Authenticate first to verify the token is valid
-          _amMiddleware.authenticate(sAuth, sApiKey);
-
-          nlohmann::json jResp = {{"message", "Logged out successfully"}};
-          crow::response resp(200, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          return jsonResponse(200, {{"message", "Logged out successfully"}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode}, {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 
@@ -68,23 +63,16 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/auth/me").methods("GET"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
+          auto rcCtx = authenticate(_amMiddleware, req);
 
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-
-          nlohmann::json jResp = {
+          return jsonResponse(200, {
               {"user_id", rcCtx.iUserId},
               {"username", rcCtx.sUsername},
               {"role", rcCtx.sRole},
               {"auth_method", rcCtx.sAuthMethod},
-          };
-          crow::response resp(200, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          });
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode}, {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 }

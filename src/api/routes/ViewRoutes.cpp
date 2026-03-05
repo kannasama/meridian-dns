@@ -1,6 +1,7 @@
 #include "api/routes/ViewRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "dal/ViewRepository.hpp"
 
@@ -11,6 +12,7 @@ namespace dns::api::routes {
 ViewRoutes::ViewRoutes(dns::dal::ViewRepository& vrRepo,
                        const dns::api::AuthMiddleware& amMiddleware)
     : _vrRepo(vrRepo), _amMiddleware(amMiddleware) {}
+
 ViewRoutes::~ViewRoutes() = default;
 
 void ViewRoutes::registerRoutes(crow::SimpleApp& app) {
@@ -18,25 +20,24 @@ void ViewRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/views").methods("GET"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          _amMiddleware.authenticate(sAuth, sApiKey);
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "viewer");
 
-          auto vViews = _vrRepo.list();
+          auto vRows = _vrRepo.listAll();
           nlohmann::json jArr = nlohmann::json::array();
-          for (const auto& v : vViews) {
-            jArr.push_back({{"id", v.iId}, {"name", v.sName},
-                            {"description", v.sDescription},
-                            {"provider_ids", v.vProviderIds},
-                            {"created_at", v.sCreatedAt}});
+          for (const auto& row : vRows) {
+            jArr.push_back({
+                {"id", row.iId},
+                {"name", row.sName},
+                {"description", row.sDescription},
+                {"created_at", std::chrono::duration_cast<std::chrono::seconds>(
+                                   row.tpCreatedAt.time_since_epoch())
+                                   .count()},
+            });
           }
-          crow::response resp(200, jArr.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          return jsonResponse(200, jArr);
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 
@@ -44,37 +45,23 @@ void ViewRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/views").methods("POST"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-          if (rcCtx.sRole != "admin") {
-            throw common::AuthorizationError("insufficient_role",
-                                             "Admin role required");
-          }
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "admin");
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
-          std::string sDesc = jBody.value("description", "");
+          std::string sDescription = jBody.value("description", "");
 
           if (sName.empty()) {
-            throw common::ValidationError("missing_fields",
-                                          "name is required");
+            throw common::ValidationError("MISSING_FIELDS", "name is required");
           }
 
-          int64_t iId = _vrRepo.create(sName, sDesc);
-          nlohmann::json jResp = {{"id", iId}, {"name", sName},
-                                  {"description", sDesc}};
-          crow::response resp(201, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          int64_t iId = _vrRepo.create(sName, sDescription);
+          return jsonResponse(201, {{"id", iId}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
-          nlohmann::json jErr = {{"error", "invalid_json"},
-                                 {"message", "Invalid JSON body"}};
-          return crow::response(400, jErr.dump(2));
+          return invalidJsonResponse();
         }
       });
 
@@ -82,26 +69,26 @@ void ViewRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/views/<int>").methods("GET"_method)(
       [this](const crow::request& req, int iId) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          _amMiddleware.authenticate(sAuth, sApiKey);
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "viewer");
 
-          auto oView = _vrRepo.findById(iId);
-          if (!oView.has_value()) {
-            throw common::NotFoundError("view_not_found", "View not found");
+          auto oRow = _vrRepo.findWithProviders(iId);
+          if (!oRow.has_value()) {
+            throw common::NotFoundError("VIEW_NOT_FOUND", "View not found");
           }
 
-          nlohmann::json jResp = {{"id", oView->iId}, {"name", oView->sName},
-                                  {"description", oView->sDescription},
-                                  {"provider_ids", oView->vProviderIds},
-                                  {"created_at", oView->sCreatedAt}};
-          crow::response resp(200, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          nlohmann::json jResp = {
+              {"id", oRow->iId},
+              {"name", oRow->sName},
+              {"description", oRow->sDescription},
+              {"provider_ids", oRow->vProviderIds},
+              {"created_at", std::chrono::duration_cast<std::chrono::seconds>(
+                                 oRow->tpCreatedAt.time_since_epoch())
+                                 .count()},
+          };
+          return jsonResponse(200, jResp);
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 
@@ -109,37 +96,23 @@ void ViewRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/views/<int>").methods("PUT"_method)(
       [this](const crow::request& req, int iId) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-          if (rcCtx.sRole != "admin") {
-            throw common::AuthorizationError("insufficient_role",
-                                             "Admin role required");
-          }
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "admin");
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
-          std::string sDesc = jBody.value("description", "");
+          std::string sDescription = jBody.value("description", "");
 
           if (sName.empty()) {
-            throw common::ValidationError("missing_fields",
-                                          "name is required");
+            throw common::ValidationError("MISSING_FIELDS", "name is required");
           }
 
-          _vrRepo.update(iId, sName, sDesc);
-          nlohmann::json jResp = {{"id", iId}, {"name", sName},
-                                  {"description", sDesc}};
-          crow::response resp(200, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          _vrRepo.update(iId, sName, sDescription);
+          return jsonResponse(200, {{"message", "View updated"}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
-          nlohmann::json jErr = {{"error", "invalid_json"},
-                                 {"message", "Invalid JSON body"}};
-          return crow::response(400, jErr.dump(2));
+          return invalidJsonResponse();
         }
       });
 
@@ -147,67 +120,43 @@ void ViewRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/views/<int>").methods("DELETE"_method)(
       [this](const crow::request& req, int iId) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-          if (rcCtx.sRole != "admin") {
-            throw common::AuthorizationError("insufficient_role",
-                                             "Admin role required");
-          }
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "admin");
 
           _vrRepo.deleteById(iId);
-          return crow::response(204);
+          return jsonResponse(200, {{"message", "View deleted"}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 
-  // POST /api/v1/views/<int>/providers/<int> — attach provider
+  // POST /api/v1/views/<int>/providers/<int>
   CROW_ROUTE(app, "/api/v1/views/<int>/providers/<int>").methods("POST"_method)(
-      [this](const crow::request& req, int iViewId,
-             int iProviderId) -> crow::response {
+      [this](const crow::request& req, int iViewId, int iProviderId) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-          if (rcCtx.sRole != "admin") {
-            throw common::AuthorizationError("insufficient_role",
-                                             "Admin role required");
-          }
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "admin");
 
           _vrRepo.attachProvider(iViewId, iProviderId);
-          return crow::response(204);
+          return jsonResponse(200, {{"message", "Provider attached"}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 
-  // DELETE /api/v1/views/<int>/providers/<int> — detach provider
-  CROW_ROUTE(app, "/api/v1/views/<int>/providers/<int>")
-      .methods("DELETE"_method)(
-          [this](const crow::request& req, int iViewId,
-                 int iProviderId) -> crow::response {
-            try {
-              std::string sAuth = req.get_header_value("Authorization");
-              std::string sApiKey = req.get_header_value("X-API-Key");
-              auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-              if (rcCtx.sRole != "admin") {
-                throw common::AuthorizationError("insufficient_role",
-                                                 "Admin role required");
-              }
+  // DELETE /api/v1/views/<int>/providers/<int>
+  CROW_ROUTE(app, "/api/v1/views/<int>/providers/<int>").methods("DELETE"_method)(
+      [this](const crow::request& req, int iViewId, int iProviderId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "admin");
 
-              _vrRepo.detachProvider(iViewId, iProviderId);
-              return crow::response(204);
-            } catch (const common::AppError& e) {
-              nlohmann::json jErr = {{"error", e._sErrorCode},
-                                     {"message", e.what()}};
-              return crow::response(e._iHttpStatus, jErr.dump(2));
-            }
-          });
+          _vrRepo.detachProvider(iViewId, iProviderId);
+          return jsonResponse(200, {{"message", "Provider detached"}});
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
 }
 
 }  // namespace dns::api::routes

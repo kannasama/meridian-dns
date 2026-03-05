@@ -11,3 +11,64 @@ all affected files.
 
 **Verification step to add:** After prose changes, run a regex search for lines matching
 `^    ` (4 leading spaces) inside code blocks to catch missed indentation.
+
+## 2026-03-04 — Follow existing file naming conventions for plans
+
+**Pattern:** When creating new plan documents, check the existing `docs/plans/` directory for
+the naming convention before choosing a filename. The project uses date-prefixed names like
+`2026-02-28-phase-4-authentication.md`, not flat names like `PHASE5_PLAN.md`.
+
+**Rule:** Before creating any new document in an existing directory, run `ls` on that directory
+first and match the established naming pattern (date prefix, kebab-case, descriptive slug).
+
+**Verification step to add:** After creating a plan file, confirm its name matches the pattern
+of sibling files in the same directory.
+
+## 2026-03-04 — Communication
+
+**Mistake**: After writing a plan the user explicitly said they would not execute, presented
+execution options ("Subagent-Driven or Parallel Session?") anyway — copying the writing-plans
+skill's "Execution Handoff" section verbatim.
+
+**Pattern**: Blindly following a skill template without adapting to user-stated intent.
+
+**Rule**: When the user says they won't execute now or plan to execute with another tool, skip
+the execution handoff entirely. Just confirm the plan is saved and committed. The skill template
+is a default, not a mandate — always defer to the user's explicit instructions.
+
+**Applied**: Any skill with a handoff/next-steps section (writing-plans, brainstorming, etc.).
+Read the user's request fully before appending boilerplate.
+
+## 2026-03-05 — Crow integration test: three bugs in test harness
+
+**Bug 1 — Connection pool exhaustion in SetUp():**
+`ConnectionPool` was created with size 2. `SetUp()` checked out two `ConnectionGuard`s (`cg` and `cg2`) in the same scope, then called `authenticateLocal()` which needed a third connection — exhausting the pool after 30 seconds.
+
+**Fix:** Wrap each `ConnectionGuard` block in its own `{}` scope so the guard is destroyed (connection returned) before the next checkout.
+
+**Rule:** When using a fixed-size connection pool in tests, always ensure `ConnectionGuard` objects go out of scope before any subsequent DB operation that needs a connection. Never hold multiple guards in the same scope unless the pool size exceeds the number of simultaneous guards.
+
+**Bug 2 — Crow router not compiled before handle_full():**
+`handle_full()` requires `app.validate()` to be called first to compile the trie. Without it, all routes return 404.
+
+**Fix:** Call `_app->validate()` immediately after `_apiServer->registerRoutes()` in `SetUp()`.
+
+**Rule:** In Crow integration tests using `handle_full()` directly (without starting the server), always call `app.validate()` after registering all routes.
+
+**Bug 3 — Query string included in req.url breaks trie routing:**
+Crow's HTTP parser strips the query string from `req.url` (path only) and stores it in `req.url_params`. When constructing a `crow::request` manually in tests, setting `req.url = "/api/v1/zones?view_id=5"` causes the trie to fail to match because it only has `/api/v1/zones` registered.
+
+**Fix:** In the test `handle()` helper, split the URL on `?` — set `req.url` to the path portion and `req.url_params = crow::query_string(fullUrl)` for the query portion.
+
+**Rule:** When manually constructing `crow::request` objects for testing, always split the URL: `req.url` = path only, `req.url_params` = `crow::query_string(fullUrl)`, `req.raw_url` = full URL.
+
+## 2026-03-05 — Always commit changes at end of session
+
+**Pattern:** Code changes, plan documents, lessons updates, and any other modifications made
+during a session should be committed to the repository before the session ends.
+
+**Rule:** When any code changes are made, plans are written or executed, or lessons are updated,
+all changes must be committed to the repo at the end of each session. Do not leave uncommitted work.
+
+**Verification step:** Before completing a session, run `git status` to confirm no unstaged or
+uncommitted changes remain for work done in that session.

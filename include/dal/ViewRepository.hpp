@@ -1,11 +1,10 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include <pqxx/pqxx>
 
 namespace dns::dal {
 
@@ -16,8 +15,8 @@ struct ViewRow {
   int64_t iId = 0;
   std::string sName;
   std::string sDescription;
-  std::string sCreatedAt;
-  std::vector<int64_t> vProviderIds;
+  std::chrono::system_clock::time_point tpCreatedAt;
+  std::vector<int64_t> vProviderIds;  // populated by findWithProviders()
 };
 
 /// Manages views + view_providers join table.
@@ -27,38 +26,31 @@ class ViewRepository {
   explicit ViewRepository(ConnectionPool& cpPool);
   ~ViewRepository();
 
-  /// Create a view. Returns the new view ID.
-  /// Throws ConflictError if name already exists.
+  /// Create a view. Returns the new ID.
   int64_t create(const std::string& sName, const std::string& sDescription);
 
-  /// Find a view by ID (includes attached provider IDs).
-  /// Returns nullopt if not found.
-  std::optional<ViewRow> findById(int64_t iViewId);
+  /// List all views (without provider IDs).
+  std::vector<ViewRow> listAll();
 
-  /// List all views (includes attached provider IDs for each).
-  std::vector<ViewRow> list();
+  /// Find a view by ID (without provider IDs). Returns nullopt if not found.
+  std::optional<ViewRow> findById(int64_t iId);
 
-  /// Update a view's name and description.
-  /// Throws NotFoundError if view doesn't exist.
-  void update(int64_t iViewId, const std::string& sName,
-              const std::string& sDescription);
+  /// Find a view by ID with provider IDs populated via JOIN.
+  std::optional<ViewRow> findWithProviders(int64_t iId);
 
-  /// Delete a view by ID.
-  /// Throws NotFoundError if view doesn't exist.
-  void deleteById(int64_t iViewId);
+  /// Update a view's name and description. Throws NotFoundError if not found.
+  void update(int64_t iId, const std::string& sName, const std::string& sDescription);
 
-  /// Attach a provider to a view.
-  /// Throws ConflictError if already attached.
+  /// Delete a view. Throws NotFoundError/ConflictError.
+  void deleteById(int64_t iId);
+
+  /// Attach a provider to a view (idempotent).
   void attachProvider(int64_t iViewId, int64_t iProviderId);
 
-  /// Detach a provider from a view.
-  /// Throws NotFoundError if not attached.
+  /// Detach a provider from a view (idempotent).
   void detachProvider(int64_t iViewId, int64_t iProviderId);
 
  private:
-  /// Load provider IDs for a given view within an existing transaction.
-  std::vector<int64_t> loadProviderIds(pqxx::work& txn, int64_t iViewId);
-
   ConnectionPool& _cpPool;
 };
 

@@ -1,6 +1,11 @@
 #include "api/routes/AuditRoutes.hpp"
 
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+
 #include "api/AuthMiddleware.hpp"
+#include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "dal/AuditRepository.hpp"
 
@@ -10,106 +15,141 @@ namespace dns::api::routes {
 
 AuditRoutes::AuditRoutes(dns::dal::AuditRepository& arRepo,
                          const dns::api::AuthMiddleware& amMiddleware,
-                         int iAuditRetentionDays)
-    : _arRepo(arRepo),
-      _amMiddleware(amMiddleware),
-      _iAuditRetentionDays(iAuditRetentionDays) {}
+                         int iRetentionDays)
+    : _arRepo(arRepo), _amMiddleware(amMiddleware), _iRetentionDays(iRetentionDays) {}
+
 AuditRoutes::~AuditRoutes() = default;
 
+namespace {
+
+std::string formatTimestamp(std::chrono::system_clock::time_point tp) {
+  auto tt = std::chrono::system_clock::to_time_t(tp);
+  std::ostringstream oss;
+  oss << std::put_time(std::gmtime(&tt), "%FT%TZ");
+  return oss.str();
+}
+
+std::optional<std::chrono::system_clock::time_point> parseIso8601(const std::string& s) {
+  std::tm tm = {};
+  std::istringstream iss(s);
+  iss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+  if (iss.fail()) return std::nullopt;
+  return std::chrono::system_clock::from_time_t(timegm(&tm));
+}
+
+nlohmann::json auditRowToJson(const dns::dal::AuditLogRow& row) {
+  nlohmann::json j = {
+      {"id", row.iId},
+      {"entity_type", row.sEntityType},
+      {"operation", row.sOperation},
+      {"identity", row.sIdentity},
+      {"timestamp", formatTimestamp(row.tpTimestamp)},
+  };
+  if (row.oEntityId) j["entity_id"] = *row.oEntityId;
+  if (row.ojOldValue) j["old_value"] = *row.ojOldValue;
+  if (row.ojNewValue) j["new_value"] = *row.ojNewValue;
+  if (row.osVariableUsed) j["variable_used"] = *row.osVariableUsed;
+  if (row.osAuthMethod) j["auth_method"] = *row.osAuthMethod;
+  if (row.osIpAddress) j["ip_address"] = *row.osIpAddress;
+  return j;
+}
+
+}  // namespace
+
 void AuditRoutes::registerRoutes(crow::SimpleApp& app) {
-  // GET /api/v1/audit — query audit log (viewer)
+  // GET /api/v1/audit
   CROW_ROUTE(app, "/api/v1/audit").methods("GET"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          _amMiddleware.authenticate(sAuth, sApiKey);
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "viewer");
 
-          std::optional<std::string> oEntityType;
-          std::optional<std::string> oIdentity;
-          std::optional<std::string> oFrom;
-          std::optional<std::string> oTo;
-
-          auto* pEntityType = req.url_params.get("entity_type");
-          if (pEntityType) oEntityType = std::string(pEntityType);
-          auto* pIdentity = req.url_params.get("identity");
-          if (pIdentity) oIdentity = std::string(pIdentity);
-          auto* pFrom = req.url_params.get("from");
-          if (pFrom) oFrom = std::string(pFrom);
-          auto* pTo = req.url_params.get("to");
-          if (pTo) oTo = std::string(pTo);
-
+          std::optional<std::string> osEntityType;
+          std::optional<std::string> osIdentity;
+          std::optional<std::chrono::system_clock::time_point> otpFrom;
+          std::optional<std::chrono::system_clock::time_point> otpTo;
           int iLimit = 100;
-          int iOffset = 0;
-          auto* pLimit = req.url_params.get("limit");
-          if (pLimit) iLimit = std::stoi(pLimit);
-          auto* pOffset = req.url_params.get("offset");
-          if (pOffset) iOffset = std::stoi(pOffset);
 
-          auto vRows = _arRepo.query(oEntityType, oIdentity, oFrom, oTo,
-                                     iLimit, iOffset);
+          auto pEntityType = req.url_params.get("entity_type");
+          if (pEntityType) osEntityType = std::string(pEntityType);
+
+          auto pIdentity = req.url_params.get("identity");
+          if (pIdentity) osIdentity = std::string(pIdentity);
+
+          auto pFrom = req.url_params.get("from");
+          if (pFrom) otpFrom = parseIso8601(pFrom);
+
+          auto pTo = req.url_params.get("to");
+          if (pTo) otpTo = parseIso8601(pTo);
+
+          auto pLimit = req.url_params.get("limit");
+          if (pLimit) iLimit = std::stoi(pLimit);
+
+          auto vRows = _arRepo.query(osEntityType, std::nullopt, osIdentity,
+                                     otpFrom, otpTo, iLimit);
+
           nlohmann::json jArr = nlohmann::json::array();
-          for (const auto& a : vRows) {
-            nlohmann::json jRow = {
-                {"id", a.iId},
-                {"entity_type", a.sEntityType},
-                {"entity_id", a.iEntityId},
-                {"operation", a.sOperation},
-                {"identity", a.sIdentity},
-                {"auth_method", a.sAuthMethod},
-                {"ip_address", a.sIpAddress},
-                {"timestamp", a.sTimestamp}};
-            if (!a.sOldValue.empty()) {
-              jRow["old_value"] = nlohmann::json::parse(a.sOldValue);
-            } else {
-              jRow["old_value"] = nullptr;
-            }
-            if (!a.sNewValue.empty()) {
-              jRow["new_value"] = nlohmann::json::parse(a.sNewValue);
-            } else {
-              jRow["new_value"] = nullptr;
-            }
-            jArr.push_back(jRow);
+          for (const auto& row : vRows) {
+            jArr.push_back(auditRowToJson(row));
           }
-          crow::response resp(200, jArr.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          return jsonResponse(200, jArr);
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 
-  // DELETE /api/v1/audit/purge — purge old entries (admin)
+  // GET /api/v1/audit/export
+  CROW_ROUTE(app, "/api/v1/audit/export").methods("GET"_method)(
+      [this](const crow::request& req) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "admin");
+
+          std::optional<std::chrono::system_clock::time_point> otpFrom;
+          std::optional<std::chrono::system_clock::time_point> otpTo;
+
+          auto pFrom = req.url_params.get("from");
+          if (pFrom) otpFrom = parseIso8601(pFrom);
+
+          auto pTo = req.url_params.get("to");
+          if (pTo) otpTo = parseIso8601(pTo);
+
+          // Fetch all matching entries (large limit for export)
+          auto vRows = _arRepo.query(std::nullopt, std::nullopt, std::nullopt,
+                                     otpFrom, otpTo, 100000);
+
+          // Stream as NDJSON
+          std::string sBody;
+          for (const auto& row : vRows) {
+            sBody += auditRowToJson(row).dump() + "\n";
+          }
+
+          crow::response resp(200, sBody);
+          resp.set_header("Content-Type", "application/x-ndjson");
+          return resp;
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
+  // DELETE /api/v1/audit/purge
   CROW_ROUTE(app, "/api/v1/audit/purge").methods("DELETE"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-          if (rcCtx.sRole != "admin") {
-            throw common::AuthorizationError("insufficient_role",
-                                             "Admin role required");
-          }
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "admin");
 
-          auto prResult = _arRepo.purgeOld(_iAuditRetentionDays);
-          nlohmann::json jResp = {{"deleted", prResult.iDeletedCount}};
-          if (prResult.oOldestRemaining.has_value()) {
-            auto tpEpoch = std::chrono::duration_cast<std::chrono::seconds>(
-                               prResult.oOldestRemaining->time_since_epoch())
-                               .count();
-            jResp["oldest_remaining"] = std::to_string(tpEpoch);
-          } else {
-            jResp["oldest_remaining"] = nullptr;
+          auto prResult = _arRepo.purgeOld(_iRetentionDays);
+
+          nlohmann::json jResult = {
+              {"deleted", prResult.iDeletedCount},
+          };
+          if (prResult.oOldestRemaining) {
+            jResult["oldest_remaining"] = formatTimestamp(*prResult.oOldestRemaining);
           }
-          crow::response resp(200, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          return jsonResponse(200, jResult);
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 }

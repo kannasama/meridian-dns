@@ -2415,7 +2415,7 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
 **Step 3: Verify compilation**
 
 Run: `cd build && ninja dns-tests 2>&1 | tail -5`
-Expected: Compiles successfully. (AuthRoutes is compiled into dns-core; no new test binary needed yet.)
+Expected: Compiles successfully. (AuthRoutes is compiled into meridian-core; no new test binary needed yet.)
 
 **Step 4: Commit**
 
@@ -2496,7 +2496,7 @@ Replace the deferred steps section (after "Step 5: Foundation ready") with:
     spLog->warn("Step 10: API routes — not yet implemented");
     spLog->warn("Step 11: HTTP server — not yet implemented");
 
-    spLog->info("dns-orchestrator ready (auth layer active — API server not started)");
+    spLog->info("meridian-dns ready (auth layer active — API server not started)");
 
     // Graceful shutdown
     msScheduler->stop();
@@ -2505,7 +2505,7 @@ Replace the deferred steps section (after "Step 5: Foundation ready") with:
 
 **Step 2: Verify compilation**
 
-Run: `cd build && ninja dns-orchestrator 2>&1 | tail -5`
+Run: `cd build && ninja meridian-dns 2>&1 | tail -5`
 Expected: Compiles successfully.
 
 **Step 3: Run full test suite**
@@ -2538,8 +2538,8 @@ Expected: All tests PASS — unit tests (SamlReplayCache, MaintenanceScheduler, 
 
 **Step 3: Run the binary to verify startup**
 
-Run: `cd build && DNS_DB_URL="postgresql://..." DNS_MASTER_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" DNS_JWT_SECRET="test-secret" ./src/dns-orchestrator 2>&1`
-Expected: Logs steps 1-8, then "dns-orchestrator ready (auth layer active)". Exits cleanly.
+Run: `cd build && DNS_DB_URL="postgresql://..." DNS_MASTER_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" DNS_JWT_SECRET="test-secret" ./src/meridian-dns 2>&1`
+Expected: Logs steps 1-8, then "meridian-dns ready (auth layer active)". Exits cleanly.
 
 **Step 4: Final commit with all remaining changes**
 

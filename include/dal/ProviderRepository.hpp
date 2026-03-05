@@ -1,9 +1,14 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
+
+namespace pqxx {
+class row;
+}
 
 namespace dns::security {
 class CryptoService;
@@ -13,28 +18,18 @@ namespace dns::dal {
 
 class ConnectionPool;
 
-/// Row type returned from provider queries (list view — no token).
+/// Row type returned from provider queries.
 struct ProviderRow {
   int64_t iId = 0;
   std::string sName;
   std::string sType;
   std::string sApiEndpoint;
-  std::string sCreatedAt;
-  std::string sUpdatedAt;
-};
-
-/// Row type returned from provider queries (detail view — decrypted token).
-struct ProviderDetailRow {
-  int64_t iId = 0;
-  std::string sName;
-  std::string sType;
-  std::string sApiEndpoint;
   std::string sDecryptedToken;
-  std::string sCreatedAt;
-  std::string sUpdatedAt;
+  std::chrono::system_clock::time_point tpCreatedAt;
+  std::chrono::system_clock::time_point tpUpdatedAt;
 };
 
-/// Manages the providers table; encrypts tokens on write, decrypts on read.
+/// Manages the providers table; decrypts tokens on read.
 /// Class abbreviation: pr
 class ProviderRepository {
  public:
@@ -42,32 +37,30 @@ class ProviderRepository {
                      const dns::security::CryptoService& csService);
   ~ProviderRepository();
 
-  /// Create a provider. Encrypts the raw token before storage.
-  /// Returns the new provider ID.
-  /// Throws ConflictError if name already exists.
+  /// Create a provider. Encrypts the token before INSERT. Returns the new ID.
   int64_t create(const std::string& sName, const std::string& sType,
-                 const std::string& sApiEndpoint, const std::string& sRawToken);
+                 const std::string& sApiEndpoint,
+                 const std::string& sPlaintextToken);
 
-  /// Find a provider by ID with decrypted token.
-  /// Returns nullopt if not found.
-  std::optional<ProviderDetailRow> findById(int64_t iProviderId);
+  /// List all providers. Decrypts tokens.
+  std::vector<ProviderRow> listAll();
 
-  /// List all providers (no tokens in result).
-  std::vector<ProviderRow> list();
+  /// Find a provider by ID. Returns nullopt if not found.
+  std::optional<ProviderRow> findById(int64_t iId);
 
-  /// Update a provider. Encrypts the new token if provided.
-  /// Throws NotFoundError if provider doesn't exist.
-  void update(int64_t iProviderId, const std::string& sName,
-              const std::string& sType, const std::string& sApiEndpoint,
-              const std::string& sRawToken);
+  /// Update a provider. Re-encrypts token only if oPlaintextToken has a value.
+  void update(int64_t iId, const std::string& sName,
+              const std::string& sApiEndpoint,
+              const std::optional<std::string>& oPlaintextToken);
 
-  /// Delete a provider by ID.
-  /// Throws NotFoundError if provider doesn't exist.
-  void deleteById(int64_t iProviderId);
+  /// Delete a provider by ID. Throws NotFoundError if not found.
+  void deleteById(int64_t iId);
 
  private:
   ConnectionPool& _cpPool;
   const dns::security::CryptoService& _csService;
+
+  ProviderRow mapRow(const pqxx::row& row) const;
 };
 
 }  // namespace dns::dal

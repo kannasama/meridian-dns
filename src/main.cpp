@@ -1,16 +1,29 @@
-#include <atomic>
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
-#include <thread>
 
 #include "api/ApiServer.hpp"
 #include "api/AuthMiddleware.hpp"
+#include "api/routes/AuthRoutes.hpp"
+#include "api/routes/HealthRoutes.hpp"
+#include "api/routes/ProviderRoutes.hpp"
+#include "api/routes/RecordRoutes.hpp"
+#include "api/routes/VariableRoutes.hpp"
+#include "api/routes/ViewRoutes.hpp"
+#include "api/routes/ZoneRoutes.hpp"
 #include "common/Config.hpp"
 #include "common/Logger.hpp"
+#include "api/routes/AuditRoutes.hpp"
+#include "api/routes/DeploymentRoutes.hpp"
+#include "core/DeploymentEngine.hpp"
+#include "core/DiffEngine.hpp"
 #include "core/MaintenanceScheduler.hpp"
+#include "core/RollbackEngine.hpp"
+#include "core/ThreadPool.hpp"
+#include "core/VariableEngine.hpp"
+#include "gitops/GitOpsMirror.hpp"
 #include "dal/ApiKeyRepository.hpp"
 #include "dal/AuditRepository.hpp"
 #include "dal/ConnectionPool.hpp"
@@ -32,8 +45,17 @@
 
 // Startup sequence from ARCHITECTURE.md §11.4
 //
-// Phase 2 implements steps 1-5. Phase 4 adds steps 6-8.
-// Phase 5 adds steps 9-11.
+// Phase 6 implements steps 1-5, 7a, 8, 9, 10, 11. Steps 6, 7, 12 remain deferred.
+
+namespace {
+// Global pointer for signal handler access
+dns::api::ApiServer* g_pApiServer = nullptr;
+dns::core::MaintenanceScheduler* g_pScheduler = nullptr;
+
+void signalHandler(int /*iSignal*/) {
+  if (g_pApiServer) g_pApiServer->stop();
+}
+}  // namespace
 
 int main() {
   try {
@@ -78,16 +100,30 @@ int main() {
     // ── Step 5: Foundation ready ─────────────────────────────────────────
     spLog->info("Step 5: Foundation layer ready");
 
-    // ── Step 6: GitOpsMirror — deferred to Phase 7 ────────────────────────
-    spLog->warn("Step 6: GitOpsMirror — not yet implemented");
+    // ── Step 6: GitOpsMirror pointer (initialized after engines in Step 9) ─
+    std::unique_ptr<dns::gitops::GitOpsMirror> upGitMirror;
+    spLog->info("Step 6: GitOpsMirror deferred until engines ready");
 
-    // ── Step 7: ThreadPool — deferred to Phase 7 ──────────────────────────
-    spLog->warn("Step 7: ThreadPool — not yet implemented");
+    // ── Step 7: Initialize ThreadPool ──────────────────────────────────────
+    auto tpPool = std::make_unique<dns::core::ThreadPool>(cfgApp.iThreadPoolSize);
+    spLog->info("Step 7: ThreadPool initialized (size={})",
+                cfgApp.iThreadPoolSize == 0
+                    ? static_cast<int>(std::thread::hardware_concurrency())
+                    : cfgApp.iThreadPoolSize);
 
-    // ── Step 7a: Initialize MaintenanceScheduler ──────────────────────────
+    // ── Step 7a: Initialize repositories + MaintenanceScheduler ──────────
     auto urRepo = std::make_unique<dns::dal::UserRepository>(*cpPool);
     auto srRepo = std::make_unique<dns::dal::SessionRepository>(*cpPool);
     auto akrRepo = std::make_unique<dns::dal::ApiKeyRepository>(*cpPool);
+
+    // Phase 5 repositories
+    auto prRepo = std::make_unique<dns::dal::ProviderRepository>(*cpPool, *csService);
+    auto vrRepo = std::make_unique<dns::dal::ViewRepository>(*cpPool);
+    auto zrRepo = std::make_unique<dns::dal::ZoneRepository>(*cpPool);
+    auto rrRepo = std::make_unique<dns::dal::RecordRepository>(*cpPool);
+    auto varRepo = std::make_unique<dns::dal::VariableRepository>(*cpPool);
+    auto drRepo = std::make_unique<dns::dal::DeploymentRepository>(*cpPool);
+    auto arRepo = std::make_unique<dns::dal::AuditRepository>(*cpPool);
 
     auto msScheduler = std::make_unique<dns::core::MaintenanceScheduler>();
 
@@ -111,70 +147,102 @@ int main() {
                             }
                           });
 
+    msScheduler->schedule("audit-purge",
+                          std::chrono::seconds(cfgApp.iAuditPurgeIntervalSeconds),
+                          [&arRepo, iRetention = cfgApp.iAuditRetentionDays]() {
+                            auto pr = arRepo->purgeOld(iRetention);
+                            if (pr.iDeletedCount > 0) {
+                              auto spLog = dns::common::Logger::get();
+                              spLog->info("Audit purge: deleted {} old entries", pr.iDeletedCount);
+                            }
+                          });
+
     msScheduler->start();
+    g_pScheduler = msScheduler.get();
     spLog->info("Step 7a: MaintenanceScheduler started (session flush every {}s, "
-                "API key cleanup every {}s)",
+                "API key cleanup every {}s, audit purge every {}s)",
                 cfgApp.iSessionCleanupIntervalSeconds,
-                cfgApp.iApiKeyCleanupIntervalSeconds);
+                cfgApp.iApiKeyCleanupIntervalSeconds,
+                cfgApp.iAuditPurgeIntervalSeconds);
 
     // ── Step 8: Initialize SamlReplayCache ────────────────────────────────
     auto srcCache = std::make_unique<dns::security::SamlReplayCache>();
     spLog->info("Step 8: SamlReplayCache initialized");
 
-    // ── Step 9: ProviderFactory — deferred to Phase 6 ───────────────────────
-    spLog->warn("Step 9: ProviderFactory — not yet implemented");
+    // ── Step 9: Core engines ─────────────────────────────────────────────
+    auto veEngine = std::make_unique<dns::core::VariableEngine>(*varRepo);
+    auto deEngine = std::make_unique<dns::core::DiffEngine>(
+        *zrRepo, *vrRepo, *rrRepo, *prRepo, *veEngine);
 
-    // ── Step 10: Construct repositories and API routes ──────────────────────
-    auto prRepo = std::make_unique<dns::dal::ProviderRepository>(*cpPool, *csService);
-    auto vrRepo = std::make_unique<dns::dal::ViewRepository>(*cpPool);
-    auto zrRepo = std::make_unique<dns::dal::ZoneRepository>(*cpPool);
-    auto varRepo = std::make_unique<dns::dal::VariableRepository>(*cpPool);
-    auto rrRepo = std::make_unique<dns::dal::RecordRepository>(*cpPool);
-    auto drRepo = std::make_unique<dns::dal::DeploymentRepository>(*cpPool);
-    auto arRepo = std::make_unique<dns::dal::AuditRepository>(*cpPool);
+    // ── Step 6 (deferred): Initialize GitOpsMirror now that engines are ready ─
+    if (cfgApp.oGitRemoteUrl.has_value() && !cfgApp.oGitRemoteUrl->empty()) {
+      upGitMirror = std::make_unique<dns::gitops::GitOpsMirror>(
+          *zrRepo, *vrRepo, *rrRepo, *veEngine);
+      upGitMirror->initialize(*cfgApp.oGitRemoteUrl, cfgApp.sGitLocalPath);
+      upGitMirror->pull();
+      spLog->info("Step 6: GitOpsMirror initialized (remote={}, local={})",
+                  *cfgApp.oGitRemoteUrl, cfgApp.sGitLocalPath);
+    } else {
+      spLog->info("Step 6: GitOpsMirror disabled (DNS_GIT_REMOTE_URL not set)");
+    }
+
+    auto depEngine = std::make_unique<dns::core::DeploymentEngine>(
+        *deEngine, *veEngine, *zrRepo, *vrRepo, *rrRepo, *prRepo,
+        *drRepo, *arRepo, upGitMirror.get(), cfgApp.iDeploymentRetentionCount);
+    auto reEngine = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
+    spLog->info("Step 9: Core engines initialized "
+                "(VariableEngine, DiffEngine, DeploymentEngine, RollbackEngine)");
+
+    // ── Step 10: Construct auth layer + route handlers ────────────────────
+    auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
+        *upSigner, *srRepo, *akrRepo, *urRepo,
+        cfgApp.iJwtTtlSeconds, cfgApp.iApiKeyCleanupGraceSeconds);
 
     auto asService = std::make_unique<dns::security::AuthService>(
         *urRepo, *srRepo, *upSigner,
         cfgApp.iJwtTtlSeconds, cfgApp.iSessionAbsoluteTtlSeconds);
 
-    auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
-        *upSigner, *srRepo, *akrRepo, *urRepo,
-        cfgApp.iJwtTtlSeconds, cfgApp.iApiKeyCleanupGraceSeconds);
+    auto authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*asService, *amMiddleware);
+    auto providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*prRepo, *amMiddleware);
+    auto viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*vrRepo, *amMiddleware);
+    auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware);
+    auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
+        *rrRepo, *amMiddleware, *deEngine, *depEngine);
+    auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
+    auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
+    auto deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(
+        *drRepo, *rrRepo, *amMiddleware, *reEngine);
+    auto auditRoutes = std::make_unique<dns::api::routes::AuditRoutes>(
+        *arRepo, *amMiddleware, cfgApp.iAuditRetentionDays);
 
+    crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
-        *asService, *amMiddleware,
-        *prRepo, *vrRepo, *zrRepo, *varRepo, *rrRepo, *drRepo, *arRepo,
-        cfgApp.iAuditRetentionDays);
+        crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
+        *providerRoutes, *viewRoutes, *zoneRoutes, *recordRoutes, *variableRoutes);
+
     apiServer->registerRoutes();
     spLog->info("Step 10: API routes registered");
 
-    // ── Step 11: Start HTTP server ──────────────────────────────────────────
-    spLog->info("Step 11: Starting HTTP server on port {}", cfgApp.iHttpPort);
+    // ── Step 11: Start HTTP server ───────────────────────────────────────
+    g_pApiServer = apiServer.get();
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
 
-    // Run server in a separate thread so we can handle shutdown
-    std::thread tServer([&]() {
-      apiServer->start(cfgApp.iHttpPort, cfgApp.iHttpThreads);
-    });
+    spLog->info("Step 11: Starting HTTP server on port {} ({} threads)",
+                cfgApp.iHttpPort, cfgApp.iHttpThreads);
 
-    // Wait for SIGINT/SIGTERM
-    std::signal(SIGINT, [](int) {});
-    std::signal(SIGTERM, [](int) {});
-    sigset_t stSigSet;
-    sigemptyset(&stSigSet);
-    sigaddset(&stSigSet, SIGINT);
-    sigaddset(&stSigSet, SIGTERM);
-    pthread_sigmask(SIG_BLOCK, &stSigSet, nullptr);
-    int iSig = 0;
-    sigwait(&stSigSet, &iSig);
+    // Step 12: Background task queue uses ThreadPool — ready
+    spLog->info("Step 12: Background task queue ready (ThreadPool)");
 
-    spLog->info("Received signal {}, shutting down...", iSig);
-    apiServer->stop();
-    tServer.join();
+    spLog->info("meridian-dns ready");
+
+    // Blocks on Crow event loop until stop() is called
+    apiServer->start(cfgApp.iHttpPort, cfgApp.iHttpThreads);
 
     // Graceful shutdown
     msScheduler->stop();
     spLog->info("MaintenanceScheduler stopped");
-    spLog->info("dns-orchestrator shutdown complete");
+    spLog->info("meridian-dns shutdown complete");
 
     return EXIT_SUCCESS;
   } catch (const std::exception& ex) {

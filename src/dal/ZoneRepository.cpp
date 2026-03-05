@@ -11,16 +11,17 @@ ZoneRepository::ZoneRepository(ConnectionPool& cpPool) : _cpPool(cpPool) {}
 ZoneRepository::~ZoneRepository() = default;
 
 int64_t ZoneRepository::create(const std::string& sName, int64_t iViewId,
-                               std::optional<int> oDeploymentRetention) {
+                               std::optional<int> oRetention) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
+
   try {
     pqxx::result result;
-    if (oDeploymentRetention.has_value()) {
+    if (oRetention.has_value()) {
       result = txn.exec(
           "INSERT INTO zones (name, view_id, deployment_retention) "
           "VALUES ($1, $2, $3) RETURNING id",
-          pqxx::params{sName, iViewId, *oDeploymentRetention});
+          pqxx::params{sName, iViewId, *oRetention});
     } else {
       result = txn.exec(
           "INSERT INTO zones (name, view_id) VALUES ($1, $2) RETURNING id",
@@ -29,109 +30,122 @@ int64_t ZoneRepository::create(const std::string& sName, int64_t iViewId,
     txn.commit();
     return result.one_row()[0].as<int64_t>();
   } catch (const pqxx::unique_violation&) {
-    throw common::ConflictError(
-        "duplicate_zone",
-        "Zone '" + sName + "' already exists in this view");
+    throw common::ConflictError("ZONE_EXISTS",
+                                "Zone '" + sName + "' already exists in this view");
   } catch (const pqxx::foreign_key_violation&) {
-    throw common::NotFoundError("view_not_found", "View not found");
+    throw common::ValidationError("INVALID_VIEW_ID",
+                                  "View with id " + std::to_string(iViewId) + " not found");
   }
 }
 
-std::optional<ZoneRow> ZoneRepository::findById(int64_t iZoneId) {
+std::vector<ZoneRow> ZoneRepository::listAll() {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      "SELECT id, name, view_id, deployment_retention, created_at::text "
-      "FROM zones WHERE id = $1",
-      pqxx::params{iZoneId});
-  txn.commit();
-
-  if (result.empty()) return std::nullopt;
-
-  auto row = result[0];
-  ZoneRow zRow;
-  zRow.iId = row[0].as<int64_t>();
-  zRow.sName = row[1].as<std::string>();
-  zRow.iViewId = row[2].as<int64_t>();
-  if (!row[3].is_null()) {
-    zRow.oDeploymentRetention = row[3].as<int>();
-  }
-  zRow.sCreatedAt = row[4].as<std::string>();
-  return zRow;
-}
-
-std::vector<ZoneRow> ZoneRepository::list(std::optional<int64_t> oViewId) {
-  auto cg = _cpPool.checkout();
-  pqxx::work txn(*cg);
-
-  pqxx::result result;
-  if (oViewId.has_value()) {
-    result = txn.exec(
-        "SELECT id, name, view_id, deployment_retention, created_at::text "
-        "FROM zones WHERE view_id = $1 ORDER BY name",
-        pqxx::params{*oViewId});
-  } else {
-    result = txn.exec(
-        "SELECT id, name, view_id, deployment_retention, created_at::text "
-        "FROM zones ORDER BY name");
-  }
+      "SELECT id, name, view_id, deployment_retention, "
+      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "FROM zones ORDER BY id");
   txn.commit();
 
   std::vector<ZoneRow> vRows;
   vRows.reserve(result.size());
   for (const auto& row : result) {
-    ZoneRow zRow;
-    zRow.iId = row[0].as<int64_t>();
-    zRow.sName = row[1].as<std::string>();
-    zRow.iViewId = row[2].as<int64_t>();
-    if (!row[3].is_null()) {
-      zRow.oDeploymentRetention = row[3].as<int>();
-    }
-    zRow.sCreatedAt = row[4].as<std::string>();
-    vRows.push_back(std::move(zRow));
+    ZoneRow zr;
+    zr.iId = row[0].as<int64_t>();
+    zr.sName = row[1].as<std::string>();
+    zr.iViewId = row[2].as<int64_t>();
+    if (!row[3].is_null()) zr.oDeploymentRetention = row[3].as<int>();
+    zr.tpCreatedAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(row[4].as<int64_t>()));
+    vRows.push_back(std::move(zr));
   }
   return vRows;
 }
 
-void ZoneRepository::update(int64_t iZoneId, const std::string& sName,
-                            int64_t iViewId,
-                            std::optional<int> oDeploymentRetention) {
+std::vector<ZoneRow> ZoneRepository::listByViewId(int64_t iViewId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "SELECT id, name, view_id, deployment_retention, "
+      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "FROM zones WHERE view_id = $1 ORDER BY id",
+      pqxx::params{iViewId});
+  txn.commit();
+
+  std::vector<ZoneRow> vRows;
+  vRows.reserve(result.size());
+  for (const auto& row : result) {
+    ZoneRow zr;
+    zr.iId = row[0].as<int64_t>();
+    zr.sName = row[1].as<std::string>();
+    zr.iViewId = row[2].as<int64_t>();
+    if (!row[3].is_null()) zr.oDeploymentRetention = row[3].as<int>();
+    zr.tpCreatedAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(row[4].as<int64_t>()));
+    vRows.push_back(std::move(zr));
+  }
+  return vRows;
+}
+
+std::optional<ZoneRow> ZoneRepository::findById(int64_t iId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "SELECT id, name, view_id, deployment_retention, "
+      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "FROM zones WHERE id = $1",
+      pqxx::params{iId});
+  txn.commit();
+
+  if (result.empty()) return std::nullopt;
+
+  ZoneRow zr;
+  zr.iId = result[0][0].as<int64_t>();
+  zr.sName = result[0][1].as<std::string>();
+  zr.iViewId = result[0][2].as<int64_t>();
+  if (!result[0][3].is_null()) zr.oDeploymentRetention = result[0][3].as<int>();
+  zr.tpCreatedAt = std::chrono::system_clock::time_point(
+      std::chrono::seconds(result[0][4].as<int64_t>()));
+  return zr;
+}
+
+void ZoneRepository::update(int64_t iId, const std::string& sName,
+                            std::optional<int> oRetention) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  pqxx::result result;
   try {
-    pqxx::result result;
-    if (oDeploymentRetention.has_value()) {
+    if (oRetention.has_value()) {
       result = txn.exec(
-          "UPDATE zones SET name = $2, view_id = $3, deployment_retention = $4 "
-          "WHERE id = $1",
-          pqxx::params{iZoneId, sName, iViewId, *oDeploymentRetention});
+          "UPDATE zones SET name = $2, deployment_retention = $3 WHERE id = $1",
+          pqxx::params{iId, sName, *oRetention});
     } else {
       result = txn.exec(
-          "UPDATE zones SET name = $2, view_id = $3, deployment_retention = NULL "
-          "WHERE id = $1",
-          pqxx::params{iZoneId, sName, iViewId});
+          "UPDATE zones SET name = $2, deployment_retention = NULL WHERE id = $1",
+          pqxx::params{iId, sName});
     }
     txn.commit();
-    if (result.affected_rows() == 0) {
-      throw common::NotFoundError("zone_not_found", "Zone not found");
-    }
   } catch (const pqxx::unique_violation&) {
-    throw common::ConflictError(
-        "duplicate_zone",
-        "Zone '" + sName + "' already exists in this view");
-  } catch (const pqxx::foreign_key_violation&) {
-    throw common::NotFoundError("view_not_found", "View not found");
+    throw common::ConflictError("ZONE_EXISTS",
+                                "Zone '" + sName + "' already exists in this view");
+  }
+
+  if (result.affected_rows() == 0) {
+    throw common::NotFoundError("ZONE_NOT_FOUND",
+                                "Zone with id " + std::to_string(iId) + " not found");
   }
 }
 
-void ZoneRepository::deleteById(int64_t iZoneId) {
+void ZoneRepository::deleteById(int64_t iId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec("DELETE FROM zones WHERE id = $1",
-                         pqxx::params{iZoneId});
+  auto result = txn.exec("DELETE FROM zones WHERE id = $1", pqxx::params{iId});
   txn.commit();
+
   if (result.affected_rows() == 0) {
-    throw common::NotFoundError("zone_not_found", "Zone not found");
+    throw common::NotFoundError("ZONE_NOT_FOUND",
+                                "Zone with id " + std::to_string(iId) + " not found");
   }
 }
 

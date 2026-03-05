@@ -69,7 +69,7 @@ Replace the `target_link_libraries` block AND the trailing conditional restbed b
 Old (two separate blocks):
 
 ```cmake
-target_link_libraries(dns-core PUBLIC
+target_link_libraries(meridian-core PUBLIC
   PkgConfig::LIBPQXX
   OpenSSL::SSL
   OpenSSL::Crypto
@@ -80,14 +80,14 @@ target_link_libraries(dns-core PUBLIC
 
 # Link restbed only if found
 if(RESTBED_FOUND)
-  target_link_libraries(dns-core PUBLIC PkgConfig::RESTBED)
+  target_link_libraries(meridian-core PUBLIC PkgConfig::RESTBED)
 endif()
 ```
 
 Replace with one block:
 
 ```cmake
-target_link_libraries(dns-core PUBLIC
+target_link_libraries(meridian-core PUBLIC
   PkgConfig::LIBPQXX
   OpenSSL::SSL
   OpenSSL::Crypto

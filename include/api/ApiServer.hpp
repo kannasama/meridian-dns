@@ -2,26 +2,21 @@
 
 #include <crow.h>
 
-#include <memory>
-
-namespace dns::security {
-class AuthService;
-class CryptoService;
-}  // namespace dns::security
-
 namespace dns::api {
 class AuthMiddleware;
 }
 
-namespace dns::dal {
-class ProviderRepository;
-class ViewRepository;
-class ZoneRepository;
-class VariableRepository;
-class RecordRepository;
-class DeploymentRepository;
-class AuditRepository;
-}  // namespace dns::dal
+namespace dns::api::routes {
+class AuthRoutes;
+class AuditRoutes;
+class DeploymentRoutes;
+class HealthRoutes;
+class ProviderRoutes;
+class ViewRoutes;
+class ZoneRoutes;
+class RecordRoutes;
+class VariableRoutes;
+}  // namespace dns::api::routes
 
 namespace dns::api {
 
@@ -29,34 +24,38 @@ namespace dns::api {
 /// Class abbreviation: api
 class ApiServer {
  public:
-  ApiServer(dns::security::AuthService& asService,
-            const dns::api::AuthMiddleware& amMiddleware,
-            dns::dal::ProviderRepository& prRepo,
-            dns::dal::ViewRepository& vrRepo,
-            dns::dal::ZoneRepository& zrRepo,
-            dns::dal::VariableRepository& varRepo,
-            dns::dal::RecordRepository& rrRepo,
-            dns::dal::DeploymentRepository& drRepo,
-            dns::dal::AuditRepository& arRepo,
-            int iAuditRetentionDays);
+  ApiServer(crow::SimpleApp& app,
+            routes::AuthRoutes& arRoutes,
+            routes::AuditRoutes& audrRoutes,
+            routes::DeploymentRoutes& dplrRoutes,
+            routes::HealthRoutes& hrRoutes,
+            routes::ProviderRoutes& prRoutes,
+            routes::ViewRoutes& vrRoutes,
+            routes::ZoneRoutes& zrRoutes,
+            routes::RecordRoutes& rrRoutes,
+            routes::VariableRoutes& varRoutes);
   ~ApiServer();
 
+  /// Register all route handlers on the Crow app.
   void registerRoutes();
+
+  /// Start the HTTP server. Blocks on the Crow event loop.
   void start(int iPort, int iThreads);
+
+  /// Stop the HTTP server.
   void stop();
 
  private:
-  crow::SimpleApp _app;
-  dns::security::AuthService& _asService;
-  const dns::api::AuthMiddleware& _amMiddleware;
-  dns::dal::ProviderRepository& _prRepo;
-  dns::dal::ViewRepository& _vrRepo;
-  dns::dal::ZoneRepository& _zrRepo;
-  dns::dal::VariableRepository& _varRepo;
-  dns::dal::RecordRepository& _rrRepo;
-  dns::dal::DeploymentRepository& _drRepo;
-  dns::dal::AuditRepository& _arRepo;
-  int _iAuditRetentionDays;
+  crow::SimpleApp& _app;
+  routes::AuthRoutes& _arRoutes;
+  routes::AuditRoutes& _audrRoutes;
+  routes::DeploymentRoutes& _dplrRoutes;
+  routes::HealthRoutes& _hrRoutes;
+  routes::ProviderRoutes& _prRoutes;
+  routes::ViewRoutes& _vrRoutes;
+  routes::ZoneRoutes& _zrRoutes;
+  routes::RecordRoutes& _rrRoutes;
+  routes::VariableRoutes& _varRoutes;
 };
 
 }  // namespace dns::api

@@ -20,6 +20,7 @@ class ProviderRoutes {
                  const dns::api::AuthMiddleware& amMiddleware);
   ~ProviderRoutes();
 
+  /// Register provider routes on the Crow app.
   void registerRoutes(crow::SimpleApp& app);
 
  private:

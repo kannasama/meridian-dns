@@ -10,147 +10,162 @@ namespace dns::dal {
 ViewRepository::ViewRepository(ConnectionPool& cpPool) : _cpPool(cpPool) {}
 ViewRepository::~ViewRepository() = default;
 
-std::vector<int64_t> ViewRepository::loadProviderIds(pqxx::work& txn,
-                                                     int64_t iViewId) {
-  auto result = txn.exec(
-      "SELECT provider_id FROM view_providers "
-      "WHERE view_id = $1 ORDER BY provider_id",
-      pqxx::params{iViewId});
-  std::vector<int64_t> vIds;
-  vIds.reserve(result.size());
-  for (const auto& row : result) {
-    vIds.push_back(row[0].as<int64_t>());
-  }
-  return vIds;
-}
-
-int64_t ViewRepository::create(const std::string& sName,
-                               const std::string& sDescription) {
+int64_t ViewRepository::create(const std::string& sName, const std::string& sDescription) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
+
   try {
-    std::optional<std::string> oDesc;
-    if (!sDescription.empty()) oDesc = sDescription;
     auto result = txn.exec(
         "INSERT INTO views (name, description) VALUES ($1, $2) RETURNING id",
-        pqxx::params{sName, oDesc});
+        pqxx::params{sName, sDescription});
     txn.commit();
     return result.one_row()[0].as<int64_t>();
   } catch (const pqxx::unique_violation&) {
-    throw common::ConflictError("duplicate_view",
+    throw common::ConflictError("VIEW_EXISTS",
                                 "View with name '" + sName + "' already exists");
   }
 }
 
-std::optional<ViewRow> ViewRepository::findById(int64_t iViewId) {
+std::vector<ViewRow> ViewRepository::listAll() {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      "SELECT id, name, COALESCE(description, ''), created_at::text "
-      "FROM views WHERE id = $1",
-      pqxx::params{iViewId});
-
-  if (result.empty()) {
-    txn.commit();
-    return std::nullopt;
-  }
-
-  auto row = result[0];
-  ViewRow vRow;
-  vRow.iId = row[0].as<int64_t>();
-  vRow.sName = row[1].as<std::string>();
-  vRow.sDescription = row[2].as<std::string>();
-  vRow.sCreatedAt = row[3].as<std::string>();
-  vRow.vProviderIds = loadProviderIds(txn, iViewId);
+      "SELECT id, name, COALESCE(description, ''), "
+      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "FROM views ORDER BY id");
   txn.commit();
-  return vRow;
-}
-
-std::vector<ViewRow> ViewRepository::list() {
-  auto cg = _cpPool.checkout();
-  pqxx::work txn(*cg);
-  auto result = txn.exec(
-      "SELECT id, name, COALESCE(description, ''), created_at::text "
-      "FROM views ORDER BY name");
 
   std::vector<ViewRow> vRows;
   vRows.reserve(result.size());
   for (const auto& row : result) {
-    ViewRow vRow;
-    vRow.iId = row[0].as<int64_t>();
-    vRow.sName = row[1].as<std::string>();
-    vRow.sDescription = row[2].as<std::string>();
-    vRow.sCreatedAt = row[3].as<std::string>();
-    vRow.vProviderIds = loadProviderIds(txn, vRow.iId);
-    vRows.push_back(std::move(vRow));
+    ViewRow vr;
+    vr.iId = row[0].as<int64_t>();
+    vr.sName = row[1].as<std::string>();
+    vr.sDescription = row[2].as<std::string>();
+    vr.tpCreatedAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(row[3].as<int64_t>()));
+    vRows.push_back(std::move(vr));
   }
-  txn.commit();
   return vRows;
 }
 
-void ViewRepository::update(int64_t iViewId, const std::string& sName,
+std::optional<ViewRow> ViewRepository::findById(int64_t iId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "SELECT id, name, COALESCE(description, ''), "
+      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "FROM views WHERE id = $1",
+      pqxx::params{iId});
+  txn.commit();
+
+  if (result.empty()) return std::nullopt;
+
+  ViewRow vr;
+  vr.iId = result[0][0].as<int64_t>();
+  vr.sName = result[0][1].as<std::string>();
+  vr.sDescription = result[0][2].as<std::string>();
+  vr.tpCreatedAt = std::chrono::system_clock::time_point(
+      std::chrono::seconds(result[0][3].as<int64_t>()));
+  return vr;
+}
+
+std::optional<ViewRow> ViewRepository::findWithProviders(int64_t iId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  auto viewResult = txn.exec(
+      "SELECT id, name, COALESCE(description, ''), "
+      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "FROM views WHERE id = $1",
+      pqxx::params{iId});
+
+  if (viewResult.empty()) {
+    txn.commit();
+    return std::nullopt;
+  }
+
+  ViewRow vr;
+  vr.iId = viewResult[0][0].as<int64_t>();
+  vr.sName = viewResult[0][1].as<std::string>();
+  vr.sDescription = viewResult[0][2].as<std::string>();
+  vr.tpCreatedAt = std::chrono::system_clock::time_point(
+      std::chrono::seconds(viewResult[0][3].as<int64_t>()));
+
+  auto provResult = txn.exec(
+      "SELECT provider_id FROM view_providers WHERE view_id = $1 ORDER BY provider_id",
+      pqxx::params{iId});
+  txn.commit();
+
+  for (const auto& row : provResult) {
+    vr.vProviderIds.push_back(row[0].as<int64_t>());
+  }
+  return vr;
+}
+
+void ViewRepository::update(int64_t iId, const std::string& sName,
                             const std::string& sDescription) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
+
+  pqxx::result result;
   try {
-    std::optional<std::string> oDesc;
-    if (!sDescription.empty()) oDesc = sDescription;
-    auto result = txn.exec(
+    result = txn.exec(
         "UPDATE views SET name = $2, description = $3 WHERE id = $1",
-        pqxx::params{iViewId, sName, oDesc});
+        pqxx::params{iId, sName, sDescription});
     txn.commit();
-    if (result.affected_rows() == 0) {
-      throw common::NotFoundError("view_not_found", "View not found");
-    }
   } catch (const pqxx::unique_violation&) {
-    throw common::ConflictError("duplicate_view",
+    throw common::ConflictError("VIEW_EXISTS",
                                 "View with name '" + sName + "' already exists");
+  }
+
+  if (result.affected_rows() == 0) {
+    throw common::NotFoundError("VIEW_NOT_FOUND",
+                                "View with id " + std::to_string(iId) + " not found");
   }
 }
 
-void ViewRepository::deleteById(int64_t iViewId) {
+void ViewRepository::deleteById(int64_t iId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec("DELETE FROM views WHERE id = $1",
-                         pqxx::params{iViewId});
-  txn.commit();
-  if (result.affected_rows() == 0) {
-    throw common::NotFoundError("view_not_found", "View not found");
+
+  try {
+    auto result = txn.exec("DELETE FROM views WHERE id = $1", pqxx::params{iId});
+    txn.commit();
+
+    if (result.affected_rows() == 0) {
+      throw common::NotFoundError("VIEW_NOT_FOUND",
+                                  "View with id " + std::to_string(iId) + " not found");
+    }
+  } catch (const pqxx::foreign_key_violation&) {
+    throw common::ConflictError("VIEW_HAS_ZONES",
+                                "Cannot delete view — zones still reference it");
   }
 }
 
 void ViewRepository::attachProvider(int64_t iViewId, int64_t iProviderId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
+
   try {
     txn.exec(
-        "INSERT INTO view_providers (view_id, provider_id) VALUES ($1, $2)",
+        "INSERT INTO view_providers (view_id, provider_id) VALUES ($1, $2) "
+        "ON CONFLICT DO NOTHING",
         pqxx::params{iViewId, iProviderId});
     txn.commit();
-  } catch (const pqxx::unique_violation&) {
-    throw common::ConflictError(
-        "provider_already_attached",
-        "Provider is already attached to this view");
-  } catch (const pqxx::foreign_key_violation& e) {
-    std::string sMsg = e.what();
-    if (sMsg.find("view_providers_view_id_fkey") != std::string::npos) {
-      throw common::NotFoundError("view_not_found", "View not found");
-    }
-    throw common::NotFoundError("provider_not_found", "Provider not found");
+  } catch (const pqxx::foreign_key_violation&) {
+    throw common::NotFoundError("INVALID_VIEW_OR_PROVIDER",
+                                "View or provider does not exist");
   }
 }
 
 void ViewRepository::detachProvider(int64_t iViewId, int64_t iProviderId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec(
+  txn.exec(
       "DELETE FROM view_providers WHERE view_id = $1 AND provider_id = $2",
       pqxx::params{iViewId, iProviderId});
   txn.commit();
-  if (result.affected_rows() == 0) {
-    throw common::NotFoundError("provider_not_attached",
-                                "Provider is not attached to this view");
-  }
 }
 
 }  // namespace dns::dal

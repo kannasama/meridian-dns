@@ -1,6 +1,8 @@
 #include "api/routes/VariableRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RequestValidator.hpp"
+#include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "dal/VariableRepository.hpp"
 
@@ -11,46 +13,62 @@ namespace dns::api::routes {
 VariableRoutes::VariableRoutes(dns::dal::VariableRepository& varRepo,
                                const dns::api::AuthMiddleware& amMiddleware)
     : _varRepo(varRepo), _amMiddleware(amMiddleware) {}
+
 VariableRoutes::~VariableRoutes() = default;
+
+namespace {
+
+nlohmann::json variableRowToJson(const dns::dal::VariableRow& row) {
+  nlohmann::json j = {
+      {"id", row.iId},
+      {"name", row.sName},
+      {"value", row.sValue},
+      {"type", row.sType},
+      {"scope", row.sScope},
+      {"created_at", std::chrono::duration_cast<std::chrono::seconds>(
+                         row.tpCreatedAt.time_since_epoch())
+                         .count()},
+      {"updated_at", std::chrono::duration_cast<std::chrono::seconds>(
+                         row.tpUpdatedAt.time_since_epoch())
+                         .count()},
+  };
+  if (row.oZoneId.has_value()) {
+    j["zone_id"] = *row.oZoneId;
+  } else {
+    j["zone_id"] = nullptr;
+  }
+  return j;
+}
+
+}  // namespace
 
 void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
   // GET /api/v1/variables
   CROW_ROUTE(app, "/api/v1/variables").methods("GET"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          _amMiddleware.authenticate(sAuth, sApiKey);
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "viewer");
 
-          std::optional<std::string> oScope;
-          std::optional<int64_t> oZoneId;
-          auto* pScope = req.url_params.get("scope");
-          if (pScope) oScope = std::string(pScope);
-          auto* pZoneId = req.url_params.get("zone_id");
-          if (pZoneId) oZoneId = std::stoll(pZoneId);
+          auto sScope = req.url_params.get("scope");
+          auto sZoneId = req.url_params.get("zone_id");
 
-          auto vVars = _varRepo.list(oScope, oZoneId);
-          nlohmann::json jArr = nlohmann::json::array();
-          for (const auto& v : vVars) {
-            nlohmann::json jVar = {
-                {"id", v.iId},     {"name", v.sName},
-                {"value", v.sValue}, {"type", v.sType},
-                {"scope", v.sScope}, {"created_at", v.sCreatedAt},
-                {"updated_at", v.sUpdatedAt}};
-            if (v.oZoneId.has_value()) {
-              jVar["zone_id"] = *v.oZoneId;
-            } else {
-              jVar["zone_id"] = nullptr;
-            }
-            jArr.push_back(jVar);
+          std::vector<dns::dal::VariableRow> vRows;
+          if (sZoneId) {
+            vRows = _varRepo.listByZoneId(std::stoll(sZoneId));
+          } else if (sScope) {
+            vRows = _varRepo.listByScope(sScope);
+          } else {
+            vRows = _varRepo.listAll();
           }
-          crow::response resp(200, jArr.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+
+          nlohmann::json jArr = nlohmann::json::array();
+          for (const auto& row : vRows) {
+            jArr.push_back(variableRowToJson(row));
+          }
+          return jsonResponse(200, jArr);
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 
@@ -58,13 +76,8 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/variables").methods("POST"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-          if (rcCtx.sRole == "viewer") {
-            throw common::AuthorizationError("insufficient_role",
-                                             "Operator role required");
-          }
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "operator");
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -72,35 +85,21 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sType = jBody.value("type", "");
           std::string sScope = jBody.value("scope", "global");
 
-          if (sName.empty() || sValue.empty() || sType.empty()) {
-            throw common::ValidationError(
-                "missing_fields", "name, value, and type are required");
-          }
+          RequestValidator::validateVariableName(sName);
+          RequestValidator::validateVariableValue(sValue);
+          RequestValidator::validateRequired(sType, "type");
 
           std::optional<int64_t> oZoneId;
           if (jBody.contains("zone_id") && !jBody["zone_id"].is_null()) {
             oZoneId = jBody["zone_id"].get<int64_t>();
           }
 
-          int64_t iId =
-              _varRepo.create(sName, sValue, sType, sScope, oZoneId);
-          nlohmann::json jResp = {{"id", iId},       {"name", sName},
-                                  {"value", sValue}, {"type", sType},
-                                  {"scope", sScope}};
-          if (oZoneId.has_value()) {
-            jResp["zone_id"] = *oZoneId;
-          }
-          crow::response resp(201, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          int64_t iId = _varRepo.create(sName, sValue, sType, sScope, oZoneId);
+          return jsonResponse(201, {{"id", iId}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
-          nlohmann::json jErr = {{"error", "invalid_json"},
-                                 {"message", "Invalid JSON body"}};
-          return crow::response(400, jErr.dump(2));
+          return invalidJsonResponse();
         }
       });
 
@@ -108,33 +107,16 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/variables/<int>").methods("GET"_method)(
       [this](const crow::request& req, int iId) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          _amMiddleware.authenticate(sAuth, sApiKey);
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "viewer");
 
-          auto oVar = _varRepo.findById(iId);
-          if (!oVar.has_value()) {
-            throw common::NotFoundError("variable_not_found",
-                                        "Variable not found");
+          auto oRow = _varRepo.findById(iId);
+          if (!oRow.has_value()) {
+            throw common::NotFoundError("VARIABLE_NOT_FOUND", "Variable not found");
           }
-
-          nlohmann::json jResp = {
-              {"id", oVar->iId},     {"name", oVar->sName},
-              {"value", oVar->sValue}, {"type", oVar->sType},
-              {"scope", oVar->sScope}, {"created_at", oVar->sCreatedAt},
-              {"updated_at", oVar->sUpdatedAt}};
-          if (oVar->oZoneId.has_value()) {
-            jResp["zone_id"] = *oVar->oZoneId;
-          } else {
-            jResp["zone_id"] = nullptr;
-          }
-          crow::response resp(200, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          return jsonResponse(200, variableRowToJson(*oRow));
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 
@@ -142,38 +124,20 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/variables/<int>").methods("PUT"_method)(
       [this](const crow::request& req, int iId) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-          if (rcCtx.sRole == "viewer") {
-            throw common::AuthorizationError("insufficient_role",
-                                             "Operator role required");
-          }
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "operator");
 
           auto jBody = nlohmann::json::parse(req.body);
-          std::string sName = jBody.value("name", "");
           std::string sValue = jBody.value("value", "");
-          std::string sType = jBody.value("type", "");
 
-          if (sName.empty() || sValue.empty() || sType.empty()) {
-            throw common::ValidationError(
-                "missing_fields", "name, value, and type are required");
-          }
+          RequestValidator::validateVariableValue(sValue);
 
-          _varRepo.update(iId, sName, sValue, sType);
-          nlohmann::json jResp = {{"id", iId}, {"name", sName},
-                                  {"value", sValue}, {"type", sType}};
-          crow::response resp(200, jResp.dump(2));
-          resp.set_header("Content-Type", "application/json");
-          return resp;
+          _varRepo.update(iId, sValue);
+          return jsonResponse(200, {{"message", "Variable updated"}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
-          nlohmann::json jErr = {{"error", "invalid_json"},
-                                 {"message", "Invalid JSON body"}};
-          return crow::response(400, jErr.dump(2));
+          return invalidJsonResponse();
         }
       });
 
@@ -181,20 +145,13 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/variables/<int>").methods("DELETE"_method)(
       [this](const crow::request& req, int iId) -> crow::response {
         try {
-          std::string sAuth = req.get_header_value("Authorization");
-          std::string sApiKey = req.get_header_value("X-API-Key");
-          auto rcCtx = _amMiddleware.authenticate(sAuth, sApiKey);
-          if (rcCtx.sRole == "viewer") {
-            throw common::AuthorizationError("insufficient_role",
-                                             "Operator role required");
-          }
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "operator");
 
           _varRepo.deleteById(iId);
-          return crow::response(204);
+          return jsonResponse(200, {{"message", "Variable deleted"}});
         } catch (const common::AppError& e) {
-          nlohmann::json jErr = {{"error", e._sErrorCode},
-                                 {"message", e.what()}};
-          return crow::response(e._iHttpStatus, jErr.dump(2));
+          return errorResponse(e);
         }
       });
 }

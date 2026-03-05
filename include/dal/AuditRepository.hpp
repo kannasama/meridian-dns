@@ -6,9 +6,26 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 namespace dns::dal {
 
 class ConnectionPool;
+
+/// Row type returned from audit log queries.
+struct AuditLogRow {
+  int64_t iId = 0;
+  std::string sEntityType;
+  std::optional<int64_t> oEntityId;
+  std::string sOperation;
+  std::optional<nlohmann::json> ojOldValue;
+  std::optional<nlohmann::json> ojNewValue;
+  std::optional<std::string> osVariableUsed;
+  std::string sIdentity;
+  std::optional<std::string> osAuthMethod;
+  std::optional<std::string> osIpAddress;
+  std::chrono::system_clock::time_point tpTimestamp;
+};
 
 /// Result of a purge operation.
 struct PurgeResult {
@@ -16,55 +33,32 @@ struct PurgeResult {
   std::optional<std::chrono::system_clock::time_point> oOldestRemaining;
 };
 
-/// Entry for insert/bulkInsert operations.
-struct AuditEntry {
-  std::string sEntityType;
-  int64_t iEntityId = 0;
-  std::string sOperation;
-  std::string sOldValue;   // JSON string or empty
-  std::string sNewValue;   // JSON string or empty
-  std::string sIdentity;
-  std::string sAuthMethod;
-  std::string sIpAddress;
-};
-
-/// Row type returned from audit log queries.
-struct AuditRow {
-  int64_t iId = 0;
-  std::string sEntityType;
-  int64_t iEntityId = 0;
-  std::string sOperation;
-  std::string sOldValue;
-  std::string sNewValue;
-  std::string sIdentity;
-  std::string sAuthMethod;
-  std::string sIpAddress;
-  std::string sTimestamp;
-};
-
-/// Manages the audit_log table; insert, bulk-insert, purgeOld.
+/// Manages the audit_log table; insert, query, purgeOld.
 /// Class abbreviation: ar
 class AuditRepository {
  public:
   explicit AuditRepository(ConnectionPool& cpPool);
   ~AuditRepository();
 
-  /// Insert a single audit entry. Returns the new audit log ID.
-  int64_t insert(const AuditEntry& aeEntry);
+  /// Insert an audit log entry. Returns the new ID.
+  int64_t insert(const std::string& sEntityType, std::optional<int64_t> oEntityId,
+                 const std::string& sOperation,
+                 const std::optional<nlohmann::json>& ojOldValue,
+                 const std::optional<nlohmann::json>& ojNewValue,
+                 const std::string& sIdentity,
+                 const std::optional<std::string>& osAuthMethod,
+                 const std::optional<std::string>& osIpAddress);
 
-  /// Bulk-insert multiple audit entries in a single transaction.
-  void bulkInsert(const std::vector<AuditEntry>& vEntries);
+  /// Query audit log with optional filters. Orders by timestamp DESC.
+  std::vector<AuditLogRow> query(
+      const std::optional<std::string>& osEntityType,
+      const std::optional<int64_t>& oEntityId,
+      const std::optional<std::string>& osIdentity,
+      const std::optional<std::chrono::system_clock::time_point>& otpFrom,
+      const std::optional<std::chrono::system_clock::time_point>& otpTo,
+      int iLimit = 100);
 
-  /// Query the audit log with optional filters.
-  /// Results ordered by timestamp DESC.
-  std::vector<AuditRow> query(std::optional<std::string> oEntityType,
-                              std::optional<std::string> oIdentity,
-                              std::optional<std::string> oFrom,
-                              std::optional<std::string> oTo,
-                              int iLimit, int iOffset);
-
-  /// Purge entries older than iRetentionDays.
-  /// Returns count of deleted rows and timestamp of oldest remaining.
+  /// Delete audit entries older than iRetentionDays. Returns count + oldest remaining.
   PurgeResult purgeOld(int iRetentionDays);
 
  private:

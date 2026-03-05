@@ -1,4 +1,4 @@
-# DNS Orchestrator
+# Meridian DNS
 
 A high-performance DNS control plane built in C++ that serves as the single source of truth for DNS records across multiple providers. Manages internal and external infrastructure from a unified interface with split-horizon views, a variable template engine, and GitOps-style version control.
 
@@ -68,7 +68,7 @@ ctest --test-dir build --output-on-failure
 ## Project Layout
 
 ```
-dns-orchestrator/
+meridian-dns/
 ├── include/          # Public headers organized by layer
 ├── src/              # Implementation files organized by layer
 ├── tests/            # Unit and integration tests

@@ -1,4 +1,4 @@
-# Design Specification: C++ Multi-Provider DNS Orchestrator
+# Design Specification: C++ Multi-Provider Meridian DNS
 
 ## 1. Executive Summary
 This application is a high-performance DNS Control Plane built in C++20. It serves as the absolute **Source of Truth** for DNS records across multiple providers (PowerDNS, Cloudflare, DigitalOcean). It introduces a **Split-Horizon View** architecture and an **Object/Variable Template Engine** to manage internal and external infrastructure from a single interface while maintaining strict GitOps versioning.

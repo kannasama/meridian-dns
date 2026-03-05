@@ -1,4 +1,4 @@
-# TUI Client Design — DNS Orchestrator
+# TUI Client Design — Meridian DNS
 
 > **Status:** Stub — to be expanded when TUI development begins
 > **Repository:** Separate (TBD)
@@ -8,7 +8,7 @@
 
 ## Overview
 
-The TUI client is a standalone terminal application that communicates with the DNS Orchestrator server exclusively via its REST API (see [ARCHITECTURE.md §6](ARCHITECTURE.md)). It has **no direct database access** and shares no code with the server binary.
+The TUI client is a standalone terminal application that communicates with the Meridian DNS server exclusively via its REST API (see [ARCHITECTURE.md §6](ARCHITECTURE.md)). It has **no direct database access** and shares no code with the server binary.
 
 This document will contain the full TUI design when development begins. The sections below capture the original design intent from the server architecture for reference.
 
@@ -20,7 +20,7 @@ This document will contain the full TUI design when development begins. The sect
 - No interactive login screen; key loaded at startup
 - Key sources (in priority order):
   1. `DNS_TUI_API_KEY` environment variable
-  2. `~/.config/dns-orchestrator/credentials` file (mode `0600`, line: `api_key=<value>`)
+  2. `~/.config/meridian-dns/credentials` file (mode `0600`, line: `api_key=<value>`)
 - On startup, validates key against `GET /api/v1/auth/me`
 - On failure (absent, expired, revoked key), prints error to stderr and exits with code 1
 

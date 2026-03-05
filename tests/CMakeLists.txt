@@ -23,7 +23,7 @@ add_executable(dns-tests
 )
 
 target_link_libraries(dns-tests PRIVATE
-  dns-core
+  meridian-core
   GTest::gtest
   GTest::gmock
 )

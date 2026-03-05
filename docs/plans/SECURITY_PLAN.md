@@ -1,4 +1,4 @@
-# Security Hardening Plan — DNS Orchestrator
+# Security Hardening Plan — Meridian DNS
 
 > **Status:** Approved  
 > **Date:** 2026-02-26  
@@ -31,7 +31,7 @@
 
 ## 1. Threat Model Summary
 
-The DNS Orchestrator is a **critical infrastructure control plane**. A successful attack could:
+Meridian DNS is a **critical infrastructure control plane**. A successful attack could:
 
 - Redirect traffic by modifying DNS records (A, CNAME, MX)
 - Exfiltrate internal network topology via split-horizon zone data
@@ -57,7 +57,7 @@ The DNS Orchestrator is a **critical infrastructure control plane**. A successfu
 - JWT revocation via `sessions` table (SHA-256 of token stored, not raw token)
 - RBAC enforced at every API handler via `RequestContext`
 - Parameterized SQL via `libpqxx` (no raw string interpolation)
-- Non-root container user (`dns-orchestrator` system account)
+- Non-root container user (`meridian-dns` system account)
 - Per-zone deployment mutex preventing concurrent pushes
 - Provider isolation: internal-view records never sent to external providers
 
@@ -398,7 +398,7 @@ The reverse proxy MUST implement rate limiting on authentication endpoints. Refe
 limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/m;
 location /api/v1/auth/local/login {
   limit_req zone=auth burst=3 nodelay;
-  proxy_pass http://dns-orchestrator:8080;
+  proxy_pass http://meridian-dns:8080;
 }
 ```
 
@@ -432,7 +432,7 @@ Define two PostgreSQL roles:
 
 **Role 1: `dns_app` (application runtime user)**
 ```sql
-GRANT CONNECT ON DATABASE dns_orchestrator TO dns_app;
+GRANT CONNECT ON DATABASE meridian_dns TO dns_app;
 GRANT USAGE ON SCHEMA public TO dns_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO dns_app;
 REVOKE DELETE ON audit_log FROM dns_app;  -- cannot delete audit records
@@ -441,7 +441,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO dns_app;
 
 **Role 2: `dns_audit_admin` (used only for audit purge)**
 ```sql
-GRANT CONNECT ON DATABASE dns_orchestrator TO dns_audit_admin;
+GRANT CONNECT ON DATABASE meridian_dns TO dns_audit_admin;
 GRANT USAGE ON SCHEMA public TO dns_audit_admin;
 GRANT SELECT, DELETE ON audit_log TO dns_audit_admin;  -- purge only
 ```

@@ -13,12 +13,12 @@ class AuthMiddleware;
 namespace dns::api::routes {
 
 /// Handlers for /api/v1/audit
-/// Class abbreviation: au
+/// Class abbreviation: audr
 class AuditRoutes {
  public:
   AuditRoutes(dns::dal::AuditRepository& arRepo,
               const dns::api::AuthMiddleware& amMiddleware,
-              int iAuditRetentionDays);
+              int iRetentionDays);
   ~AuditRoutes();
 
   void registerRoutes(crow::SimpleApp& app);
@@ -26,7 +26,7 @@ class AuditRoutes {
  private:
   dns::dal::AuditRepository& _arRepo;
   const dns::api::AuthMiddleware& _amMiddleware;
-  int _iAuditRetentionDays;
+  int _iRetentionDays;
 };
 
 }  // namespace dns::api::routes

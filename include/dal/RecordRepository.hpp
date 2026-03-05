@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -19,8 +20,8 @@ struct RecordRow {
   std::string sValueTemplate;
   int iPriority = 0;
   std::optional<int64_t> oLastAuditId;
-  std::string sCreatedAt;
-  std::string sUpdatedAt;
+  std::chrono::system_clock::time_point tpCreatedAt;
+  std::chrono::system_clock::time_point tpUpdatedAt;
 };
 
 /// Manages the records table (raw templates); upsert for rollback restore.
@@ -30,35 +31,31 @@ class RecordRepository {
   explicit RecordRepository(ConnectionPool& cpPool);
   ~RecordRepository();
 
-  /// Create a record. Returns the new record ID.
-  int64_t create(int64_t iZoneId, const std::string& sName,
-                 const std::string& sType, int iTtl,
-                 const std::string& sValueTemplate, int iPriority);
+  /// Create a record. Returns the new ID.
+  int64_t create(int64_t iZoneId, const std::string& sName, const std::string& sType,
+                 int iTtl, const std::string& sValueTemplate, int iPriority);
+
+  /// List records for a zone.
+  std::vector<RecordRow> listByZoneId(int64_t iZoneId);
 
   /// Find a record by ID. Returns nullopt if not found.
-  std::optional<RecordRow> findById(int64_t iRecordId);
+  std::optional<RecordRow> findById(int64_t iId);
 
-  /// List all records for a zone, ordered by name then type.
-  std::vector<RecordRow> listByZone(int64_t iZoneId);
+  /// Update a record.
+  void update(int64_t iId, const std::string& sName, const std::string& sType,
+              int iTtl, const std::string& sValueTemplate, int iPriority);
 
-  /// Update a record's fields. Optionally sets last_audit_id.
-  /// Throws NotFoundError if record doesn't exist.
-  void update(int64_t iRecordId, const std::string& sName,
-              const std::string& sType, int iTtl,
-              const std::string& sValueTemplate, int iPriority,
-              std::optional<int64_t> oLastAuditId);
+  /// Delete a record by ID. Throws NotFoundError if not found.
+  void deleteById(int64_t iId);
 
-  /// Delete a record by ID.
-  /// Throws NotFoundError if record doesn't exist.
-  void deleteById(int64_t iRecordId);
+  /// Delete all records for a zone. Returns deleted count.
+  int deleteAllByZoneId(int64_t iZoneId);
 
-  /// Upsert a record for rollback restore.
-  /// If a record with the given ID exists, update it.
-  /// If not, insert with the specified fields (ID is NOT preserved from snapshot;
-  /// a new ID is assigned).
-  void upsert(int64_t iZoneId, const std::string& sName,
-              const std::string& sType, int iTtl,
-              const std::string& sValueTemplate, int iPriority);
+  /// Upsert a record by ID. If the ID exists, update it. Otherwise, create a new record.
+  /// Returns the record ID (existing or newly created).
+  int64_t upsertById(int64_t iId, int64_t iZoneId, const std::string& sName,
+                     const std::string& sType, int iTtl,
+                     const std::string& sValueTemplate, int iPriority);
 
  private:
   ConnectionPool& _cpPool;

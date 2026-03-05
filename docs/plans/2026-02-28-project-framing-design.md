@@ -1,4 +1,4 @@
-# Project Framing Design — DNS Orchestrator
+# Project Framing Design — Meridian DNS
 
 > **Date:** 2026-02-28
 > **Status:** Draft
@@ -38,12 +38,12 @@
 
 ## 1. Overview
 
-This document defines the two-phase approach to establishing the dns-orchestrator codebase:
+This document defines the two-phase approach to establishing the meridian-dns codebase:
 
 - **Phase 1 — Project Skeleton:** CMakeLists.txt, directory structure, empty header/source stubs with class declarations, and a compilable (but non-functional) binary.
 - **Phase 2 — Foundation Layer:** Implement the lowest-layer components (error types, config, logging, connection pool, crypto, JWT) so the binary can start, load configuration, connect to PostgreSQL, and pass tests.
 
-**Scope exclusion:** The TUI client is being extracted into a separate repository with its own design document. This project produces a single server binary (`dns-orchestrator`) that exposes the REST API. All TUI-related code (FTXUI, screens, components, `ApiKeyConfig`) is excluded from this repository.
+**Scope exclusion:** The TUI client is being extracted into a separate repository with its own design document. This project produces a single server binary (`meridian-dns`) that exposes the REST API. All TUI-related code (FTXUI, screens, components, `ApiKeyConfig`) is excluded from this repository.
 
 ---
 
@@ -54,7 +54,7 @@ This document defines the two-phase approach to establishing the dns-orchestrato
 | Testing framework | Google Test + Google Mock via FetchContent | Best mocking support for the project's many interfaces (`IProvider`, `IJwtSigner`); version-pinned via FetchContent for reproducibility |
 | Logging library | spdlog | De facto C++ structured logging; supports JSON output, configurable levels; available in Arch repos |
 | TUI scope | Separate repository | TUI communicates exclusively via REST API; no shared code with server beyond the API contract |
-| Build targets | `dns-core` (static lib) + `dns-orchestrator` (exe) + `dns-tests` (exe) | Core logic is testable independently of main(); single binary output |
+| Build targets | `meridian-core` (static lib) + `meridian-dns` (exe) + `dns-tests` (exe) | Core logic is testable independently of main(); single binary output |
 | CMake minimum | 3.20 | Required for modern FetchContent, C++20 support |
 | C++ standard | C++20 | Required for `std::jthread`, `std::format`, `std::filesystem` |
 | Naming convention | Hungarian notation variant | Type-prefixed variables, leading underscore for members, PascalCase classes |
@@ -69,14 +69,14 @@ Three CMake targets:
 
 | Target | Type | Contents |
 |--------|------|----------|
-| `dns-core` | `STATIC` library | All `.cpp` files under `src/` except `main.cpp` |
-| `dns-orchestrator` | Executable | `src/main.cpp` → links `dns-core` |
-| `dns-tests` | Executable | All files under `tests/` → links `dns-core` + GTest/GMock |
+| `meridian-core` | `STATIC` library | All `.cpp` files under `src/` except `main.cpp` |
+| `meridian-dns` | Executable | `src/main.cpp` → links `meridian-core` |
+| `dns-tests` | Executable | All files under `tests/` → links `meridian-core` + GTest/GMock |
 
 **CMake file structure:**
 
 - `CMakeLists.txt` — Root: project definition, C++20 standard, `find_package()` calls, `add_subdirectory()`
-- `src/CMakeLists.txt` — Defines `dns-core` library and `dns-orchestrator` executable
+- `src/CMakeLists.txt` — Defines `meridian-core` library and `meridian-dns` executable
 - `tests/CMakeLists.txt` — FetchContent for GTest, defines `dns-tests` executable
 
 ### 3.2 Dependencies
@@ -98,7 +98,7 @@ All external dependencies use system packages via `find_package()` or `pkg_check
 Server-only layout (TUI directories removed from ARCHITECTURE.md §10):
 
 ```
-dns-orchestrator/
+meridian-dns/
 ├── CMakeLists.txt
 ├── .clang-format
 ├── .gitignore
@@ -526,7 +526,7 @@ tests/
 ctest --test-dir build --output-on-failure
 
 # Include integration tests
-DNS_DB_URL="postgresql://dns:dns@localhost:5432/dns_orchestrator" \
+DNS_DB_URL="postgresql://dns:dns@localhost:5432/meridian_dns" \
   ctest --test-dir build --output-on-failure -L Integration
 ```
 
@@ -555,7 +555,7 @@ Tasks are listed in execution order. Each is independently completable.
 ### Phase 1: Project Skeleton
 
 1. Create root `CMakeLists.txt` with project definition, C++20, dependency discovery
-2. Create `src/CMakeLists.txt` with `dns-core` library and `dns-orchestrator` executable targets
+2. Create `src/CMakeLists.txt` with `meridian-core` library and `meridian-dns` executable targets
 3. Create `tests/CMakeLists.txt` with FetchContent for GTest and `dns-tests` target
 4. Create `.clang-format` with project formatting rules
 5. Create all directories under `include/` and `src/`

@@ -1,4 +1,4 @@
-# DNS Orchestrator — Claude Code Project Context
+# Meridian DNS — Claude Code Project Context
 
 This file is read automatically by Claude Code at session start. It captures the project state,
 architectural decisions, and development roadmap so context transfers across machines and sessions.
@@ -7,24 +7,24 @@ architectural decisions, and development roadmap so context transfers across mac
 
 ## Project Status
 
-- **Phases 1–3 complete:** skeleton, foundation layer, 38 unit tests passing (commit `125a19a`)
-- **Phase 3.5 complete:** HTTP library migration to Crow (CrowCpp v1.3.1) done
-- **Next task:** Phase 4 — Authentication & Authorisation
+- **Phases 1–3 complete:** skeleton, foundation layer
+- **Phase 3.5 complete:** HTTP library migration to Crow (CrowCpp v1.3.1)
+- **Phase 4 complete:** Authentication & Authorisation (commit `efaa82f`)
+- **Phase 5 complete:** DAL: Core Repositories + CRUD API Routes
+- **Phase 6 complete:** PowerDNS Provider + Core Engines
+- **Phase 7 complete:** Deployment Pipeline + GitOps
+- **Phase 8 complete:** REST API Hardening + Docker Compose
+- **Next task:** Phase 9
+- **Tests:** 218 total (127 pass, 91 skip — DB integration tests need `DNS_DB_URL`)
 
 Build and test:
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+build/tests/dns-tests
 ```
 
-Startup sequence: steps 1–5 wired in `src/main.cpp`. Steps 6–12 deferred (warn-logged):
-- Step 6: GitOpsMirror → Phase 7
-- Step 7: ThreadPool → Phase 7
-- Step 7a: MaintenanceScheduler → Phase 4
-- Step 8: SamlReplayCache → Phase 4
-- Step 9: ProviderFactory → Phase 6
-- Steps 10–12: API routes + HTTP server + background tasks → Phases 5–7
+Startup sequence: all steps wired in `src/main.cpp` (steps 1–12 complete).
 
 ---
 
@@ -58,7 +58,7 @@ build/docs change — no HTTP framework types existed in source files, making th
 
 **Changes made:**
 - `CMakeLists.txt` — added `FetchContent_MakeAvailable(Crow)` block
-- `src/CMakeLists.txt` — added `target_link_libraries(dns-core PUBLIC Crow::Crow)`
+- `src/CMakeLists.txt` — added `target_link_libraries(meridian-core PUBLIC Crow::Crow)`
 - `include/api/ApiServer.hpp` — updated class comment to reference Crow application instance
 - `docs/BUILD_ENVIRONMENT.md` — removed legacy AUR package; Crow is acquired at configure time
 - `docs/ARCHITECTURE.md` + `docs/DESIGN.md` — updated all HTTP framework references to Crow
@@ -67,86 +67,118 @@ build/docs change — no HTTP framework types existed in source files, making th
 
 ---
 
-### Phase 4 — Authentication & Authorisation
+### Phase 4 — Authentication & Authorisation ← COMPLETE
 
-**Goal:** Production-grade auth before any data or provider work.
+**Summary:** Production-grade auth layer with local login (Argon2id), JWT sessions, API key
+authentication, role-based access control, and background maintenance tasks.
 
-- `src/security/AuthService.cpp` — local auth (Argon2id), `authenticateLocal()`, `validateToken()`,
-  `validateApiKey()`
-- `src/dal/UserRepository.cpp` — users, groups, group_members CRUD
-- `src/dal/SessionRepository.cpp` — `create()`, `exists()`, `touch()`, `pruneExpired()`
-- `src/dal/ApiKeyRepository.cpp` — `create()`, `validate()`, `revoke()`, `deletePending()`
-- `src/api/AuthMiddleware.cpp` — JWT + API key validation → `RequestContext`
-- `src/api/AuthRoutes.cpp` — `POST /api/v1/auth/login`, `/logout`, `/refresh`
-- `src/core/MaintenanceScheduler.cpp` — jthread + condvar; session prune + API key cleanup tasks
-- `src/main.cpp` — wire startup steps 7a, 8
+**Deliverables:**
+- `src/security/AuthService.cpp` — `authenticateLocal()`, `validateToken()` with sliding + absolute TTL
+- `src/security/SamlReplayCache.cpp` — in-memory replay detection with TTL eviction
+- `src/dal/UserRepository.cpp` — `findByUsername()`, `findById()`, `create()`, `getHighestRole()`
+- `src/dal/SessionRepository.cpp` — `create()`, `touch()`, `exists()`, `isValid()`,
+  `deleteByHash()`, `pruneExpired()`
+- `src/dal/ApiKeyRepository.cpp` — `create()`, `findByHash()`, `scheduleDelete()`, `pruneScheduled()`
+- `src/api/AuthMiddleware.cpp` — dual-mode JWT + API key → `RequestContext`
+- `src/api/routes/AuthRoutes.cpp` — `POST /login`, `POST /logout`, `GET /me`
+- `src/core/MaintenanceScheduler.cpp` — jthread + condvar; session prune + API key cleanup
+- `src/main.cpp` — wired startup steps 7a (MaintenanceScheduler) and 8 (SamlReplayCache)
 
-Reuse: `HmacJwtSigner` (complete), `CryptoService::generateApiKey()` + `hashApiKey()` (complete),
-`Config` fields `iJwtTtlSeconds`, `iSessionAbsoluteTtlSeconds`, `iApiKeyCleanupGraceSeconds`.
-
-**Verification:** 401 on protected route without token; 200 with valid JWT.
-
----
-
-### Phase 5 — DAL: Core Repositories
-
-**Goal:** All entities persist to PostgreSQL; basic CRUD endpoints work.
-
-- `src/dal/ProviderRepository.cpp` — with `CryptoService::encrypt/decrypt` for tokens
-- `src/dal/ZoneRepository.cpp`
-- `src/dal/ViewRepository.cpp` — includes `view_providers` join table
-- `src/dal/VariableRepository.cpp`
-- `src/dal/RecordRepository.cpp`
-- `src/dal/DeploymentRepository.cpp` — snapshot versioning + retention
-- `src/dal/AuditRepository.cpp` — append-only + `purgeOld()`
-- `src/api/ApiServer.cpp` + basic CRUD routes for providers, zones, views, variables
-
-Reuse: `ConnectionGuard` RAII (complete), `AppError` hierarchy for pqxx exception mapping.
+**Tests:** 9 auth-related tests (unit + integration)
 
 ---
 
-### Phase 6 — PowerDNS Provider + Core Engines
+### Phase 5 — DAL: Core Repositories + CRUD API Routes ← COMPLETE
 
-**Goal:** Connect to a real DNS provider; diff and expand variables.
+**Summary:** All remaining DAL repositories implemented with full CRUD. HTTP server starts and
+serves requests. All entities persist to PostgreSQL with encrypted provider tokens.
 
-- `src/providers/PowerDnsProvider.cpp` — PowerDNS REST API v1
-- `src/providers/ProviderFactory.cpp` — wire `provider_type::powerdns`
-- `src/core/VariableEngine.cpp` — `expand()`, `validate()`, `listDependencies()` for `{{var}}`
-- `src/core/DiffEngine.cpp` — three-way diff → `PreviewResult` with drift flag
-- `src/api/HealthRoutes.cpp` — `GET /api/v1/health`
+**Deliverables:**
+- `src/dal/ProviderRepository.cpp` — CRUD with `CryptoService::encrypt/decrypt` for tokens
+- `src/dal/ViewRepository.cpp` — CRUD + `view_providers` attach/detach
+- `src/dal/ZoneRepository.cpp` — CRUD with view FK, deployment retention
+- `src/dal/RecordRepository.cpp` — CRUD with raw `{{var}}` templates
+- `src/dal/VariableRepository.cpp` — CRUD with scope/zone logic, global uniqueness enforcement
+- `src/dal/DeploymentRepository.cpp` — snapshot versioning with auto-seq + retention pruning
+- `src/dal/AuditRepository.cpp` — append-only insert, dynamic query, purgeOld with self-audit
+- `src/api/routes/ProviderRoutes.cpp` — 5 endpoints (GET list, POST, GET/{id}, PUT, DELETE)
+- `src/api/routes/ViewRoutes.cpp` — 7 endpoints (CRUD + attach/detach providers)
+- `src/api/routes/ZoneRoutes.cpp` — 5 endpoints (CRUD + view_id filter)
+- `src/api/routes/RecordRoutes.cpp` — 5 endpoints (nested under /zones/{id}/records)
+- `src/api/routes/VariableRoutes.cpp` — 5 endpoints (CRUD + scope/zone_id filters)
+- `src/api/ApiServer.cpp` — registers all route classes, starts Crow HTTP server
+- `src/main.cpp` — wired steps 10 (API routes) and 11 (HTTP server), signal handling,
+  audit purge maintenance task
 
-Reuse: `DnsRecord`, `PushResult`, `PreviewResult`, `RecordDiff` from `include/common/Types.hpp`.
+**Tests:** 86 new tests (7 repository suites + 1 CRUD routes suite, all DB-integration)
 
 ---
 
-### Phase 7 — Deployment Pipeline + GitOps
+### Phase 6 — PowerDNS Provider + Core Engines ← COMPLETE
+
+**Summary:** Connected to a real DNS provider (PowerDNS REST API v1), implemented variable
+template expansion engine, and three-way diff computation between desired state and live
+provider state.
+
+**Deliverables:**
+- `src/providers/PowerDnsProvider.cpp` — full PowerDNS REST API v1 client via cpp-httplib
+- `src/providers/ProviderFactory.cpp` — creates `IProvider` instances by type string
+- `src/core/VariableEngine.cpp` — `listDependencies()`, `expand()`, `validate()` for `{{var}}`
+- `src/core/DiffEngine.cpp` — three-way diff → `PreviewResult` with drift detection
+- `src/api/routes/HealthRoutes.cpp` — `GET /api/v1/health` (no auth required)
+- `CMakeLists.txt` — added cpp-httplib v0.18.7 via FetchContent for HTTP client
+- `src/main.cpp` — wired Step 9 (core engines), HealthRoutes into ApiServer
+
+**Tests:** 35 new tests (8 VariableEngine unit, 9 VariableEngine integration, 4 ProviderFactory,
+8 PowerDNS JSON parsing + record ID, 8 DiffEngine diff algorithm, -2 replaced placeholders)
+
+---
+
+### Phase 7 — Deployment Pipeline + GitOps ← COMPLETE
 
 **Goal:** End-to-end zone push with audit trail and Git history.
 
-- `src/core/DeploymentEngine.cpp` — expand → diff → push → snapshot → GitOps → audit
-- `src/core/RollbackEngine.cpp` — restore snapshot → push → audit
-- `src/core/ThreadPool.cpp` — `std::jthread` pool, `submit()` → `std::future<Result>`
+**Deliverables:**
+- `src/core/ThreadPool.cpp` — `std::jthread` pool, `submit()` → `std::future<T>` (6 unit tests)
+- `src/dal/RecordRepository.cpp` — `deleteAllByZoneId()`, `upsertById()` for rollback support
 - `src/gitops/GitOpsMirror.cpp` — `initialize()`, `commit()`, `pull()` via libgit2
-- `src/api/RecordRoutes.cpp`, `DeploymentRoutes.cpp`, `AuditRoutes.cpp`
-- `src/main.cpp` — wire remaining startup steps 6, 7, 10, 11, 12
+- `src/core/DeploymentEngine.cpp` — lock → preview → push → audit → snapshot → GitOps
+- `src/core/RollbackEngine.cpp` — full restore or cherry-pick from deployment snapshot
+- `src/api/routes/RecordRoutes.cpp` — `POST /zones/{id}/preview`, `POST /zones/{id}/push`
+- `src/api/routes/DeploymentRoutes.cpp` — history, snapshot diff, rollback endpoints
+- `src/api/routes/AuditRoutes.cpp` — query, NDJSON export, purge endpoints
+- `src/main.cpp` — all startup steps 1–12 wired (GitOpsMirror, ThreadPool, DeploymentEngine, RollbackEngine)
+
+**Tests:** 180 total (89 pass, 91 skip — 17 new tests added in Phase 7)
 
 ---
 
-### Phase 8 — REST API Hardening + Docker Compose
+### Phase 8 — REST API Hardening + Docker Compose ← COMPLETE
 
 **Goal:** Full API surface documented and runnable in one command.
 
-- `docs/openapi.yaml`, request validation middleware, rate limiting on auth endpoints
-- `docker-compose.yml` (PostgreSQL 16 + PowerDNS + dns-orchestrator), `Dockerfile`
-- Full API integration test suite
-- **Naming brainstorm here** — rename before Web UI to avoid namespace churn. Target: something
-  that evokes control, zones, authority, or precision (not just "DNS + verb").
+**Deliverables:**
+- `src/api/RouteHelpers.cpp` — extracted shared `authenticate()`, `requireRole()`, `jsonResponse()`,
+  `errorResponse()`, `invalidJsonResponse()` from all 9 route files
+- `src/api/RequestValidator.cpp` — centralized input validation (15 methods, field length/format
+  constraints from ARCHITECTURE.md §4.6.5)
+- `src/api/RateLimiter.cpp` — token-bucket rate limiter (per-IP, thread-safe) wired into login
+- Security response headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, CSP)
+  applied to all JSON responses via `applySecurityHeaders()`
+- `include/common/Errors.hpp` — added `RateLimitedError` (429)
+- `Dockerfile` — multi-stage build (debian:bookworm-slim builder → runtime)
+- `docker-compose.yml` — PostgreSQL 16 + PowerDNS + app with health checks
+- `.env.example` — documented environment variables
+- `docs/openapi.yaml` — OpenAPI 3.1 spec covering all 24 endpoints
+- `tests/integration/test_api_validation.cpp` — 13 API validation integration tests
+
+**Tests:** 218 total (127 pass, 91 skip — 38 new tests added in Phase 8)
 
 ---
 
 ### Phase 9 — Web UI (Vue 3 + TypeScript)
 
-Separate repository: `dns-orchestrator-ui`. Stack: Vite + Vue 3 + TypeScript.
+Separate repository: `meridian-dns-ui`. Stack: Vite + Vue 3 + TypeScript.
 
 Feature order: auth → providers → zones/views → records → variables → deployment workflow →
 audit log.
@@ -163,7 +195,7 @@ audit log.
 
 ### Phase 11 — TUI Client
 
-Separate repository: `dns-orchestrator-tui`. Consumes REST API. See `docs/TUI_DESIGN.md`.
+Separate repository: `meridian-dns-tui`. Consumes REST API. See `docs/TUI_DESIGN.md`.
 
 ---
 
@@ -207,7 +239,14 @@ only for non-owning references.
 | `docs/TUI_DESIGN.md` | TUI client design spec |
 | `scripts/db/001_initial_schema.sql` | Full PostgreSQL schema (11 tables) |
 | `scripts/db/002_add_indexes.sql` | 11 performance indexes |
-| `src/main.cpp` | Startup sequence (steps 1–5 done, 6–12 deferred) |
-| `include/common/Types.hpp` | Core data types: `DnsRecord`, `PreviewResult`, etc. |
-| `include/common/Errors.hpp` | `AppError` hierarchy |
-| `tests/unit/` | 6 test files, 38 passing unit tests |
+| `src/main.cpp` | Startup sequence (all steps 1–12 wired; Phase 8 complete) |
+| `include/common/Types.hpp` | Core data types: `DnsRecord`, `PreviewResult`, `RequestContext` |
+| `include/common/Errors.hpp` | `AppError` hierarchy (incl. `RateLimitedError` 429) |
+| `include/api/RouteHelpers.hpp` | Shared route helpers (auth, response, security headers) |
+| `include/api/RequestValidator.hpp` | Input validation (field length/format constraints) |
+| `include/api/RateLimiter.hpp` | Token-bucket rate limiter for auth endpoints |
+| `docs/openapi.yaml` | OpenAPI 3.1 specification (24 endpoints) |
+| `Dockerfile` | Multi-stage build (builder → runtime) |
+| `docker-compose.yml` | PostgreSQL 16 + PowerDNS + app |
+| `tests/unit/` | Unit tests (MaintenanceScheduler, SamlReplayCache, JWT, Crypto, RouteHelpers, RequestValidator, RateLimiter) |
+| `tests/integration/` | Integration tests (AuthService, AuthMiddleware, repositories, API validation) |

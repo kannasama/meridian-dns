@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -17,8 +18,8 @@ struct VariableRow {
   std::string sType;
   std::string sScope;
   std::optional<int64_t> oZoneId;
-  std::string sCreatedAt;
-  std::string sUpdatedAt;
+  std::chrono::system_clock::time_point tpCreatedAt;
+  std::chrono::system_clock::time_point tpUpdatedAt;
 };
 
 /// Manages the variables table.
@@ -28,33 +29,28 @@ class VariableRepository {
   explicit VariableRepository(ConnectionPool& cpPool);
   ~VariableRepository();
 
-  /// Create a variable. Returns the new variable ID.
-  /// Throws ConflictError if (name, zone_id) already exists.
+  /// Create a variable. Returns the new ID.
   int64_t create(const std::string& sName, const std::string& sValue,
                  const std::string& sType, const std::string& sScope,
                  std::optional<int64_t> oZoneId);
 
+  /// List all variables.
+  std::vector<VariableRow> listAll();
+
+  /// List variables by scope ('global' or 'zone').
+  std::vector<VariableRow> listByScope(const std::string& sScope);
+
+  /// List zone-scoped vars for a zone AND all global vars.
+  std::vector<VariableRow> listByZoneId(int64_t iZoneId);
+
   /// Find a variable by ID. Returns nullopt if not found.
-  std::optional<VariableRow> findById(int64_t iVariableId);
+  std::optional<VariableRow> findById(int64_t iId);
 
-  /// Find a variable by name and zone_id.
-  /// For global lookup, pass oZoneId = std::nullopt.
-  /// Returns nullopt if not found.
-  std::optional<VariableRow> findByName(const std::string& sName,
-                                        std::optional<int64_t> oZoneId);
+  /// Update a variable's value only.
+  void update(int64_t iId, const std::string& sValue);
 
-  /// List variables, optionally filtered by scope and/or zone_id.
-  std::vector<VariableRow> list(std::optional<std::string> oScope,
-                                std::optional<int64_t> oZoneId);
-
-  /// Update a variable's name, value, and type.
-  /// Throws NotFoundError if variable doesn't exist.
-  void update(int64_t iVariableId, const std::string& sName,
-              const std::string& sValue, const std::string& sType);
-
-  /// Delete a variable by ID.
-  /// Throws NotFoundError if variable doesn't exist.
-  void deleteById(int64_t iVariableId);
+  /// Delete a variable by ID. Throws NotFoundError if not found.
+  void deleteById(int64_t iId);
 
  private:
   ConnectionPool& _cpPool;

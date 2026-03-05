@@ -32,7 +32,7 @@ struct Config {
 
   // ── GitOps ────────────────────────────────────────────────────────────
   std::optional<std::string> oGitRemoteUrl;
-  std::string sGitLocalPath = "/var/dns-orchestrator/repo";
+  std::string sGitLocalPath = "/var/meridian-dns/repo";
   std::optional<std::string> oGitSshKeyPath;
 
   // ── Logging ───────────────────────────────────────────────────────────

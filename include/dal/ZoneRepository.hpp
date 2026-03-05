@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -15,7 +16,7 @@ struct ZoneRow {
   std::string sName;
   int64_t iViewId = 0;
   std::optional<int> oDeploymentRetention;
-  std::string sCreatedAt;
+  std::chrono::system_clock::time_point tpCreatedAt;
 };
 
 /// Manages the zones table.
@@ -25,25 +26,24 @@ class ZoneRepository {
   explicit ZoneRepository(ConnectionPool& cpPool);
   ~ZoneRepository();
 
-  /// Create a zone. Returns the new zone ID.
-  /// Throws ConflictError if (name, view_id) already exists.
+  /// Create a zone. Returns the new ID.
   int64_t create(const std::string& sName, int64_t iViewId,
-                 std::optional<int> oDeploymentRetention);
+                 std::optional<int> oRetention);
+
+  /// List all zones.
+  std::vector<ZoneRow> listAll();
+
+  /// List zones belonging to a view.
+  std::vector<ZoneRow> listByViewId(int64_t iViewId);
 
   /// Find a zone by ID. Returns nullopt if not found.
-  std::optional<ZoneRow> findById(int64_t iZoneId);
+  std::optional<ZoneRow> findById(int64_t iId);
 
-  /// List zones, optionally filtered by view_id.
-  std::vector<ZoneRow> list(std::optional<int64_t> oViewId);
+  /// Update a zone's name and retention. Does NOT change view_id.
+  void update(int64_t iId, const std::string& sName, std::optional<int> oRetention);
 
-  /// Update a zone.
-  /// Throws NotFoundError if zone doesn't exist.
-  void update(int64_t iZoneId, const std::string& sName, int64_t iViewId,
-              std::optional<int> oDeploymentRetention);
-
-  /// Delete a zone by ID.
-  /// Throws NotFoundError if zone doesn't exist.
-  void deleteById(int64_t iZoneId);
+  /// Delete a zone. Cascades to records, variables, deployments.
+  void deleteById(int64_t iId);
 
  private:
   ConnectionPool& _cpPool;

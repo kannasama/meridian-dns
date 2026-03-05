@@ -1,4 +1,4 @@
-# ── dns-core static library ─────────────────────────────────────────────────
+# ── meridian-core static library ─────────────────────────────────────────────
 # All .cpp files under src/ except main.cpp
 file(GLOB_RECURSE DNS_CORE_SOURCES
   "${CMAKE_CURRENT_SOURCE_DIR}/common/*.cpp"
@@ -10,13 +10,13 @@ file(GLOB_RECURSE DNS_CORE_SOURCES
   "${CMAKE_CURRENT_SOURCE_DIR}/security/*.cpp"
 )
 
-add_library(dns-core STATIC ${DNS_CORE_SOURCES})
+add_library(meridian-core STATIC ${DNS_CORE_SOURCES})
 
-target_include_directories(dns-core PUBLIC
+target_include_directories(meridian-core PUBLIC
   "${PROJECT_SOURCE_DIR}/include"
 )
 
-target_link_libraries(dns-core PUBLIC
+target_link_libraries(meridian-core PUBLIC
   PkgConfig::LIBPQXX
   OpenSSL::SSL
   OpenSSL::Crypto
@@ -24,11 +24,12 @@ target_link_libraries(dns-core PUBLIC
   spdlog::spdlog
   PkgConfig::LIBGIT2
   Crow::Crow
+  httplib::httplib
 )
 
-# ── dns-orchestrator executable ─────────────────────────────────────────────
-add_executable(dns-orchestrator main.cpp)
+# ── meridian-dns executable ──────────────────────────────────────────────────
+add_executable(meridian-dns main.cpp)
 
-target_link_libraries(dns-orchestrator PRIVATE
-  dns-core
+target_link_libraries(meridian-dns PRIVATE
+  meridian-core
 )
