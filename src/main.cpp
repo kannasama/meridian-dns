@@ -1,8 +1,10 @@
 #include <csignal>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 
 #include "api/ApiServer.hpp"
 #include "api/AuthMiddleware.hpp"
@@ -55,9 +57,51 @@ dns::core::MaintenanceScheduler* g_pScheduler = nullptr;
 void signalHandler(int /*iSignal*/) {
   if (g_pApiServer) g_pApiServer->stop();
 }
+// NOLINTNEXTLINE(cert-err58-cpp) — version string must be available before Config::load()
+constexpr std::string_view kVersion = "0.1.0";
+
+void printUsage(const char* pProgName) {
+  std::cout << "Usage: " << pProgName << " [OPTIONS]\n"
+            << "\n"
+            << "Meridian DNS — Multi-Provider DNS Management\n"
+            << "\n"
+            << "Options:\n"
+            << "  --help       Show this help message and exit\n"
+            << "  --version    Show version information and exit\n"
+            << "\n"
+            << "Environment variables (required):\n"
+            << "  DNS_DB_URL          PostgreSQL connection string\n"
+            << "  DNS_MASTER_KEY      Encryption master key (or DNS_MASTER_KEY_FILE)\n"
+            << "  DNS_JWT_SECRET      JWT signing secret  (or DNS_JWT_SECRET_FILE)\n"
+            << "\n"
+            << "See README.md or .env.example for optional configuration.\n";
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+  // ── CLI argument handling (before any config/resource init) ──────────
+  for (int i = 1; i < argc; ++i) {
+    const std::string_view arg{argv[i]};
+    if (arg == "--help" || arg == "-h") {
+      printUsage(argv[0]);
+      // quick_exit avoids libpqxx static-destruction double-free (strconv.hxx:80);
+      // flush explicitly since quick_exit skips stdio cleanup
+      std::cout.flush();
+      std::quick_exit(EXIT_SUCCESS);
+    }
+    if (arg == "--version" || arg == "-v") {
+      std::cout << "meridian-dns " << kVersion << "\n";
+      std::cout.flush();
+      std::quick_exit(EXIT_SUCCESS);
+    }
+    std::cerr << "Unknown option: " << arg << "\n";
+    printUsage(argv[0]);
+    std::cout.flush();
+    std::cerr.flush();
+    std::quick_exit(EXIT_FAILURE);
+  }
+
   try {
     // ── Step 1: Load and validate configuration ──────────────────────────
     auto cfgApp = dns::common::Config::load();
@@ -246,7 +290,8 @@ int main() {
 
     return EXIT_SUCCESS;
   } catch (const std::exception& ex) {
-    std::cerr << "[fatal] startup failed: " << ex.what() << "\n";
-    return EXIT_FAILURE;
+    std::cerr << "[fatal] startup failed: " << ex.what() << std::endl;
+    // quick_exit avoids libpqxx static-destruction double-free (strconv.hxx:80)
+    std::quick_exit(EXIT_FAILURE);
   }
 }
