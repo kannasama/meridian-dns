@@ -2,6 +2,15 @@
 
 namespace dns::api {
 
+namespace {
+void applySecurityHeaders(crow::response& resp) {
+  resp.set_header("X-Content-Type-Options", "nosniff");
+  resp.set_header("X-Frame-Options", "DENY");
+  resp.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
+  resp.set_header("Content-Security-Policy", "default-src 'self'");
+}
+}  // namespace
+
 common::RequestContext authenticate(const AuthMiddleware& amMiddleware,
                                     const crow::request& req) {
   return amMiddleware.authenticate(req.get_header_value("Authorization"),
@@ -21,18 +30,25 @@ void requireRole(const common::RequestContext& rcCtx, const std::string& sMinRol
 crow::response jsonResponse(int iStatus, const nlohmann::json& j) {
   crow::response resp(iStatus, j.dump(2));
   resp.set_header("Content-Type", "application/json");
+  applySecurityHeaders(resp);
   return resp;
 }
 
 crow::response errorResponse(const common::AppError& e) {
   nlohmann::json jErr = {{"error", e._sErrorCode}, {"message", e.what()}};
-  return crow::response(e._iHttpStatus, jErr.dump(2));
+  crow::response resp(e._iHttpStatus, jErr.dump(2));
+  resp.set_header("Content-Type", "application/json");
+  applySecurityHeaders(resp);
+  return resp;
 }
 
 crow::response invalidJsonResponse() {
   nlohmann::json jErr = {{"error", "invalid_json"},
                          {"message", "Invalid JSON body"}};
-  return crow::response(400, jErr.dump(2));
+  crow::response resp(400, jErr.dump(2));
+  resp.set_header("Content-Type", "application/json");
+  applySecurityHeaders(resp);
+  return resp;
 }
 
 }  // namespace dns::api
