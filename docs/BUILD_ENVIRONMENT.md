@@ -1,7 +1,7 @@
 # Build Environment Setup — EndeavourOS / Arch Linux
 
 > **Target Platform:** Linux (EndeavourOS) using `paru` as the AUR/Pacman helper.
-> This guide sets up a complete native build environment for the C++ Multi-Provider DNS Orchestrator.
+> This guide sets up a complete native build environment for the C++ Multi-Provider Meridian DNS.
 
 ---
 
@@ -141,8 +141,8 @@ Connect to your existing instance and provision the application database and rol
 ```bash
 sudo -u postgres psql <<'EOF'
 CREATE USER dns WITH PASSWORD 'dns';
-CREATE DATABASE dns_orchestrator OWNER dns;
-GRANT ALL PRIVILEGES ON DATABASE dns_orchestrator TO dns;
+CREATE DATABASE meridian_dns OWNER dns;
+GRANT ALL PRIVILEGES ON DATABASE meridian_dns TO dns;
 EOF
 ```
 
@@ -151,12 +151,12 @@ EOF
 ```bash
 psql -h localhost -U postgres <<'EOF'
 CREATE USER dns WITH PASSWORD 'dns';
-CREATE DATABASE dns_orchestrator OWNER dns;
-GRANT ALL PRIVILEGES ON DATABASE dns_orchestrator TO dns;
+CREATE DATABASE meridian_dns OWNER dns;
+GRANT ALL PRIVILEGES ON DATABASE meridian_dns TO dns;
 EOF
 ```
 
-> **Existing user/database:** If the `dns` role or `dns_orchestrator` database already
+> **Existing user/database:** If the `dns` role or `meridian_dns` database already
 > exist from a previous setup, skip the relevant `CREATE` statements and ensure the role
 > has `ALL PRIVILEGES` on the database.
 
@@ -165,7 +165,7 @@ EOF
 Confirm the new role can connect before proceeding:
 
 ```bash
-psql postgresql://dns:dns@localhost:5432/dns_orchestrator -c "SELECT version();"
+psql postgresql://dns:dns@localhost:5432/meridian_dns -c "SELECT version();"
 ```
 
 A successful response confirms the connection string that goes into `DNS_DB_URL`.
@@ -175,10 +175,10 @@ A successful response confirms the connection string that goes into `DNS_DB_URL`
 After building the project (see §7), apply the schema migrations in order:
 
 ```bash
-psql postgresql://dns:dns@localhost:5432/dns_orchestrator \
+psql postgresql://dns:dns@localhost:5432/meridian_dns \
     -f scripts/db/001_initial_schema.sql
 
-psql postgresql://dns:dns@localhost:5432/dns_orchestrator \
+psql postgresql://dns:dns@localhost:5432/meridian_dns \
     -f scripts/db/002_add_indexes.sql
 ```
 
@@ -191,8 +191,8 @@ psql postgresql://dns:dns@localhost:5432/dns_orchestrator \
 ## 6. Clone the Repository
 
 ```bash
-git clone <repository-url> dns-orchestrator
-cd dns-orchestrator
+git clone <repository-url> meridian-dns
+cd meridian-dns
 
 # Initialize and update the workflow-orchestration skill submodule
 git submodule update --init --recursive
@@ -229,7 +229,7 @@ cmake -B build -G Ninja \
 cmake --build build --parallel
 ```
 
-The compiled binary will be located at `build/dns-orchestrator`.
+The compiled binary will be located at `build/meridian-dns`.
 
 ### 7.3 Build with Verbose Output (Troubleshooting)
 
@@ -244,7 +244,7 @@ cmake --build build --parallel --verbose
 ### 8.1 Check the Binary
 
 ```bash
-./build/dns-orchestrator --version
+./build/meridian-dns --version
 ```
 
 ### 8.2 Run Unit Tests
@@ -258,14 +258,14 @@ ctest --test-dir build --output-on-failure
 Set the minimum required environment variables and start the server:
 
 ```bash
-export DNS_DB_URL="postgresql://dns:dns@localhost:5432/dns_orchestrator"
+export DNS_DB_URL="postgresql://dns:dns@localhost:5432/meridian_dns"
 export DNS_MASTER_KEY="$(openssl rand -hex 32)"
 export DNS_JWT_SECRET="$(openssl rand -hex 32)"
 
-./build/dns-orchestrator
+./build/meridian-dns
 ```
 
-The server should log `dns-orchestrator ready` and begin listening on port `8080`.
+The server should log `meridian-dns ready` and begin listening on port `8080`.
 
 Verify the health endpoint:
 
@@ -282,7 +282,7 @@ Create a `.env` file in the project root for local development. **Do not commit 
 
 ```bash
 # .env — local development only
-DNS_DB_URL=postgresql://dns:dns@localhost:5432/dns_orchestrator
+DNS_DB_URL=postgresql://dns:dns@localhost:5432/meridian_dns
 DNS_DB_POOL_SIZE=5
 
 # Generate once: openssl rand -hex 32
@@ -296,7 +296,7 @@ DNS_AUDIT_STDOUT=true
 
 # Optional: GitOps mirror (leave unset to disable)
 # DNS_GIT_REMOTE_URL=git@github.com:yourorg/dns-mirror.git
-# DNS_GIT_LOCAL_PATH=/tmp/dns-orchestrator-repo
+# DNS_GIT_LOCAL_PATH=/tmp/meridian-dns-repo
 # DNS_GIT_SSH_KEY_PATH=/home/youruser/.ssh/id_ed25519
 ```
 
@@ -348,12 +348,12 @@ paru -S --needed \
 # 3. Provision database on existing PostgreSQL 15+ instance
 # (adjust connection method if your instance uses TCP/IP auth instead of peer auth)
 sudo -u postgres psql -c "CREATE USER dns WITH PASSWORD 'dns';"
-sudo -u postgres psql -c "CREATE DATABASE dns_orchestrator OWNER dns;"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE dns_orchestrator TO dns;"
-# Verify: psql postgresql://dns:dns@localhost:5432/dns_orchestrator -c "SELECT version();"
+sudo -u postgres psql -c "CREATE DATABASE meridian_dns OWNER dns;"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE meridian_dns TO dns;"
+# Verify: psql postgresql://dns:dns@localhost:5432/meridian_dns -c "SELECT version();"
 
 # 4. Clone and initialize submodules
-git clone <repository-url> dns-orchestrator && cd dns-orchestrator
+git clone <repository-url> meridian-dns && cd meridian-dns
 git submodule update --init --recursive
 
 # 5. Build
@@ -361,12 +361,12 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=20
 cmake --build build --parallel
 
 # 6. Run migrations
-psql postgresql://dns:dns@localhost:5432/dns_orchestrator -f scripts/db/001_initial_schema.sql
-psql postgresql://dns:dns@localhost:5432/dns_orchestrator -f scripts/db/002_add_indexes.sql
+psql postgresql://dns:dns@localhost:5432/meridian_dns -f scripts/db/001_initial_schema.sql
+psql postgresql://dns:dns@localhost:5432/meridian_dns -f scripts/db/002_add_indexes.sql
 
 # 7. Start
-export DNS_DB_URL="postgresql://dns:dns@localhost:5432/dns_orchestrator"
+export DNS_DB_URL="postgresql://dns:dns@localhost:5432/meridian_dns"
 export DNS_MASTER_KEY="$(openssl rand -hex 32)"
 export DNS_JWT_SECRET="$(openssl rand -hex 32)"
-./build/dns-orchestrator
+./build/meridian-dns
 ```

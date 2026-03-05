@@ -1,5 +1,5 @@
 -- 002_add_indexes.sql
--- Performance indexes for dns-orchestrator.
+-- Performance indexes for meridian-dns.
 -- See ARCHITECTURE.md §5.3 for full documentation.
 
 CREATE INDEX idx_records_zone_id                ON records(zone_id);

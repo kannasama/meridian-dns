@@ -2,6 +2,6 @@
 set -e
 
 # Run DB migrations before starting the server
-dns-orchestrator --migrate
+meridian-dns --migrate
 
 exec "$@"

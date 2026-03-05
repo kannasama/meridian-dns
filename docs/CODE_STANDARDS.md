@@ -1,4 +1,4 @@
-# Code Standards — DNS Orchestrator
+# Code Standards — Meridian DNS
 
 > **Canonical reference** for naming conventions, formatting, error handling, and ownership rules.
 > Originally defined in the [Project Framing Design](plans/2026-02-28-project-framing-design.md) §5.

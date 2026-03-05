@@ -191,7 +191,7 @@ void GitOpsMirror::gitAddCommitPush(const std::string& sMessage) {
 
   // Create commit
   git_signature* pSig = nullptr;
-  git_signature_now(&pSig, "dns-orchestrator", "dns@orchestrator.local");
+  git_signature_now(&pSig, "meridian-dns", "meridian@dns.local");
 
   git_oid commitOid;
   const git_commit* vParents[] = {pParent};

@@ -1,4 +1,4 @@
-# Documentation Restructure Design — DNS Orchestrator
+# Documentation Restructure Design — Meridian DNS
 
 > **Date:** 2026-02-28
 > **Status:** Approved
@@ -50,7 +50,7 @@ Documentation is scattered across the root directory, `docs/`, and `plans/` with
 ## 3. Target State
 
 ```
-dns-orchestrator/
+meridian-dns/
 ├── README.md                                          # Project entry point — only doc at root
 ├── docs/
 │   ├── DESIGN.md                                      # Was SPEC.md (renamed + moved)
@@ -136,7 +136,7 @@ The README serves as the universal project entry point with these sections:
 ### 6.1 Title and Description
 
 ```markdown
-# DNS Orchestrator
+# Meridian DNS
 
 A high-performance DNS control plane built in C++ that serves as the single source of
 truth for DNS records across multiple providers. Manages internal and external
@@ -209,7 +209,7 @@ ctest --test-dir build --output-on-failure
 ### 6.6 Project Layout
 
 ```
-dns-orchestrator/
+meridian-dns/
 ├── include/          # Public headers organized by layer
 ├── src/              # Implementation files organized by layer
 ├── tests/            # Unit and integration tests

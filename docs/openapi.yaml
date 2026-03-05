@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: DNS Orchestrator API
+  title: Meridian DNS API
   version: 0.1.0
   description: |
     Multi-provider DNS management platform with variable templating,

@@ -13,7 +13,7 @@ static const std::string kTestKey =
 
 TEST(CryptoServiceTest, EncryptDecryptRoundtrip) {
   CryptoService cs(kTestKey);
-  const std::string sPlaintext = "Hello, DNS Orchestrator!";
+  const std::string sPlaintext = "Hello, Meridian DNS!";
 
   std::string sCiphertext = cs.encrypt(sPlaintext);
   EXPECT_NE(sCiphertext, sPlaintext);

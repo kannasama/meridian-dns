@@ -21,15 +21,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libpq5 libssl3 libgit2-1.5 libspdlog1.10 \
   && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --system --no-create-home dns-orchestrator
+RUN useradd --system --no-create-home meridian-dns
 
-COPY --from=builder /build/build/dns-orchestrator /usr/local/bin/dns-orchestrator
-COPY scripts/db/ /opt/dns-orchestrator/db/
+COPY --from=builder /build/build/meridian-dns /usr/local/bin/meridian-dns
+COPY scripts/db/ /opt/meridian-dns/db/
 COPY scripts/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER dns-orchestrator
+USER meridian-dns
 EXPOSE 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["dns-orchestrator"]
+CMD ["meridian-dns"]

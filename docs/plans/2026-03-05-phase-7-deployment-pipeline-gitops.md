@@ -45,7 +45,7 @@ expose deployment history, rollback, audit query, and the preview/push workflow.
 **Config fields already defined** (`include/common/Config.hpp`):
 - `iThreadPoolSize` (default: 0 = hardware_concurrency)
 - `oGitRemoteUrl` (optional — GitOps disabled if unset)
-- `sGitLocalPath` (default: `/var/dns-orchestrator/repo`)
+- `sGitLocalPath` (default: `/var/meridian-dns/repo`)
 - `oGitSshKeyPath` (optional)
 - `iDeploymentRetentionCount` (default: 10)
 
@@ -782,7 +782,7 @@ void GitOpsMirror::gitAddCommitPush(const std::string& sMessage) {
 
   // Create commit
   git_signature* pSig = nullptr;
-  git_signature_now(&pSig, "dns-orchestrator", "dns@orchestrator.local");
+  git_signature_now(&pSig, "meridian-dns", "meridian@dns.local");
 
   git_oid commitOid;
   const git_commit* vParents[] = {pParent};

@@ -1,5 +1,5 @@
 -- 001_initial_schema.sql
--- Creates the complete schema for dns-orchestrator.
+-- Creates the complete schema for meridian-dns.
 -- See ARCHITECTURE.md §5 for full documentation.
 
 -- ── Enumerations ───────────────────────────────────────────────────────────

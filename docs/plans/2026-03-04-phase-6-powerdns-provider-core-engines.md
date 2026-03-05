@@ -50,12 +50,12 @@ set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(httplib)
 ```
 
-### Step 2: Link httplib to dns-core
+### Step 2: Link httplib to meridian-core
 
-In `src/CMakeLists.txt`, add `httplib::httplib` to the `target_link_libraries` list for dns-core:
+In `src/CMakeLists.txt`, add `httplib::httplib` to the `target_link_libraries` list for meridian-core:
 
 ```cmake
-target_link_libraries(dns-core PUBLIC
+target_link_libraries(meridian-core PUBLIC
   PkgConfig::LIBPQXX
   OpenSSL::SSL
   OpenSSL::Crypto

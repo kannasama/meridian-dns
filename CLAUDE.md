@@ -1,4 +1,4 @@
-# DNS Orchestrator — Claude Code Project Context
+# Meridian DNS — Claude Code Project Context
 
 This file is read automatically by Claude Code at session start. It captures the project state,
 architectural decisions, and development roadmap so context transfers across machines and sessions.
@@ -58,7 +58,7 @@ build/docs change — no HTTP framework types existed in source files, making th
 
 **Changes made:**
 - `CMakeLists.txt` — added `FetchContent_MakeAvailable(Crow)` block
-- `src/CMakeLists.txt` — added `target_link_libraries(dns-core PUBLIC Crow::Crow)`
+- `src/CMakeLists.txt` — added `target_link_libraries(meridian-core PUBLIC Crow::Crow)`
 - `include/api/ApiServer.hpp` — updated class comment to reference Crow application instance
 - `docs/BUILD_ENVIRONMENT.md` — removed legacy AUR package; Crow is acquired at configure time
 - `docs/ARCHITECTURE.md` + `docs/DESIGN.md` — updated all HTTP framework references to Crow
@@ -178,7 +178,7 @@ provider state.
 
 ### Phase 9 — Web UI (Vue 3 + TypeScript)
 
-Separate repository: `dns-orchestrator-ui`. Stack: Vite + Vue 3 + TypeScript.
+Separate repository: `meridian-dns-ui`. Stack: Vite + Vue 3 + TypeScript.
 
 Feature order: auth → providers → zones/views → records → variables → deployment workflow →
 audit log.
@@ -195,7 +195,7 @@ audit log.
 
 ### Phase 11 — TUI Client
 
-Separate repository: `dns-orchestrator-tui`. Consumes REST API. See `docs/TUI_DESIGN.md`.
+Separate repository: `meridian-dns-tui`. Consumes REST API. See `docs/TUI_DESIGN.md`.
 
 ---
 

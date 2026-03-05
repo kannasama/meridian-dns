@@ -711,18 +711,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libpq5 libssl3 libgit2-1.5 libspdlog1.10 \
   && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --system --no-create-home dns-orchestrator
+RUN useradd --system --no-create-home meridian-dns
 
-COPY --from=builder /build/build/dns-orchestrator /usr/local/bin/dns-orchestrator
-COPY scripts/db/ /opt/dns-orchestrator/db/
+COPY --from=builder /build/build/meridian-dns /usr/local/bin/meridian-dns
+COPY scripts/db/ /opt/meridian-dns/db/
 COPY scripts/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER dns-orchestrator
+USER meridian-dns
 EXPOSE 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["dns-orchestrator"]
+CMD ["meridian-dns"]
 ```
 
 ### Step 2: Create .dockerignore
@@ -740,7 +740,7 @@ tasks/
 
 ### Step 3: Test Docker build (if Docker available)
 
-Run: `docker build -t dns-orchestrator:dev .`
+Run: `docker build -t meridian-dns:dev .`
 Expected: Successful multi-stage build
 
 ### Step 4: Commit
@@ -768,7 +768,7 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: dns_orchestrator
+      POSTGRES_DB: meridian_dns
       POSTGRES_USER: dns
       POSTGRES_PASSWORD: ${DNS_DB_PASSWORD:-dns_dev_password}
     volumes:
@@ -777,7 +777,7 @@ services:
     ports:
       - "${DNS_DB_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dns -d dns_orchestrator"]
+      test: ["CMD-SHELL", "pg_isready -U dns -d meridian_dns"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -800,7 +800,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DNS_DB_URL: postgresql://dns:${DNS_DB_PASSWORD:-dns_dev_password}@db:5432/dns_orchestrator
+      DNS_DB_URL: postgresql://dns:${DNS_DB_PASSWORD:-dns_dev_password}@db:5432/meridian_dns
       DNS_MASTER_KEY: ${DNS_MASTER_KEY}
       DNS_JWT_SECRET: ${DNS_JWT_SECRET}
       DNS_HTTP_PORT: "8080"
@@ -809,7 +809,7 @@ services:
     ports:
       - "${DNS_HTTP_PORT:-8080}:8080"
     volumes:
-      - gitrepo:/var/dns-orchestrator/repo
+      - gitrepo:/var/meridian-dns/repo
 
 volumes:
   pgdata:
@@ -821,7 +821,7 @@ volumes:
 Create `.env.example`:
 
 ```bash
-# DNS Orchestrator — Environment Variables
+# Meridian DNS — Environment Variables
 # Copy to .env and fill in values: cp .env.example .env
 
 # Required secrets (generate with: openssl rand -hex 32)
@@ -863,7 +863,7 @@ git commit -m "feat: add docker-compose.yml with PostgreSQL 16 + PowerDNS"
 
 Create `docs/openapi.yaml` documenting every endpoint from ARCHITECTURE.md §6. The spec must include:
 
-- **Info block:** title "DNS Orchestrator API", version 0.1.0
+- **Info block:** title "Meridian DNS API", version 0.1.0
 - **Security schemes:** `bearerAuth` (JWT) and `apiKeyAuth` (X-API-Key header)
 - **Component schemas:** Error, Provider, ProviderCreate, View, ViewCreate, Zone, ZoneCreate, Record, RecordCreate, Variable, VariableCreate, PreviewResult, RecordDiff, LoginRequest, LoginResponse, HealthResponse, DeploymentSnapshot, RollbackRequest, AuditEntry
 - **All paths from §6.1–§6.10:**

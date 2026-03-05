@@ -234,7 +234,7 @@ int main() {
     // Step 12: Background task queue uses ThreadPool — ready
     spLog->info("Step 12: Background task queue ready (ThreadPool)");
 
-    spLog->info("dns-orchestrator ready");
+    spLog->info("meridian-dns ready");
 
     // Blocks on Crow event loop until stop() is called
     apiServer->start(cfgApp.iHttpPort, cfgApp.iHttpThreads);
@@ -242,7 +242,7 @@ int main() {
     // Graceful shutdown
     msScheduler->stop();
     spLog->info("MaintenanceScheduler stopped");
-    spLog->info("dns-orchestrator shutdown complete");
+    spLog->info("meridian-dns shutdown complete");
 
     return EXIT_SUCCESS;
   } catch (const std::exception& ex) {

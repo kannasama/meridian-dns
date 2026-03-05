@@ -1,4 +1,4 @@
-# Architecture: C++ Multi-Provider DNS Orchestrator
+# Architecture: C++ Multi-Provider Meridian DNS
 
 > This document translates the design intent of [DESIGN.md](DESIGN.md) into a concrete, implementable system architecture. It defines component boundaries, interfaces, data models, API contracts, and data flows.
 
@@ -432,7 +432,7 @@ The DAL exposes typed repository classes. Each repository owns its SQL and uses 
 
 **Repo Layout:**
 ```
-/var/dns-orchestrator/repo/
+/var/meridian-dns/repo/
   {view_name}/
     {provider_name}/
       {zone_name}.json
@@ -592,7 +592,7 @@ private:
 - Raw key is shown to the admin exactly once at creation time; only the **SHA-512 hash** is stored in the `api_keys` table
 - Sent on every request as `X-API-Key: <raw_key>`; no session is created, no JWT is issued
 - Optional expiry (`expires_at`); revocable at any time via `DELETE /api/v1/auth/keys/{id}`
-- Used exclusively by the TUI; the TUI reads the key from `DNS_TUI_API_KEY` env var or `~/.config/dns-orchestrator/credentials` (mode `0600`)
+- Used exclusively by the TUI; the TUI reads the key from `DNS_TUI_API_KEY` env var or `~/.config/meridian-dns/credentials` (mode `0600`)
 - RBAC is enforced identically to other auth methods: the key is associated with a user, and that user's role applies
 
 **Session Tokens (JWT — interactive flows only):**
@@ -668,7 +668,7 @@ All SQL is executed via `libpqxx` parameterized queries (`pqxx::work::exec_param
 - **Framework:** FTXUI
 - **Authentication:** API key only (`X-API-Key` header); no interactive login screen
 - **Communication:** Stateless HTTP requests to the same REST API as the Web GUI
-- **Key loading:** `DNS_TUI_API_KEY` env var or `~/.config/dns-orchestrator/credentials` (mode `0600`)
+- **Key loading:** `DNS_TUI_API_KEY` env var or `~/.config/meridian-dns/credentials` (mode `0600`)
 
 ---
 
@@ -1210,7 +1210,7 @@ GitOpsMirror::commit(zone_id=42, actor="alice")
          │     ├─ ZoneRepository::get(42) → zone_name="example.com", view="external", provider="cloudflare"
          │     ├─ RecordRepository::listByZone(42) → raw templates
          │     ├─ VariableEngine::expand() for each record
-         │     └─ Write JSON to /var/dns-orchestrator/repo/external/cloudflare/example.com.json
+         │     └─ Write JSON to /var/meridian-dns/repo/external/cloudflare/example.com.json
          │
          └─ gitAddCommitPush("Update example.com by alice via API")
                ├─ libgit2: git_index_add_all()
@@ -1256,7 +1256,7 @@ API Key Authentication (TUI / automated clients):
   TUI Startup:
     └─ ApiKeyConfig::load()
          ├─ Read DNS_TUI_API_KEY env var
-         └─ Fallback: read ~/.config/dns-orchestrator/credentials (mode 0600, line: api_key=<value>)
+         └─ Fallback: read ~/.config/meridian-dns/credentials (mode 0600, line: api_key=<value>)
 
   GET /auth/me  [X-API-Key: <raw_key>]
     └─ AuthMiddleware::validateApiKey(raw_key)
@@ -1298,7 +1298,7 @@ For sensitive secrets (`DNS_MASTER_KEY`, `DNS_JWT_SECRET`), a `_FILE` variant is
 | `DNS_HTTP_THREADS` | No | `4` | Crow worker thread count |
 | `DNS_THREAD_POOL_SIZE` | No | `hw_concurrency` | Core engine thread pool size |
 | `DNS_GIT_REMOTE_URL` | No | — | Git remote URL for GitOps mirror (disabled if unset) |
-| `DNS_GIT_LOCAL_PATH` | No | `/var/dns-orchestrator/repo` | Local path for Git mirror clone |
+| `DNS_GIT_LOCAL_PATH` | No | `/var/meridian-dns/repo` | Local path for Git mirror clone |
 | `DNS_GIT_SSH_KEY_PATH` | No | — | Path to SSH private key for Git push auth |
 | `DNS_GIT_KNOWN_HOSTS_FILE` | No | — | Path to known_hosts file for SSH host verification (future implementation; SEC-09) |
 | `DNS_OIDC_ISSUER` | No | — | OIDC issuer URL (enables OIDC if set) |
@@ -1312,7 +1312,7 @@ For sensitive secrets (`DNS_MASTER_KEY`, `DNS_JWT_SECRET`), a `_FILE` variant is
 | `DNS_SAML_ACS_URL` | No | — | SAML Assertion Consumer Service URL |
 | `DNS_SAML_ROLE_ATTR` | No | `dns_role` | SAML attribute name to map to RBAC role |
 | `DNS_SAML_AUTO_PROVISION` | No | `false` | Auto-create users on first SAML login |
-| `DNS_TUI_API_KEY` | No | — | API key for TUI authentication; if unset, TUI reads `~/.config/dns-orchestrator/credentials` |
+| `DNS_TUI_API_KEY` | No | — | API key for TUI authentication; if unset, TUI reads `~/.config/meridian-dns/credentials` |
 | `DNS_AUDIT_STDOUT` | No | `false` | Mirror audit log entries to stdout (for Docker log collection) |
 | `DNS_AUDIT_RETENTION_DAYS` | No | `365` | Minimum age in days for audit records eligible for purge via `DELETE /audit/purge` (SEC-04) |
 | `DNS_AUDIT_PURGE_INTERVAL_SECONDS` | No | `86400` | How often `MaintenanceScheduler` runs the automatic audit log purge. Only active if `DNS_AUDIT_DB_URL` is set. Set to `0` to disable scheduled purge entirely. |
@@ -1394,7 +1394,7 @@ All API errors return a consistent JSON body:
 ## 10. Directory and File Structure
 
 ```
-dns-orchestrator/
+meridian-dns/
 ├── CMakeLists.txt
 ├── README.md
 ├── .gitmodules
@@ -1545,17 +1545,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libpq5 libssl3 libgit2-1.5 \
   && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --system --no-create-home dns-orchestrator
+RUN useradd --system --no-create-home meridian-dns
 
-COPY --from=builder /build/build/dns-orchestrator /usr/local/bin/dns-orchestrator
+COPY --from=builder /build/build/meridian-dns /usr/local/bin/meridian-dns
 COPY scripts/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER dns-orchestrator
+USER meridian-dns
 EXPOSE 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["dns-orchestrator"]
+CMD ["meridian-dns"]
 ```
 
 ### 11.2 entrypoint.sh
@@ -1565,7 +1565,7 @@ CMD ["dns-orchestrator"]
 set -e
 
 # Run DB migrations before starting the server
-dns-orchestrator --migrate
+meridian-dns --migrate
 
 exec "$@"
 ```
@@ -1577,7 +1577,7 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: dns_orchestrator
+      POSTGRES_DB: meridian_dns
       POSTGRES_USER: dns
       POSTGRES_PASSWORD: dns
     volumes:
@@ -1590,7 +1590,7 @@ services:
     depends_on:
       - db
     environment:
-      DNS_DB_URL: postgresql://dns:dns@db:5432/dns_orchestrator
+      DNS_DB_URL: postgresql://dns:dns@db:5432/meridian_dns
       DNS_MASTER_KEY: ${DNS_MASTER_KEY}
       DNS_JWT_SECRET: ${DNS_JWT_SECRET}
       DNS_HTTP_PORT: "8080"
@@ -1598,7 +1598,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - gitrepo:/var/dns-orchestrator/repo
+      - gitrepo:/var/meridian-dns/repo
 
 volumes:
   pgdata:
@@ -1631,7 +1631,7 @@ volumes:
 9. Initialize ProviderFactory
 10. Register all API routes on ApiServer (with security headers middleware)
 11. Start Crow HTTP server on DNS_HTTP_PORT
-12. Log "dns-orchestrator ready" to stdout
+12. Log "meridian-dns ready" to stdout
 ```
 
 ---
@@ -1648,7 +1648,7 @@ This section documents operational security requirements and deployment constrai
 |-------------|--------|
 | **TLS termination** | The application serves plain HTTP on `DNS_HTTP_PORT`. It MUST be deployed behind a TLS-terminating reverse proxy (nginx, Caddy, Traefik). Direct exposure of port 8080 to untrusted networks is prohibited. |
 | **HTTPS-only cookies** | The OIDC `oidc_state` cookie is set with `Secure` attribute. The reverse proxy must enforce HTTPS; HTTP access must redirect to HTTPS. |
-| **Non-root process** | The container runs as the `dns-orchestrator` system user (no-login, no home directory). Do not override `USER` in derived images. |
+| **Non-root process** | The container runs as the `meridian-dns` system user (no-login, no home directory). Do not override `USER` in derived images. |
 | **Secret injection** | `DNS_MASTER_KEY` and `DNS_JWT_SECRET` must be injected via a secrets manager (HashiCorp Vault, AWS Secrets Manager, Kubernetes Secrets, Docker Secrets). Do not hardcode secrets in `docker-compose.yml` or environment files committed to version control. |
 | **Network isolation** | PostgreSQL must not be exposed to the public internet. Use Docker networks or Kubernetes NetworkPolicy to restrict DB access to the application container only. |
 
@@ -1665,7 +1665,7 @@ Two PostgreSQL roles are required. The application uses `dns_app` for all normal
 -- Role 1: Application runtime user (dns_app)
 -- Used by DNS_DB_URL
 CREATE ROLE dns_app LOGIN PASSWORD '<strong-password>';
-GRANT CONNECT ON DATABASE dns_orchestrator TO dns_app;
+GRANT CONNECT ON DATABASE meridian_dns TO dns_app;
 GRANT USAGE ON SCHEMA public TO dns_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO dns_app;
 REVOKE DELETE ON audit_log FROM dns_app;   -- audit_log is insert-only for the app
@@ -1674,7 +1674,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO dns_app;
 -- Role 2: Audit purge user (dns_audit_admin)
 -- Used by DNS_AUDIT_DB_URL (only required if audit purge endpoint is used)
 CREATE ROLE dns_audit_admin LOGIN PASSWORD '<strong-password>';
-GRANT CONNECT ON DATABASE dns_orchestrator TO dns_audit_admin;
+GRANT CONNECT ON DATABASE meridian_dns TO dns_audit_admin;
 GRANT USAGE ON SCHEMA public TO dns_audit_admin;
 GRANT SELECT, DELETE ON audit_log TO dns_audit_admin;
 ```
@@ -1703,14 +1703,14 @@ GRANT SELECT, DELETE ON audit_log TO dns_audit_admin;
 # docker-compose.yml (production)
 services:
   app:
-    image: dns-orchestrator:latest
+    image: meridian-dns:latest
     secrets:
       - master_key
       - jwt_secret
     environment:
       DNS_MASTER_KEY_FILE: /run/secrets/master_key
       DNS_JWT_SECRET_FILE: /run/secrets/jwt_secret
-      DNS_DB_URL: postgresql://dns_app:<pass>@db:5432/dns_orchestrator
+      DNS_DB_URL: postgresql://dns_app:<pass>@db:5432/meridian_dns
 
 secrets:
   master_key:
@@ -1733,11 +1733,11 @@ server {
   location /api/v1/auth/local/login {
     limit_req zone=dns_auth burst=3 nodelay;
     limit_req_status 429;
-    proxy_pass http://dns-orchestrator:8080;
+    proxy_pass http://meridian-dns:8080;
   }
 
   location /api/v1/ {
-    proxy_pass http://dns-orchestrator:8080;
+    proxy_pass http://meridian-dns:8080;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
   }
@@ -1746,11 +1746,11 @@ server {
 
 **Caddy:**
 ```caddy
-dns-orchestrator.example.com {
+meridian-dns.example.com {
   @auth_login path /api/v1/auth/local/login
   rate_limit @auth_login 5r/m
 
-  reverse_proxy /api/v1/* dns-orchestrator:8080
+  reverse_proxy /api/v1/* meridian-dns:8080
 }
 ```
 
@@ -1768,7 +1768,7 @@ routers:
     rule: "Path(`/api/v1/auth/local/login`)"
     middlewares:
       - auth-ratelimit
-    service: dns-orchestrator
+    service: meridian-dns
 ```
 
 ---
