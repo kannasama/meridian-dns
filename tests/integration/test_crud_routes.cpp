@@ -110,35 +110,40 @@ class CrudRoutesTest : public ::testing::Test {
         *_app, *_authRoutes, *_auditRoutes, *_deploymentRoutes, *_healthRoutes,
         *_providerRoutes, *_viewRoutes, *_zoneRoutes, *_recordRoutes, *_variableRoutes);
     _apiServer->registerRoutes();
+    _app->validate();
 
     // Clean DB
-    auto cg = _cpPool->checkout();
-    pqxx::work txn(*cg);
-    txn.exec("DELETE FROM records");
-    txn.exec("DELETE FROM variables");
-    txn.exec("DELETE FROM deployments");
-    txn.exec("DELETE FROM zones");
-    txn.exec("DELETE FROM view_providers");
-    txn.exec("DELETE FROM views");
-    txn.exec("DELETE FROM providers");
-    txn.exec("DELETE FROM group_members");
-    txn.exec("DELETE FROM sessions");
-    txn.exec("DELETE FROM api_keys");
-    txn.exec("DELETE FROM users");
-    txn.exec("DELETE FROM groups");
-    txn.commit();
+    {
+      auto cg = _cpPool->checkout();
+      pqxx::work txn(*cg);
+      txn.exec("DELETE FROM records");
+      txn.exec("DELETE FROM variables");
+      txn.exec("DELETE FROM deployments");
+      txn.exec("DELETE FROM zones");
+      txn.exec("DELETE FROM view_providers");
+      txn.exec("DELETE FROM views");
+      txn.exec("DELETE FROM providers");
+      txn.exec("DELETE FROM group_members");
+      txn.exec("DELETE FROM sessions");
+      txn.exec("DELETE FROM api_keys");
+      txn.exec("DELETE FROM users");
+      txn.exec("DELETE FROM groups");
+      txn.commit();
+    }
 
     // Create admin user and get a token
     std::string sHash = dns::security::CryptoService::hashPassword("admin123");
     int64_t iUserId = _urRepo->create("admin", "admin@test.com", sHash);
 
-    auto cg2 = _cpPool->checkout();
-    pqxx::work txn2(*cg2);
-    auto gResult = txn2.exec(
-        "INSERT INTO groups (name, role) VALUES ('admins', 'admin') RETURNING id");
-    txn2.exec("INSERT INTO group_members (user_id, group_id) VALUES ($1, $2)",
-              pqxx::params{iUserId, gResult.one_row()[0].as<int64_t>()});
-    txn2.commit();
+    {
+      auto cg2 = _cpPool->checkout();
+      pqxx::work txn2(*cg2);
+      auto gResult = txn2.exec(
+          "INSERT INTO groups (name, role) VALUES ('admins', 'admin') RETURNING id");
+      txn2.exec("INSERT INTO group_members (user_id, group_id) VALUES ($1, $2)",
+                pqxx::params{iUserId, gResult.one_row()[0].as<int64_t>()});
+      txn2.commit();
+    }
 
     _sToken = _asService->authenticateLocal("admin", "admin123");
   }
@@ -146,7 +151,18 @@ class CrudRoutesTest : public ::testing::Test {
   crow::response handle(const std::string& sMethod, const std::string& sUrl,
                         const std::string& sBody = "") {
     crow::request req;
-    req.url = sUrl;
+
+    // Split URL into path and query string — Crow's trie matches only the path
+    auto iQmark = sUrl.find('?');
+    if (iQmark != std::string::npos) {
+      req.url = sUrl.substr(0, iQmark);
+      req.raw_url = sUrl;
+      req.url_params = crow::query_string(sUrl);
+    } else {
+      req.url = sUrl;
+      req.raw_url = sUrl;
+    }
+
     req.body = sBody;
     req.add_header("Authorization", "Bearer " + _sToken);
     req.add_header("Content-Type", "application/json");
