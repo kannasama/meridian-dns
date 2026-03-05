@@ -1,6 +1,8 @@
 #include "api/ApiServer.hpp"
 #include "api/AuthMiddleware.hpp"
+#include "api/routes/AuditRoutes.hpp"
 #include "api/routes/AuthRoutes.hpp"
+#include "api/routes/DeploymentRoutes.hpp"
 #include "api/routes/HealthRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
@@ -8,6 +10,10 @@
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
 #include "common/Logger.hpp"
+#include "core/DeploymentEngine.hpp"
+#include "core/DiffEngine.hpp"
+#include "core/RollbackEngine.hpp"
+#include "core/VariableEngine.hpp"
 #include "dal/ApiKeyRepository.hpp"
 #include "dal/AuditRepository.hpp"
 #include "dal/ConnectionPool.hpp"
@@ -66,6 +72,17 @@ class CrudRoutesTest : public ::testing::Test {
     _zrRepo = std::make_unique<dns::dal::ZoneRepository>(*_cpPool);
     _rrRepo = std::make_unique<dns::dal::RecordRepository>(*_cpPool);
     _varRepo = std::make_unique<dns::dal::VariableRepository>(*_cpPool);
+    _drRepo = std::make_unique<dns::dal::DeploymentRepository>(*_cpPool);
+    _arRepo = std::make_unique<dns::dal::AuditRepository>(*_cpPool);
+
+    // Engines
+    _veEngine = std::make_unique<dns::core::VariableEngine>(*_varRepo);
+    _deEngine = std::make_unique<dns::core::DiffEngine>(
+        *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo, *_veEngine);
+    _depEngine = std::make_unique<dns::core::DeploymentEngine>(
+        *_deEngine, *_veEngine, *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo,
+        *_drRepo, *_arRepo, nullptr, 10);
+    _reEngine = std::make_unique<dns::core::RollbackEngine>(*_drRepo, *_rrRepo, *_arRepo);
 
     // Auth layer
     _amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
@@ -78,15 +95,20 @@ class CrudRoutesTest : public ::testing::Test {
     _providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*_prRepo, *_amMiddleware);
     _viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*_vrRepo, *_amMiddleware);
     _zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*_zrRepo, *_amMiddleware);
-    _recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(*_rrRepo, *_amMiddleware);
+    _recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
+        *_rrRepo, *_amMiddleware, *_deEngine, *_depEngine);
     _variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*_varRepo, *_amMiddleware);
     _healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
+    _deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(
+        *_drRepo, *_rrRepo, *_amMiddleware, *_reEngine);
+    _auditRoutes = std::make_unique<dns::api::routes::AuditRoutes>(
+        *_arRepo, *_amMiddleware, 365);
 
     // Crow app + server
     _app = std::make_unique<crow::SimpleApp>();
     _apiServer = std::make_unique<dns::api::ApiServer>(
-        *_app, *_authRoutes, *_healthRoutes, *_providerRoutes, *_viewRoutes,
-        *_zoneRoutes, *_recordRoutes, *_variableRoutes);
+        *_app, *_authRoutes, *_auditRoutes, *_deploymentRoutes, *_healthRoutes,
+        *_providerRoutes, *_viewRoutes, *_zoneRoutes, *_recordRoutes, *_variableRoutes);
     _apiServer->registerRoutes();
 
     // Clean DB
@@ -152,6 +174,12 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::dal::ZoneRepository> _zrRepo;
   std::unique_ptr<dns::dal::RecordRepository> _rrRepo;
   std::unique_ptr<dns::dal::VariableRepository> _varRepo;
+  std::unique_ptr<dns::dal::DeploymentRepository> _drRepo;
+  std::unique_ptr<dns::dal::AuditRepository> _arRepo;
+  std::unique_ptr<dns::core::VariableEngine> _veEngine;
+  std::unique_ptr<dns::core::DiffEngine> _deEngine;
+  std::unique_ptr<dns::core::DeploymentEngine> _depEngine;
+  std::unique_ptr<dns::core::RollbackEngine> _reEngine;
   std::unique_ptr<dns::api::AuthMiddleware> _amMiddleware;
   std::unique_ptr<dns::security::AuthService> _asService;
   std::unique_ptr<dns::api::routes::AuthRoutes> _authRoutes;
@@ -161,6 +189,8 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::api::routes::ZoneRoutes> _zoneRoutes;
   std::unique_ptr<dns::api::routes::RecordRoutes> _recordRoutes;
   std::unique_ptr<dns::api::routes::VariableRoutes> _variableRoutes;
+  std::unique_ptr<dns::api::routes::DeploymentRoutes> _deploymentRoutes;
+  std::unique_ptr<dns::api::routes::AuditRoutes> _auditRoutes;
   std::unique_ptr<crow::SimpleApp> _app;
   std::unique_ptr<dns::api::ApiServer> _apiServer;
 };

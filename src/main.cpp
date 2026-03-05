@@ -15,9 +15,15 @@
 #include "api/routes/ZoneRoutes.hpp"
 #include "common/Config.hpp"
 #include "common/Logger.hpp"
+#include "api/routes/AuditRoutes.hpp"
+#include "api/routes/DeploymentRoutes.hpp"
+#include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
 #include "core/MaintenanceScheduler.hpp"
+#include "core/RollbackEngine.hpp"
+#include "core/ThreadPool.hpp"
 #include "core/VariableEngine.hpp"
+#include "gitops/GitOpsMirror.hpp"
 #include "dal/ApiKeyRepository.hpp"
 #include "dal/AuditRepository.hpp"
 #include "dal/ConnectionPool.hpp"
@@ -94,11 +100,16 @@ int main() {
     // ── Step 5: Foundation ready ─────────────────────────────────────────
     spLog->info("Step 5: Foundation layer ready");
 
-    // ── Step 6: GitOpsMirror — deferred to Phase 7 ────────────────────────
-    spLog->warn("Step 6: GitOpsMirror — not yet implemented");
+    // ── Step 6: GitOpsMirror pointer (initialized after engines in Step 9) ─
+    std::unique_ptr<dns::gitops::GitOpsMirror> upGitMirror;
+    spLog->info("Step 6: GitOpsMirror deferred until engines ready");
 
-    // ── Step 7: ThreadPool — deferred to Phase 7 ──────────────────────────
-    spLog->warn("Step 7: ThreadPool — not yet implemented");
+    // ── Step 7: Initialize ThreadPool ──────────────────────────────────────
+    auto tpPool = std::make_unique<dns::core::ThreadPool>(cfgApp.iThreadPoolSize);
+    spLog->info("Step 7: ThreadPool initialized (size={})",
+                cfgApp.iThreadPoolSize == 0
+                    ? static_cast<int>(std::thread::hardware_concurrency())
+                    : cfgApp.iThreadPoolSize);
 
     // ── Step 7a: Initialize repositories + MaintenanceScheduler ──────────
     auto urRepo = std::make_unique<dns::dal::UserRepository>(*cpPool);
@@ -162,7 +173,25 @@ int main() {
     auto veEngine = std::make_unique<dns::core::VariableEngine>(*varRepo);
     auto deEngine = std::make_unique<dns::core::DiffEngine>(
         *zrRepo, *vrRepo, *rrRepo, *prRepo, *veEngine);
-    spLog->info("Step 9: Core engines initialized (VariableEngine, DiffEngine)");
+
+    // ── Step 6 (deferred): Initialize GitOpsMirror now that engines are ready ─
+    if (cfgApp.oGitRemoteUrl.has_value() && !cfgApp.oGitRemoteUrl->empty()) {
+      upGitMirror = std::make_unique<dns::gitops::GitOpsMirror>(
+          *zrRepo, *vrRepo, *rrRepo, *veEngine);
+      upGitMirror->initialize(*cfgApp.oGitRemoteUrl, cfgApp.sGitLocalPath);
+      upGitMirror->pull();
+      spLog->info("Step 6: GitOpsMirror initialized (remote={}, local={})",
+                  *cfgApp.oGitRemoteUrl, cfgApp.sGitLocalPath);
+    } else {
+      spLog->info("Step 6: GitOpsMirror disabled (DNS_GIT_REMOTE_URL not set)");
+    }
+
+    auto depEngine = std::make_unique<dns::core::DeploymentEngine>(
+        *deEngine, *veEngine, *zrRepo, *vrRepo, *rrRepo, *prRepo,
+        *drRepo, *arRepo, upGitMirror.get(), cfgApp.iDeploymentRetentionCount);
+    auto reEngine = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
+    spLog->info("Step 9: Core engines initialized "
+                "(VariableEngine, DiffEngine, DeploymentEngine, RollbackEngine)");
 
     // ── Step 10: Construct auth layer + route handlers ────────────────────
     auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
@@ -177,14 +206,19 @@ int main() {
     auto providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*prRepo, *amMiddleware);
     auto viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*vrRepo, *amMiddleware);
     auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware);
-    auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(*rrRepo, *amMiddleware);
+    auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
+        *rrRepo, *amMiddleware, *deEngine, *depEngine);
     auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
     auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
+    auto deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(
+        *drRepo, *rrRepo, *amMiddleware, *reEngine);
+    auto auditRoutes = std::make_unique<dns::api::routes::AuditRoutes>(
+        *arRepo, *amMiddleware, cfgApp.iAuditRetentionDays);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
-        crowApp, *authRoutes, *healthRoutes, *providerRoutes, *viewRoutes,
-        *zoneRoutes, *recordRoutes, *variableRoutes);
+        crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
+        *providerRoutes, *viewRoutes, *zoneRoutes, *recordRoutes, *variableRoutes);
 
     apiServer->registerRoutes();
     spLog->info("Step 10: API routes registered");
@@ -197,8 +231,8 @@ int main() {
     spLog->info("Step 11: Starting HTTP server on port {} ({} threads)",
                 cfgApp.iHttpPort, cfgApp.iHttpThreads);
 
-    // Step 12: Background task queue — deferred to Phase 7
-    spLog->warn("Step 12: Background task queue — not yet implemented");
+    // Step 12: Background task queue uses ThreadPool — ready
+    spLog->info("Step 12: Background task queue ready (ThreadPool)");
 
     spLog->info("dns-orchestrator ready");
 

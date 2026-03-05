@@ -8,6 +8,8 @@ class AuthMiddleware;
 
 namespace dns::api::routes {
 class AuthRoutes;
+class AuditRoutes;
+class DeploymentRoutes;
 class HealthRoutes;
 class ProviderRoutes;
 class ViewRoutes;
@@ -24,6 +26,8 @@ class ApiServer {
  public:
   ApiServer(crow::SimpleApp& app,
             routes::AuthRoutes& arRoutes,
+            routes::AuditRoutes& audrRoutes,
+            routes::DeploymentRoutes& dplrRoutes,
             routes::HealthRoutes& hrRoutes,
             routes::ProviderRoutes& prRoutes,
             routes::ViewRoutes& vrRoutes,
@@ -44,6 +48,8 @@ class ApiServer {
  private:
   crow::SimpleApp& _app;
   routes::AuthRoutes& _arRoutes;
+  routes::AuditRoutes& _audrRoutes;
+  routes::DeploymentRoutes& _dplrRoutes;
   routes::HealthRoutes& _hrRoutes;
   routes::ProviderRoutes& _prRoutes;
   routes::ViewRoutes& _vrRoutes;
