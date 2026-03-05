@@ -108,3 +108,45 @@ TEST_F(RecordRepositoryTest, InvalidZoneIdThrows) {
   EXPECT_THROW(_rrRepo->create(999999, "bad", "A", 300, "1.1.1.1", 0),
                dns::common::ValidationError);
 }
+
+TEST_F(RecordRepositoryTest, DeleteAllByZoneId) {
+  _rrRepo->create(_iZoneId, "www", "A", 300, "1.2.3.4", 0);
+  _rrRepo->create(_iZoneId, "mail", "MX", 300, "mx.example.com.", 10);
+
+  int64_t iZone2 = _zrRepo->create("other.com", _iViewId, std::nullopt);
+  _rrRepo->create(iZone2, "ns", "NS", 300, "ns1.other.com.", 0);
+
+  int iDeleted = _rrRepo->deleteAllByZoneId(_iZoneId);
+  EXPECT_EQ(iDeleted, 2);
+
+  auto vRows = _rrRepo->listByZoneId(_iZoneId);
+  EXPECT_TRUE(vRows.empty());
+
+  // Other zone's records unaffected
+  auto vOther = _rrRepo->listByZoneId(iZone2);
+  EXPECT_EQ(vOther.size(), 1u);
+}
+
+TEST_F(RecordRepositoryTest, UpsertById_UpdateExisting) {
+  int64_t iId = _rrRepo->create(_iZoneId, "www", "A", 300, "1.2.3.4", 0);
+
+  int64_t iResult = _rrRepo->upsertById(iId, _iZoneId, "www", "A", 600, "5.6.7.8", 0);
+  EXPECT_EQ(iResult, iId);
+
+  auto oRow = _rrRepo->findById(iId);
+  ASSERT_TRUE(oRow.has_value());
+  EXPECT_EQ(oRow->iTtl, 600);
+  EXPECT_EQ(oRow->sValueTemplate, "5.6.7.8");
+}
+
+TEST_F(RecordRepositoryTest, UpsertById_InsertNew) {
+  // Use a non-existent ID — should insert a new record (ignoring the ID)
+  int64_t iResult = _rrRepo->upsertById(999999, _iZoneId, "new", "AAAA", 300, "::1", 0);
+  EXPECT_GT(iResult, 0);
+
+  auto oRow = _rrRepo->findById(iResult);
+  ASSERT_TRUE(oRow.has_value());
+  EXPECT_EQ(oRow->sName, "new");
+  EXPECT_EQ(oRow->sType, "AAAA");
+  EXPECT_EQ(oRow->sValueTemplate, "::1");
+}

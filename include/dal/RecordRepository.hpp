@@ -48,6 +48,15 @@ class RecordRepository {
   /// Delete a record by ID. Throws NotFoundError if not found.
   void deleteById(int64_t iId);
 
+  /// Delete all records for a zone. Returns deleted count.
+  int deleteAllByZoneId(int64_t iZoneId);
+
+  /// Upsert a record by ID. If the ID exists, update it. Otherwise, create a new record.
+  /// Returns the record ID (existing or newly created).
+  int64_t upsertById(int64_t iId, int64_t iZoneId, const std::string& sName,
+                     const std::string& sType, int iTtl,
+                     const std::string& sValueTemplate, int iPriority);
+
  private:
   ConnectionPool& _cpPool;
 };

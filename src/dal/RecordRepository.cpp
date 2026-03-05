@@ -119,4 +119,40 @@ void RecordRepository::deleteById(int64_t iId) {
   }
 }
 
+int RecordRepository::deleteAllByZoneId(int64_t iZoneId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec("DELETE FROM records WHERE zone_id = $1",
+                         pqxx::params{iZoneId});
+  txn.commit();
+  return static_cast<int>(result.affected_rows());
+}
+
+int64_t RecordRepository::upsertById(int64_t iId, int64_t iZoneId,
+                                     const std::string& sName, const std::string& sType,
+                                     int iTtl, const std::string& sValueTemplate,
+                                     int iPriority) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  // Try update first
+  auto result = txn.exec(
+      "UPDATE records SET name = $2, type = $3, ttl = $4, value_template = $5, "
+      "priority = $6, updated_at = NOW() WHERE id = $1 RETURNING id",
+      pqxx::params{iId, sName, sType, iTtl, sValueTemplate, iPriority});
+
+  if (!result.empty()) {
+    txn.commit();
+    return result[0][0].as<int64_t>();
+  }
+
+  // Record doesn't exist — insert new one
+  result = txn.exec(
+      "INSERT INTO records (zone_id, name, type, ttl, value_template, priority) "
+      "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+      pqxx::params{iZoneId, sName, sType, iTtl, sValueTemplate, iPriority});
+  txn.commit();
+  return result.one_row()[0].as<int64_t>();
+}
+
 }  // namespace dns::dal
