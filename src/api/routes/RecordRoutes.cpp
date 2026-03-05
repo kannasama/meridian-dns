@@ -2,6 +2,9 @@
 
 #include "api/AuthMiddleware.hpp"
 #include "common/Errors.hpp"
+#include "common/Types.hpp"
+#include "core/DeploymentEngine.hpp"
+#include "core/DiffEngine.hpp"
 #include "dal/RecordRepository.hpp"
 
 #include <nlohmann/json.hpp>
@@ -9,8 +12,11 @@
 namespace dns::api::routes {
 
 RecordRoutes::RecordRoutes(dns::dal::RecordRepository& rrRepo,
-                           const dns::api::AuthMiddleware& amMiddleware)
-    : _rrRepo(rrRepo), _amMiddleware(amMiddleware) {}
+                           const dns::api::AuthMiddleware& amMiddleware,
+                           dns::core::DiffEngine& deEngine,
+                           dns::core::DeploymentEngine& depEngine)
+    : _rrRepo(rrRepo), _amMiddleware(amMiddleware),
+      _deEngine(deEngine), _depEngine(depEngine) {}
 
 RecordRoutes::~RecordRoutes() = default;
 
@@ -175,6 +181,65 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
 
           _rrRepo.deleteById(iRecordId);
           return jsonResponse(200, {{"message", "Record deleted"}});
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
+  // POST /api/v1/zones/<int>/preview
+  CROW_ROUTE(app, "/api/v1/zones/<int>/preview").methods("POST"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "viewer");
+
+          auto prResult = _deEngine.preview(iZoneId);
+
+          nlohmann::json jDiffs = nlohmann::json::array();
+          for (const auto& diff : prResult.vDiffs) {
+            jDiffs.push_back({
+                {"action", diff.action == common::DiffAction::Add      ? "add"
+                           : diff.action == common::DiffAction::Update  ? "update"
+                           : diff.action == common::DiffAction::Delete  ? "delete"
+                                                                        : "drift"},
+                {"name", diff.sName},
+                {"type", diff.sType},
+                {"source_value", diff.sSourceValue},
+                {"provider_value", diff.sProviderValue},
+            });
+          }
+
+          nlohmann::json jResult = {
+              {"zone_id", prResult.iZoneId},
+              {"zone_name", prResult.sZoneName},
+              {"has_drift", prResult.bHasDrift},
+              {"diffs", jDiffs},
+          };
+          return jsonResponse(200, jResult);
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
+  // POST /api/v1/zones/<int>/push
+  CROW_ROUTE(app, "/api/v1/zones/<int>/push").methods("POST"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "operator");
+
+          bool bPurgeDrift = false;
+          if (!req.body.empty()) {
+            try {
+              auto jBody = nlohmann::json::parse(req.body);
+              bPurgeDrift = jBody.value("purge_drift", false);
+            } catch (const nlohmann::json::exception&) {
+              // Empty or invalid body — use defaults
+            }
+          }
+
+          _depEngine.push(iZoneId, bPurgeDrift, rcCtx.iUserId, rcCtx.sUsername);
+          return jsonResponse(200, {{"message", "Push completed successfully"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
         }
