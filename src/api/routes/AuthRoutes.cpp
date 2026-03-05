@@ -1,6 +1,7 @@
 #include "api/routes/AuthRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RateLimiter.hpp"
 #include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
@@ -9,6 +10,8 @@
 #include <nlohmann/json.hpp>
 
 namespace dns::api::routes {
+
+static dns::api::RateLimiter g_rlLogin(5, std::chrono::seconds(60));
 
 AuthRoutes::AuthRoutes(dns::security::AuthService& asService,
                        const dns::api::AuthMiddleware& amMiddleware)
@@ -21,7 +24,13 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/auth/local/login").methods("POST"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
-          auto jBody = nlohmann::json::parse(req.body);
+         std::string sClientIp = req.get_header_value("X-Forwarded-For");
+         if (sClientIp.empty()) sClientIp = req.remote_ip_address;
+         if (!g_rlLogin.allow(sClientIp))
+           throw common::RateLimitedError("RATE_LIMITED",
+                                          "Too many login attempts. Try again later.");
+
+         auto jBody = nlohmann::json::parse(req.body);
           std::string sUsername = jBody.value("username", "");
           std::string sPassword = jBody.value("password", "");
 

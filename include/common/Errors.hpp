@@ -72,4 +72,10 @@ struct GitMirrorError : AppError {
       : AppError(500, std::move(sCode), std::move(sMsg)) {}
 };
 
+/// 429 Too Many Requests — rate limit exceeded.
+struct RateLimitedError : AppError {
+  explicit RateLimitedError(std::string sCode, std::string sMsg)
+      : AppError(429, std::move(sCode), std::move(sMsg)) {}
+};
+
 }  // namespace dns::common
