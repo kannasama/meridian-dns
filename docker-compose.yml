@@ -15,18 +15,6 @@ services:
       timeout: 3s
       retries: 5
 
-  powerdns:
-    image: powerdns/pdns-auth-49:latest
-    environment:
-      PDNS_AUTH_API_KEY: ${PDNS_API_KEY:-pdns_dev_key}
-    ports:
-      - "${PDNS_HTTP_PORT:-8081}:8081"
-      - "${PDNS_DNS_PORT:-5353}:53/udp"
-      - "${PDNS_DNS_PORT:-5353}:53/tcp"
-    depends_on:
-      db:
-        condition: service_healthy
-
   app:
     build: .
     depends_on:
