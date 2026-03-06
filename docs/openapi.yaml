@@ -328,6 +328,10 @@ components:
           type: string
         provider_value:
           type: string
+        ttl:
+          type: integer
+        priority:
+          type: integer
 
     DeploymentSnapshot:
       type: object
@@ -1075,10 +1079,19 @@ paths:
             schema:
               type: object
               properties:
-                purge_drift:
-                  type: boolean
-                  default: false
-                  description: Delete provider-side records not in desired state
+                drift_actions:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, type, action]
+                    properties:
+                      name:
+                        type: string
+                      type:
+                        type: string
+                      action:
+                        type: string
+                        enum: [adopt, delete, ignore]
       responses:
         "200":
           description: Push completed
