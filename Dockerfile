@@ -14,13 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   cmake ninja-build g++ \
   libpqxx-dev libssl-dev libgit2-dev \
   nlohmann-json3-dev libspdlog-dev \
+  libasio-dev \
   git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 COPY . .
 
-RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_UI=OFF \
   && cmake --build build --parallel
 
 # ── Stage 3: Runtime ───────────────────────────────────────────────────────
