@@ -38,6 +38,12 @@ class DiffEngine {
       const std::vector<common::DnsRecord>& vDesired,
       const std::vector<common::DnsRecord>& vLive);
 
+  /// Filter out SOA and/or NS records from a record list.
+  /// Public for unit testing.
+  static std::vector<common::DnsRecord> filterRecordTypes(
+      const std::vector<common::DnsRecord>& vRecords,
+      bool bIncludeSoa, bool bIncludeNs);
+
  private:
   dns::dal::ZoneRepository& _zrRepo;
   dns::dal::ViewRepository& _vrRepo;

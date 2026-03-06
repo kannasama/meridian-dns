@@ -118,3 +118,26 @@ TEST(DiffEngineComputeTest, MultipleRecordsSameNameTypePartialDrift) {
   EXPECT_EQ(vDiffs[0].action, DiffAction::Drift);
   EXPECT_EQ(vDiffs[0].sProviderValue, "9.9.9.9");
 }
+
+TEST(DiffEngineFilterTest, FilterSoaAndNs) {
+  std::vector<DnsRecord> vRecords = {
+      makeRecord("example.com.", "SOA",
+                 "ns1.example.com. admin.example.com. 1 3600 900 604800 86400"),
+      makeRecord("example.com.", "NS", "ns1.example.com."),
+      makeRecord("example.com.", "NS", "ns2.example.com."),
+      makeRecord("www.example.com.", "A", "1.2.3.4"),
+  };
+
+  // Filter both
+  auto vFiltered = DiffEngine::filterRecordTypes(vRecords, false, false);
+  ASSERT_EQ(vFiltered.size(), 1u);
+  EXPECT_EQ(vFiltered[0].sType, "A");
+
+  // Keep SOA, filter NS
+  vFiltered = DiffEngine::filterRecordTypes(vRecords, true, false);
+  ASSERT_EQ(vFiltered.size(), 2u);
+
+  // Keep both
+  vFiltered = DiffEngine::filterRecordTypes(vRecords, true, true);
+  ASSERT_EQ(vFiltered.size(), 4u);
+}

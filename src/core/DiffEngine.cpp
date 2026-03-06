@@ -130,6 +130,19 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
   return vDiffs;
 }
 
+std::vector<common::DnsRecord> DiffEngine::filterRecordTypes(
+    const std::vector<common::DnsRecord>& vRecords,
+    bool bIncludeSoa, bool bIncludeNs) {
+  std::vector<common::DnsRecord> vFiltered;
+  vFiltered.reserve(vRecords.size());
+  for (const auto& dr : vRecords) {
+    if (!bIncludeSoa && dr.sType == "SOA") continue;
+    if (!bIncludeNs && dr.sType == "NS") continue;
+    vFiltered.push_back(dr);
+  }
+  return vFiltered;
+}
+
 common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
   auto spLog = common::Logger::get();
 
@@ -187,10 +200,14 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
     }
   }
 
-  // 5. Compute diff
+  // 5. Filter SOA/NS from both sets based on zone flags
+  vLive = filterRecordTypes(vLive, oZone->bManageSoa, oZone->bManageNs);
+  vDesired = filterRecordTypes(vDesired, oZone->bManageSoa, oZone->bManageNs);
+
+  // 6. Compute diff
   auto vDiffs = computeDiff(vDesired, vLive);
 
-  // 6. Build result
+  // 7. Build result
   common::PreviewResult pr;
   pr.iZoneId = iZoneId;
   pr.sZoneName = oZone->sName;
