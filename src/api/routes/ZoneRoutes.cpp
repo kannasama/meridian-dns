@@ -23,6 +23,8 @@ nlohmann::json zoneRowToJson(const dns::dal::ZoneRow& row) {
       {"id", row.iId},
       {"name", row.sName},
       {"view_id", row.iViewId},
+      {"manage_soa", row.bManageSoa},
+      {"manage_ns", row.bManageNs},
       {"created_at", std::chrono::duration_cast<std::chrono::seconds>(
                          row.tpCreatedAt.time_since_epoch())
                          .count()},
@@ -86,7 +88,10 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
             oRetention = jBody["deployment_retention"].get<int>();
           }
 
-          int64_t iId = _zrRepo.create(sName, iViewId, oRetention);
+          bool bManageSoa = jBody.value("manage_soa", false);
+          bool bManageNs = jBody.value("manage_ns", false);
+
+          int64_t iId = _zrRepo.create(sName, iViewId, oRetention, bManageSoa, bManageNs);
           return jsonResponse(201, {{"id", iId}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
@@ -130,7 +135,10 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
             oRetention = jBody["deployment_retention"].get<int>();
           }
 
-          _zrRepo.update(iId, sName, oRetention);
+          bool bManageSoa = jBody.value("manage_soa", false);
+          bool bManageNs = jBody.value("manage_ns", false);
+
+          _zrRepo.update(iId, sName, oRetention, bManageSoa, bManageNs);
           return jsonResponse(200, {{"message", "Zone updated"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
