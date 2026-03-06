@@ -92,6 +92,10 @@ components:
         token:
           type: string
           description: Decrypted token (only on GET by ID)
+        config:
+          type: object
+          description: Provider-specific configuration parameters
+          additionalProperties: true
         created_at:
           type: integer
           description: Unix epoch seconds
@@ -113,6 +117,10 @@ components:
           type: string
         token:
           type: string
+        config:
+          type: object
+          description: "Provider-specific configuration (e.g., server_id for PowerDNS, account_id for Cloudflare)"
+          additionalProperties: true
 
     ProviderUpdate:
       type: object
@@ -126,6 +134,10 @@ components:
         token:
           type: string
           description: Optional — omit to keep existing token
+        config:
+          type: object
+          description: Provider-specific configuration. Replaces existing config entirely when provided.
+          additionalProperties: true
 
     View:
       type: object
