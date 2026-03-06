@@ -7,7 +7,6 @@ services:
       POSTGRES_PASSWORD: ${DNS_DB_PASSWORD:-dns_dev_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./scripts/db:/docker-entrypoint-initdb.d:ro
     ports:
       - "${DNS_DB_PORT:-5432}:5432"
     healthcheck:

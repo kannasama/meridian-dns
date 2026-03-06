@@ -1,5 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { getSetupStatus } from '../api/setup'
+
+let setupChecked = false
+let setupRequired = false
 
 const router = createRouter({
   history: createWebHistory(),
@@ -8,6 +12,12 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: () => import('../views/LoginView.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/setup',
+      name: 'setup',
+      component: () => import('../views/SetupView.vue'),
       meta: { public: true },
     },
     {
@@ -60,6 +70,28 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  // Check setup status once on app load
+  if (!setupChecked) {
+    try {
+      const status = await getSetupStatus()
+      setupRequired = status.setup_required
+    } catch {
+      // If the endpoint fails, assume setup is not required
+      setupRequired = false
+    }
+    setupChecked = true
+  }
+
+  // Redirect to /setup if setup is required
+  if (setupRequired && to.name !== 'setup') {
+    return { name: 'setup' }
+  }
+
+  // Redirect away from /setup if setup is already complete
+  if (!setupRequired && to.name === 'setup') {
+    return { name: 'login' }
+  }
+
   if (to.meta.public) return true
 
   const auth = useAuthStore()

@@ -13,6 +13,10 @@ namespace dns::api {
 StaticFileHandler::StaticFileHandler(const std::string& sUiDir)
     : _sUiDir(sUiDir) {}
 
+void StaticFileHandler::setSetupToken(const std::string& sToken) {
+  _sSetupToken = sToken;
+}
+
 void StaticFileHandler::registerRoutes(crow::SimpleApp& app) {
   if (_sUiDir.empty() || !fs::is_directory(_sUiDir)) {
     spdlog::info("UI directory not configured or not found — static serving disabled");
@@ -49,6 +53,17 @@ void StaticFileHandler::registerRoutes(crow::SimpleApp& app) {
     std::string sIndexPath = _sUiDir + "/index.html";
     if (fs::is_regular_file(sIndexPath)) {
       auto sContent = readFile(sIndexPath);
+
+      // Inject setup token into index.html when setup mode is active
+      if (!_sSetupToken.empty()) {
+        auto nPos = sContent.find("</head>");
+        if (nPos != std::string::npos) {
+          std::string sScript = "<script>window.__SETUP_TOKEN__=\"" +
+                                _sSetupToken + "\";</script>";
+          sContent.insert(nPos, sScript);
+        }
+      }
+
       auto res = crow::response(200, sContent);
       res.set_header("Content-Type", "text/html; charset=utf-8");
       return res;

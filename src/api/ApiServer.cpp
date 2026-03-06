@@ -6,6 +6,7 @@
 #include "api/routes/HealthRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
+#include "api/routes/SetupRoutes.hpp"
 #include "api/routes/VariableRoutes.hpp"
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
@@ -18,6 +19,7 @@ ApiServer::ApiServer(crow::SimpleApp& app,
                      routes::DeploymentRoutes& dplrRoutes,
                      routes::HealthRoutes& hrRoutes,
                      routes::ProviderRoutes& prRoutes,
+                     routes::SetupRoutes& srRoutes,
                      routes::ViewRoutes& vrRoutes,
                      routes::ZoneRoutes& zrRoutes,
                      routes::RecordRoutes& rrRoutes,
@@ -28,6 +30,7 @@ ApiServer::ApiServer(crow::SimpleApp& app,
       _dplrRoutes(dplrRoutes),
       _hrRoutes(hrRoutes),
       _prRoutes(prRoutes),
+      _srRoutes(srRoutes),
       _vrRoutes(vrRoutes),
       _zrRoutes(zrRoutes),
       _rrRoutes(rrRoutes),
@@ -41,6 +44,7 @@ void ApiServer::registerRoutes() {
   _audrRoutes.registerRoutes(_app);
   _dplrRoutes.registerRoutes(_app);
   _prRoutes.registerRoutes(_app);
+  _srRoutes.registerRoutes(_app);
   _vrRoutes.registerRoutes(_app);
   _zrRoutes.registerRoutes(_app);
   _rrRoutes.registerRoutes(_app);

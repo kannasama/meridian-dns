@@ -1,3 +1,4 @@
+#include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
@@ -13,6 +14,7 @@
 #include "api/routes/HealthRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
+#include "api/routes/SetupRoutes.hpp"
 #include "api/routes/VariableRoutes.hpp"
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
@@ -31,6 +33,7 @@
 #include "dal/AuditRepository.hpp"
 #include "dal/ConnectionPool.hpp"
 #include "dal/DeploymentRepository.hpp"
+#include "dal/MigrationRunner.hpp"
 #include "dal/ProviderRepository.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/SessionRepository.hpp"
@@ -69,6 +72,7 @@ void printUsage(const char* pProgName) {
             << "Options:\n"
             << "  --help       Show this help message and exit\n"
             << "  --version    Show version information and exit\n"
+            << "  --migrate    Run database migrations and exit\n"
             << "\n"
             << "Environment variables (required):\n"
             << "  DNS_DB_URL          PostgreSQL connection string\n"
@@ -96,6 +100,25 @@ int main(int argc, char* argv[]) {
       std::cout.flush();
       std::quick_exit(EXIT_SUCCESS);
     }
+    if (arg == "--migrate") {
+      // Migration-only mode: need DB URL from config
+      try {
+        auto cfgApp = dns::common::Config::load();
+        dns::common::Logger::init(cfgApp.sLogLevel);
+        auto spLog = dns::common::Logger::get();
+
+        dns::dal::MigrationRunner mrRunner(cfgApp.sDbUrl, cfgApp.sMigrationsDir);
+        int iVersion = mrRunner.migrate();
+        spLog->info("Migrations complete. Schema version: {}", iVersion);
+        std::cout << "Migrations complete. Schema version: " << iVersion << "\n";
+        std::cout.flush();
+      } catch (const std::exception& ex) {
+        std::cerr << "[fatal] migration failed: " << ex.what() << std::endl;
+        std::cerr.flush();
+        std::quick_exit(EXIT_FAILURE);
+      }
+      std::quick_exit(EXIT_SUCCESS);
+    }
     std::cerr << "Unknown option: " << arg << "\n";
     printUsage(argv[0]);
     std::cout.flush();
@@ -111,6 +134,13 @@ int main(int argc, char* argv[]) {
     dns::common::Logger::init(cfgApp.sLogLevel);
     auto spLog = dns::common::Logger::get();
     spLog->info("Step 1: Configuration loaded successfully");
+
+    // ── Step 0: Run database migrations ──────────────────────────────────
+    {
+      dns::dal::MigrationRunner mrRunner(cfgApp.sDbUrl, cfgApp.sMigrationsDir);
+      int iVersion = mrRunner.migrate();
+      spLog->info("Step 0: Database migrations complete (schema version: {})", iVersion);
+    }
 
     // ── Step 2: Initialize CryptoService ─────────────────────────────────
     auto csService = std::make_unique<dns::security::CryptoService>(cfgApp.sMasterKey);
@@ -210,6 +240,29 @@ int main(int argc, char* argv[]) {
                 cfgApp.iApiKeyCleanupIntervalSeconds,
                 cfgApp.iAuditPurgeIntervalSeconds);
 
+    // ── Step 7b: Setup mode detection ────────────────────────────────────
+    auto setupRoutes = std::make_unique<dns::api::routes::SetupRoutes>(
+        *cpPool, *urRepo, *upSigner);
+    setupRoutes->loadSetupState();
+
+    std::string sSetupToken;
+    if (!setupRoutes->isSetupCompleted()) {
+      // Generate a 30-minute setup JWT
+      auto iNow = std::chrono::duration_cast<std::chrono::seconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
+      nlohmann::json jSetupPayload = {
+          {"purpose", "setup"},
+          {"iat", iNow},
+          {"exp", iNow + 1800},  // 30 minutes
+      };
+      sSetupToken = upSigner->sign(jSetupPayload);
+      setupRoutes->setSetupToken(sSetupToken);
+      spLog->info("Step 7b: Setup mode ACTIVE — complete setup via web UI within 30 minutes");
+    } else {
+      spLog->info("Step 7b: Setup already completed");
+    }
+
     // ── Step 8: Initialize SamlReplayCache ────────────────────────────────
     auto srcCache = std::make_unique<dns::security::SamlReplayCache>();
     spLog->info("Step 8: SamlReplayCache initialized");
@@ -263,12 +316,16 @@ int main(int argc, char* argv[]) {
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
         crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
-        *providerRoutes, *viewRoutes, *zoneRoutes, *recordRoutes, *variableRoutes);
+        *providerRoutes, *setupRoutes, *viewRoutes, *zoneRoutes, *recordRoutes,
+        *variableRoutes);
 
     apiServer->registerRoutes();
 
     // Serve static UI files (SPA fallback) — must be registered after API routes
     auto sfhHandler = std::make_unique<dns::api::StaticFileHandler>(cfgApp.sUiDir);
+    if (!sSetupToken.empty()) {
+      sfhHandler->setSetupToken(sSetupToken);
+    }
     sfhHandler->registerRoutes(crowApp);
 
     spLog->info("Step 10: API routes registered");

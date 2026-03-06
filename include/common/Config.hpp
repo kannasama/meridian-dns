@@ -52,6 +52,9 @@ struct Config {
   // ── Web UI ───────────────────────────────────────────────────────────
   std::string sUiDir;  // path to built UI assets (empty = disabled)
 
+  // ── Migrations ──────────────────────────────────────────────────────
+  std::string sMigrationsDir = "/opt/meridian-dns/db";  // path to migration version directories
+
   // ── Audit ─────────────────────────────────────────────────────────────
   std::optional<std::string> oAuditDbUrl;
   bool bAuditStdout = false;

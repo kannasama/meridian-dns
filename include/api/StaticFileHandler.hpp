@@ -16,8 +16,15 @@ class StaticFileHandler {
   /// Register catch-all route on the Crow app.
   void registerRoutes(crow::SimpleApp& app);
 
+  /// Set the setup JWT token to inject into index.html during setup mode.
+  void setSetupToken(const std::string& sToken);
+
+  /// Clear the setup token (called after setup completes).
+  void clearSetupToken() { _sSetupToken.clear(); }
+
  private:
   std::string _sUiDir;
+  std::string _sSetupToken;  ///< Empty = no injection.
 
   /// Read a file from disk and return its contents (empty string on failure).
   static std::string readFile(const std::string& sPath);

@@ -139,6 +139,12 @@ Config Config::load() {
   // Web UI
   cfg.sUiDir = getEnv("DNS_UI_DIR");
 
+  // Migrations
+  const std::string sMigrationsDir = getEnv("DNS_MIGRATIONS_DIR");
+  if (!sMigrationsDir.empty()) {
+    cfg.sMigrationsDir = sMigrationsDir;
+  }
+
   // Audit
   const std::string sAuditDbUrl = getEnv("DNS_AUDIT_DB_URL");
   if (!sAuditDbUrl.empty()) {

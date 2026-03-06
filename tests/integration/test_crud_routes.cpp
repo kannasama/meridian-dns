@@ -6,6 +6,7 @@
 #include "api/routes/HealthRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
+#include "api/routes/SetupRoutes.hpp"
 #include "api/routes/VariableRoutes.hpp"
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
@@ -104,11 +105,16 @@ class CrudRoutesTest : public ::testing::Test {
     _auditRoutes = std::make_unique<dns::api::routes::AuditRoutes>(
         *_arRepo, *_amMiddleware, 365);
 
+    // Setup routes
+    _setupRoutes = std::make_unique<dns::api::routes::SetupRoutes>(
+        *_cpPool, *_urRepo, *_jsSigner);
+
     // Crow app + server
     _app = std::make_unique<crow::SimpleApp>();
     _apiServer = std::make_unique<dns::api::ApiServer>(
         *_app, *_authRoutes, *_auditRoutes, *_deploymentRoutes, *_healthRoutes,
-        *_providerRoutes, *_viewRoutes, *_zoneRoutes, *_recordRoutes, *_variableRoutes);
+        *_providerRoutes, *_setupRoutes, *_viewRoutes, *_zoneRoutes, *_recordRoutes,
+        *_variableRoutes);
     _apiServer->registerRoutes();
     _app->validate();
 
@@ -207,6 +213,7 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::api::routes::VariableRoutes> _variableRoutes;
   std::unique_ptr<dns::api::routes::DeploymentRoutes> _deploymentRoutes;
   std::unique_ptr<dns::api::routes::AuditRoutes> _auditRoutes;
+  std::unique_ptr<dns::api::routes::SetupRoutes> _setupRoutes;
   std::unique_ptr<crow::SimpleApp> _app;
   std::unique_ptr<dns::api::ApiServer> _apiServer;
 };

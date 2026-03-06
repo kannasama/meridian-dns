@@ -12,6 +12,7 @@ class AuditRoutes;
 class DeploymentRoutes;
 class HealthRoutes;
 class ProviderRoutes;
+class SetupRoutes;
 class ViewRoutes;
 class ZoneRoutes;
 class RecordRoutes;
@@ -30,6 +31,7 @@ class ApiServer {
             routes::DeploymentRoutes& dplrRoutes,
             routes::HealthRoutes& hrRoutes,
             routes::ProviderRoutes& prRoutes,
+            routes::SetupRoutes& srRoutes,
             routes::ViewRoutes& vrRoutes,
             routes::ZoneRoutes& zrRoutes,
             routes::RecordRoutes& rrRoutes,
@@ -52,6 +54,7 @@ class ApiServer {
   routes::DeploymentRoutes& _dplrRoutes;
   routes::HealthRoutes& _hrRoutes;
   routes::ProviderRoutes& _prRoutes;
+  routes::SetupRoutes& _srRoutes;
   routes::ViewRoutes& _vrRoutes;
   routes::ZoneRoutes& _zrRoutes;
   routes::RecordRoutes& _rrRoutes;
