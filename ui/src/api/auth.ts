@@ -10,5 +10,5 @@ export function logout(): Promise<{ message: string }> {
 }
 
 export function me(): Promise<User> {
-  return get('/me')
+  return get('/auth/me')
 }

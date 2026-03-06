@@ -25,14 +25,17 @@ void StaticFileHandler::registerRoutes(crow::SimpleApp& app) {
 
   spdlog::info("Serving static UI files from {}", _sUiDir);
 
-  // Crow catchall route — serves static files or falls back to index.html for SPA routing
+  // Crow catchall route — serves static files or falls back to index.html for SPA routing.
+  // Uses (request, response&) void signature so the wrapper does NOT call res.end().
+  // Router::handle() calls res.end() exactly once after this handler returns (routing.h:1714).
+  // Calling res.end() here would double-end, corrupting keep-alive connection state.
   CROW_CATCHALL_ROUTE(app)
-  ([this](const crow::request& req) {
+  ([this](const crow::request& req, crow::response& res) {
     std::string sPath = req.url;
 
-    // Skip API routes
+    // Skip API routes — leave the 404 code set by Router::find_route
     if (sPath.rfind("/api/", 0) == 0) {
-      return crow::response(404, "Not found");
+      return;
     }
 
     // Remove leading slash and try to serve the file
@@ -43,10 +46,10 @@ void StaticFileHandler::registerRoutes(crow::SimpleApp& app) {
     // Try the exact file path
     std::string sFullPath = _sUiDir + "/" + sPath;
     if (!sPath.empty() && fs::is_regular_file(sFullPath)) {
-      auto sContent = readFile(sFullPath);
-      auto res = crow::response(200, sContent);
+      res.code = 200;
+      res.body = readFile(sFullPath);
       res.set_header("Content-Type", mimeType(sFullPath));
-      return res;
+      return;
     }
 
     // SPA fallback: serve index.html
@@ -64,12 +67,13 @@ void StaticFileHandler::registerRoutes(crow::SimpleApp& app) {
         }
       }
 
-      auto res = crow::response(200, sContent);
+      res.code = 200;
+      res.body = std::move(sContent);
       res.set_header("Content-Type", "text/html; charset=utf-8");
-      return res;
+      return;
     }
 
-    return crow::response(404, "Not found");
+    // File not found — leave 404 from Router::find_route
   });
 }
 
