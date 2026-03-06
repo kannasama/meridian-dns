@@ -120,7 +120,7 @@ TEST_F(DeploymentEngineTest, PushFailsWithNoProviders) {
   int64_t iUserId = result[0][0].as<int64_t>();
   txn.commit();
 
-  EXPECT_THROW(depEngine.push(iZoneId, false, iUserId, "alice"),
+  EXPECT_THROW(depEngine.push(iZoneId, {}, iUserId, "alice"),
                dns::common::ValidationError);
 }
 
@@ -129,6 +129,6 @@ TEST_F(DeploymentEngineTest, PushFailsForNonexistentZone) {
       *_deEngine, *_veEngine, *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo,
       *_drRepo, *_arRepo, nullptr, 10);
 
-  EXPECT_THROW(depEngine.push(99999, false, 1, "alice"),
+  EXPECT_THROW(depEngine.push(99999, {}, 1, "alice"),
                dns::common::NotFoundError);
 }

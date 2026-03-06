@@ -201,17 +201,30 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           auto rcCtx = authenticate(_amMiddleware, req);
           requireRole(rcCtx, "operator");
 
-          bool bPurgeDrift = false;
+          std::vector<common::DriftAction> vDriftActions;
           if (!req.body.empty()) {
             try {
               auto jBody = nlohmann::json::parse(req.body);
-              bPurgeDrift = jBody.value("purge_drift", false);
+              if (jBody.contains("drift_actions") && jBody["drift_actions"].is_array()) {
+                for (const auto& jAction : jBody["drift_actions"]) {
+                  common::DriftAction da;
+                  da.sName = jAction.value("name", "");
+                  da.sType = jAction.value("type", "");
+                  da.sAction = jAction.value("action", "");
+                  if (da.sAction != "adopt" && da.sAction != "delete" && da.sAction != "ignore") {
+                    throw common::ValidationError(
+                        "INVALID_DRIFT_ACTION",
+                        "drift action must be 'adopt', 'delete', or 'ignore'");
+                  }
+                  vDriftActions.push_back(std::move(da));
+                }
+              }
             } catch (const nlohmann::json::exception&) {
-              // Empty or invalid body — use defaults
+              // Empty or invalid body
             }
           }
 
-          _depEngine.push(iZoneId, bPurgeDrift, rcCtx.iUserId, rcCtx.sUsername);
+          _depEngine.push(iZoneId, vDriftActions, rcCtx.iUserId, rcCtx.sUsername);
           return jsonResponse(200, {{"message", "Push completed successfully"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);

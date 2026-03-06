@@ -54,6 +54,14 @@ struct PreviewResult {
   std::chrono::system_clock::time_point tpGeneratedAt;
 };
 
+/// User decision for a drift record during deployment.
+/// Class abbreviation: da
+struct DriftAction {
+  std::string sName;
+  std::string sType;
+  std::string sAction;  // "adopt", "delete", or "ignore"
+};
+
 /// Identity context injected by AuthMiddleware.
 /// Class abbreviation: rc
 struct RequestContext {

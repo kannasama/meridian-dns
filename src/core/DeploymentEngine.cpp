@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <iomanip>
+#include <map>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
@@ -99,7 +100,8 @@ nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
   };
 }
 
-void DeploymentEngine::push(int64_t iZoneId, bool bPurgeDrift,
+void DeploymentEngine::push(int64_t iZoneId,
+                            const std::vector<common::DriftAction>& vDriftActions,
                             int64_t iActorUserId, const std::string& sActor) {
   auto spLog = common::Logger::get();
 
@@ -119,6 +121,38 @@ void DeploymentEngine::push(int64_t iZoneId, bool bPurgeDrift,
   if (prResult.vDiffs.empty()) {
     spLog->info("DeploymentEngine: zone '{}' — nothing to push", prResult.sZoneName);
     return;
+  }
+
+  // 2b. Collect drift records and validate drift actions
+  std::vector<common::RecordDiff> vDriftDiffs;
+  for (const auto& diff : prResult.vDiffs) {
+    if (diff.action == common::DiffAction::Drift) {
+      vDriftDiffs.push_back(diff);
+    }
+  }
+
+  // Build a lookup map for drift actions
+  std::map<std::string, std::string> mDriftActionMap;
+  for (const auto& da : vDriftActions) {
+    mDriftActionMap[da.sName + "\t" + da.sType] = da.sAction;
+  }
+
+  // If there are drift records, require actions for all of them
+  if (!vDriftDiffs.empty() && vDriftActions.empty()) {
+    throw common::ValidationError(
+        "DRIFT_ACTIONS_REQUIRED",
+        "Preview contains " + std::to_string(vDriftDiffs.size()) +
+            " drift records — provide drift_actions for each");
+  }
+
+  // Validate all drift records have an action
+  for (const auto& drift : vDriftDiffs) {
+    std::string sKey = drift.sName + "\t" + drift.sType;
+    if (mDriftActionMap.find(sKey) == mDriftActionMap.end()) {
+      throw common::ValidationError(
+          "MISSING_DRIFT_ACTION",
+          "No drift action for " + drift.sName + "/" + drift.sType);
+    }
   }
 
   // 3. Get zone and view with providers
@@ -166,12 +200,22 @@ void DeploymentEngine::push(int64_t iZoneId, bool bPurgeDrift,
             break;
           }
           case common::DiffAction::Drift: {
-            if (bPurgeDrift) {
-              // Build a synthetic provider record ID for deletion
+            std::string sKey = diff.sName + "\t" + diff.sType;
+            auto itAction = mDriftActionMap.find(sKey);
+            if (itAction == mDriftActionMap.end() || itAction->second == "ignore") {
+              break;  // Skip
+            }
+            if (itAction->second == "adopt") {
+              // Create record in DB as managed
+              _rrRepo.create(iZoneId, diff.sName, diff.sType,
+                             static_cast<int>(diff.uTtl), diff.sProviderValue,
+                             diff.iPriority);
+              spLog->info("DeploymentEngine: adopted drift record {}/{}", diff.sName, diff.sType);
+            } else if (itAction->second == "delete") {
               std::string sRecordId = diff.sName + "/" + diff.sType + "/" + diff.sProviderValue;
               bool bDeleted = upProvider->deleteRecord(oZone->sName, sRecordId);
               if (!bDeleted) {
-                spLog->warn("DeploymentEngine: failed to purge drift record {}/{}/{}",
+                spLog->warn("DeploymentEngine: failed to delete drift record {}/{}/{}",
                             diff.sName, diff.sType, diff.sProviderValue);
               }
             }

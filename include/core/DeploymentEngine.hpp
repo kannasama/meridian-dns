@@ -4,8 +4,11 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <nlohmann/json.hpp>
+
+#include "common/Types.hpp"
 
 namespace dns::dal {
 class AuditRepository;
@@ -44,7 +47,8 @@ class DeploymentEngine {
   /// Execute the full push pipeline for a zone.
   /// Throws DeploymentLockedError if the zone is already being deployed.
   /// Throws ProviderError on provider failure.
-  void push(int64_t iZoneId, bool bPurgeDrift,
+  void push(int64_t iZoneId,
+            const std::vector<common::DriftAction>& vDriftActions,
             int64_t iActorUserId, const std::string& sActor);
 
  private:
