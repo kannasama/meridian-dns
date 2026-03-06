@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -111,6 +111,21 @@ function goToDeploy() {
   router.push({ name: 'deployments', query: { zones: String(zoneId) } })
 }
 
+const showPriority = computed(() => form.value.type === 'MX' || form.value.type === 'SRV')
+
+const hasPriorityRecords = computed(() =>
+  records.value.some((r) => r.type === 'MX' || r.type === 'SRV'),
+)
+
+watch(
+  () => form.value.type,
+  (newType) => {
+    if (newType !== 'MX' && newType !== 'SRV') {
+      form.value.priority = 0
+    }
+  },
+)
+
 onMounted(fetchData)
 </script>
 
@@ -183,7 +198,7 @@ onMounted(fetchData)
             <span class="font-mono">{{ data.ttl }}</span>
           </template>
         </Column>
-        <Column field="priority" header="Priority" sortable style="width: 5rem">
+        <Column v-if="hasPriorityRecords" field="priority" header="Priority" sortable style="width: 5rem">
           <template #body="{ data }">
             <span class="font-mono">{{ data.priority }}</span>
           </template>
@@ -252,7 +267,7 @@ onMounted(fetchData)
             <label for="rec-ttl">TTL</label>
             <InputNumber id="rec-ttl" v-model="form.ttl" :min="1" :max="604800" class="w-full" />
           </div>
-          <div class="field flex-1">
+          <div v-if="showPriority" class="field flex-1">
             <label for="rec-priority">Priority</label>
             <InputNumber id="rec-priority" v-model="form.priority" :min="0" class="w-full" />
           </div>
