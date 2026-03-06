@@ -14,7 +14,8 @@ architectural decisions, and development roadmap so context transfers across mac
 - **Phase 6 complete:** PowerDNS Provider + Core Engines
 - **Phase 7 complete:** Deployment Pipeline + GitOps
 - **Phase 8 complete:** REST API Hardening + Docker Compose
-- **Next task:** Phase 9
+- **Phase 9 complete:** Web UI (Vue 3 + TypeScript + PrimeVue)
+- **Next task:** Phase 10
 - **Tests:** 218 total (127 pass, 91 skip — DB integration tests need `DNS_DB_URL`)
 
 Build and test:
@@ -22,6 +23,12 @@ Build and test:
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 build/tests/dns-tests
+```
+
+UI development:
+```bash
+cd ui && npm install && npm run dev   # Vite dev server on :5173, proxies /api/v1 to :8080
+cd ui && npm run build                # Production build to ui/dist/
 ```
 
 Startup sequence: all steps wired in `src/main.cpp` (steps 1–12 complete).
@@ -41,6 +48,10 @@ Startup sequence: all steps wired in `src/main.cpp` (steps 1–12 complete).
 | Logging | spdlog |
 | JSON | nlohmann/json |
 | Testing | Google Test + Google Mock (FetchContent) |
+| Frontend | Vue 3 + TypeScript + Vite (in `ui/`) |
+| UI components | PrimeVue (Aura preset, indigo accent) |
+| State management | Pinia |
+| Routing | Vue Router 4 |
 
 **HTTP library (Crow):** Header-only, FetchContent-compatible, Flask-like middleware API,
 actively maintained (v1.3.1, Feb 2026).
@@ -176,14 +187,40 @@ provider state.
 
 ---
 
-### Phase 9 — Web UI (Vue 3 + TypeScript)
+### Phase 9 — Web UI (Vue 3 + TypeScript) ← COMPLETE
 
-In-repo at `ui/`. Stack: Vite + Vue 3 + TypeScript + PrimeVue + Pinia.
-Crow serves the built static files in production (single binary). See
-`docs/plans/2026-03-05-phase-9-web-ui.md` for full design.
+**Summary:** Full web interface in `ui/`. Vite + Vue 3 + TypeScript + PrimeVue (Aura/indigo)
+with dark/light mode, accent color customization, JWT auth, and role-based UI restrictions.
+Crow serves built static files in production (single binary).
 
-Feature order: scaffold → providers → views → zones/records → variables → deployments →
-audit log → dashboard.
+**Deliverables:**
+- `ui/src/theme/preset.ts` — PrimeVue Aura preset with indigo primary, dark mode default
+- `ui/src/stores/auth.ts` — JWT auth store with hydrate/login/logout
+- `ui/src/stores/theme.ts` — dark/light mode + accent color persistence
+- `ui/src/stores/notification.ts` — toast message queue bridged to PrimeVue Toast
+- `ui/src/api/client.ts` — typed fetch wrapper with JWT injection + 401 redirect
+- `ui/src/api/*.ts` — typed API modules for all 24 endpoints (10 modules)
+- `ui/src/composables/useCrud.ts` — generic CRUD composable with loading/error/toast
+- `ui/src/composables/useConfirm.ts` — confirm dialog wrapper (delete + generic)
+- `ui/src/composables/useRole.ts` — isAdmin/isOperator/isViewer from auth store
+- `ui/src/components/layout/` — AppShell, AppTopBar, AppSidebar
+- `ui/src/components/shared/` — PageHeader, EmptyState
+- `ui/src/views/LoginView.vue` — standalone login page with JWT flow
+- `ui/src/views/DashboardView.vue` — stat cards (zones, providers, health), zone list
+- `ui/src/views/ProvidersView.vue` — DataTable CRUD + Drawer form, type badges
+- `ui/src/views/ViewsView.vue` — CRUD + MultiSelect provider attach/detach
+- `ui/src/views/ZonesView.vue` — DataTable with row-click navigation to detail
+- `ui/src/views/ZoneDetailView.vue` — records sub-table, modal form, Deploy link
+- `ui/src/views/VariablesView.vue` — CRUD with scope/zone dropdown filters
+- `ui/src/views/DeploymentsView.vue` — multi-zone preview, color-coded diffs, push,
+  deployment history with rollback
+- `ui/src/views/AuditView.vue` — filterable table, expandable detail, NDJSON export, purge
+- `src/api/StaticFileHandler.cpp` — Crow catchall route with SPA fallback
+- `CMakeLists.txt` — `BUILD_UI=ON` default, npm ci + build custom target
+- `Dockerfile` — added `node:22-slim` UI build stage, `DNS_UI_DIR` env var
+- `include/common/Config.hpp` — added `sUiDir` field, loaded from `DNS_UI_DIR`
+
+**Design:** See `docs/plans/2026-03-05-phase-9-web-ui.md` for full design spec.
 
 ---
 
@@ -241,15 +278,23 @@ only for non-owning references.
 | `docs/TUI_DESIGN.md` | TUI client design spec |
 | `scripts/db/001_initial_schema.sql` | Full PostgreSQL schema (11 tables) |
 | `scripts/db/002_add_indexes.sql` | 11 performance indexes |
-| `src/main.cpp` | Startup sequence (all steps 1–12 wired; Phase 8 complete) |
+| `src/main.cpp` | Startup sequence (all steps 1–12 wired; Phase 9 complete) |
 | `include/common/Types.hpp` | Core data types: `DnsRecord`, `PreviewResult`, `RequestContext` |
 | `include/common/Errors.hpp` | `AppError` hierarchy (incl. `RateLimitedError` 429) |
 | `include/api/RouteHelpers.hpp` | Shared route helpers (auth, response, security headers) |
 | `include/api/RequestValidator.hpp` | Input validation (field length/format constraints) |
 | `include/api/RateLimiter.hpp` | Token-bucket rate limiter for auth endpoints |
 | `docs/openapi.yaml` | OpenAPI 3.1 specification (24 endpoints) |
-| `Dockerfile` | Multi-stage build (builder → runtime) |
+| `Dockerfile` | Multi-stage build (node UI → C++ builder → runtime) |
 | `docker-compose.yml` | PostgreSQL 16 + PowerDNS + app |
+| `include/api/StaticFileHandler.hpp` | Crow SPA static file serving |
+| `ui/` | Vue 3 + TypeScript web UI (Vite project) |
+| `ui/src/api/` | Typed API client modules (10 files, all 24 endpoints) |
+| `ui/src/views/` | Page-level Vue components (9 views) |
+| `ui/src/composables/` | Shared logic: `useCrud`, `useConfirm`, `useRole` |
+| `ui/src/stores/` | Pinia stores: auth, theme, notification |
+| `ui/src/theme/preset.ts` | PrimeVue Aura preset with indigo primary |
+| `docs/plans/2026-03-05-phase-9-web-ui.md` | Phase 9 design spec |
 | `tests/unit/` | Unit tests (MaintenanceScheduler, SamlReplayCache, JWT, Crypto, RouteHelpers, RequestValidator, RateLimiter) |
 | `tests/integration/` | Integration tests (AuthService, AuthMiddleware, repositories, API validation) |
 
