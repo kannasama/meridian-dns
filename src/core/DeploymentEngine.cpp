@@ -130,7 +130,8 @@ void DeploymentEngine::push(int64_t iZoneId, bool bPurgeDrift,
     if (!oProvider) continue;
 
     auto upProvider = dns::providers::ProviderFactory::create(
-        oProvider->sType, oProvider->sApiEndpoint, oProvider->sDecryptedToken);
+        oProvider->sType, oProvider->sApiEndpoint, oProvider->sDecryptedToken,
+        oProvider->jConfig);
 
     // 4. Execute diffs
     for (const auto& diff : prResult.vDiffs) {

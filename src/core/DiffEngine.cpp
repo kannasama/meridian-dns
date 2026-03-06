@@ -175,7 +175,8 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
     }
 
     auto upProvider = dns::providers::ProviderFactory::create(
-        oProvider->sType, oProvider->sApiEndpoint, oProvider->sDecryptedToken);
+        oProvider->sType, oProvider->sApiEndpoint, oProvider->sDecryptedToken,
+        oProvider->jConfig);
 
     try {
       auto vProviderRecords = upProvider->listRecords(oZone->sName);
