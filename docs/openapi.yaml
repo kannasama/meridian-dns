@@ -177,6 +177,12 @@ components:
         deployment_retention:
           type: integer
           nullable: true
+        manage_soa:
+          type: boolean
+          default: false
+        manage_ns:
+          type: boolean
+          default: false
         created_at:
           type: integer
 
@@ -192,6 +198,12 @@ components:
         deployment_retention:
           type: integer
           nullable: true
+        manage_soa:
+          type: boolean
+          default: false
+        manage_ns:
+          type: boolean
+          default: false
 
     Record:
       type: object
@@ -870,6 +882,12 @@ paths:
                 deployment_retention:
                   type: integer
                   nullable: true
+                manage_soa:
+                  type: boolean
+                  default: false
+                manage_ns:
+                  type: boolean
+                  default: false
       responses:
         "200":
           description: Zone updated
