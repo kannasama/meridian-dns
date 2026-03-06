@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "providers/IProvider.hpp"
 
 namespace httplib {
@@ -16,7 +18,8 @@ namespace dns::providers {
 /// Class abbreviation: pdns
 class PowerDnsProvider : public IProvider {
  public:
-  PowerDnsProvider(std::string sApiEndpoint, std::string sToken);
+  PowerDnsProvider(std::string sApiEndpoint, std::string sToken,
+                   nlohmann::json jConfig = nlohmann::json::object());
   ~PowerDnsProvider() override;
 
   std::string name() const override;
@@ -45,6 +48,8 @@ class PowerDnsProvider : public IProvider {
  private:
   std::string _sApiEndpoint;
   std::string _sToken;
+  std::string _sServerId;
+  nlohmann::json _jConfig;
   std::unique_ptr<httplib::Client> _upClient;
 
   /// Ensure zone name ends with a dot (PowerDNS requirement).

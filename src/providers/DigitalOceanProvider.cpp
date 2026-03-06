@@ -4,8 +4,11 @@
 
 namespace dns::providers {
 
-DigitalOceanProvider::DigitalOceanProvider(std::string sApiEndpoint, std::string sToken)
-    : _sApiEndpoint(std::move(sApiEndpoint)), _sToken(std::move(sToken)) {}
+DigitalOceanProvider::DigitalOceanProvider(std::string sApiEndpoint, std::string sToken,
+                                             nlohmann::json jConfig)
+    : _sApiEndpoint(std::move(sApiEndpoint)),
+      _sToken(std::move(sToken)),
+      _jConfig(std::move(jConfig)) {}
 
 DigitalOceanProvider::~DigitalOceanProvider() = default;
 

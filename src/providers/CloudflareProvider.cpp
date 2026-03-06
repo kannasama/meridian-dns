@@ -4,8 +4,12 @@
 
 namespace dns::providers {
 
-CloudflareProvider::CloudflareProvider(std::string sApiEndpoint, std::string sToken)
-    : _sApiEndpoint(std::move(sApiEndpoint)), _sToken(std::move(sToken)) {}
+CloudflareProvider::CloudflareProvider(std::string sApiEndpoint, std::string sToken,
+                                       nlohmann::json jConfig)
+    : _sApiEndpoint(std::move(sApiEndpoint)),
+      _sToken(std::move(sToken)),
+      _sAccountId(jConfig.value("account_id", "")),
+      _jConfig(std::move(jConfig)) {}
 
 CloudflareProvider::~CloudflareProvider() = default;
 

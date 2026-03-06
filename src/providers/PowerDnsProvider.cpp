@@ -16,9 +16,12 @@ namespace dns::providers {
 
 using json = nlohmann::json;
 
-PowerDnsProvider::PowerDnsProvider(std::string sApiEndpoint, std::string sToken)
+PowerDnsProvider::PowerDnsProvider(std::string sApiEndpoint, std::string sToken,
+                                   nlohmann::json jConfig)
     : _sApiEndpoint(std::move(sApiEndpoint)),
       _sToken(std::move(sToken)),
+      _sServerId(jConfig.value("server_id", "localhost")),
+      _jConfig(std::move(jConfig)),
       _upClient(std::make_unique<httplib::Client>(_sApiEndpoint)) {
   _upClient->set_default_headers({{"X-API-Key", _sToken}});
   _upClient->set_connection_timeout(5);

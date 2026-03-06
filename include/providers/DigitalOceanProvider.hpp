@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "providers/IProvider.hpp"
 
 namespace dns::providers {
@@ -10,7 +12,8 @@ namespace dns::providers {
 /// DigitalOcean API v2 /domains provider implementation.
 class DigitalOceanProvider : public IProvider {
  public:
-  DigitalOceanProvider(std::string sApiEndpoint, std::string sToken);
+  DigitalOceanProvider(std::string sApiEndpoint, std::string sToken,
+                       nlohmann::json jConfig = nlohmann::json::object());
   ~DigitalOceanProvider() override;
 
   std::string name() const override;
@@ -26,6 +29,7 @@ class DigitalOceanProvider : public IProvider {
  private:
   std::string _sApiEndpoint;
   std::string _sToken;
+  nlohmann::json _jConfig;
 };
 
 }  // namespace dns::providers
