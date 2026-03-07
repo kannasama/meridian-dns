@@ -12,7 +12,7 @@ export function parseCsv(text: string): ParseResult {
     return { records: [], warnings: ['File must have a header row and at least one data row'] }
   }
 
-  const header = lines[0].toLowerCase().split(',').map((h) => h.trim())
+  const header = lines[0]!.toLowerCase().split(',').map((h) => h.trim())
   const nameIdx = header.indexOf('name')
   const typeIdx = header.indexOf('type')
   const valueIdx = header.indexOf('value')
@@ -25,7 +25,7 @@ export function parseCsv(text: string): ParseResult {
 
   const records: RecordCreate[] = []
   for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim()
+    const line = lines[i]!.trim()
     if (!line) continue
     const cols = line.split(',').map((c) => c.trim())
     const name = cols[nameIdx] || ''
@@ -89,7 +89,7 @@ export function parseDnsControl(text: string): ParseResult {
   const varRegex = /var\s+(\w+)\s*=\s*"([^"]*)"[;,]?/g
   let match: RegExpExecArray | null
   while ((match = varRegex.exec(text)) !== null) {
-    vars[match[1]] = match[2]
+    vars[match[1]!] = match[2]!
   }
 
   // Phase 2: Extract record macros
@@ -116,15 +116,15 @@ export function parseDnsControl(text: string): ParseResult {
       let priority = 0
 
       if (config.hasPriority) {
-        priority = parseInt(match[2], 10)
-        value = match[4] || match[5] || ''
+        priority = parseInt(match[2]!, 10)
+        value = match[4] ?? match[5] ?? ''
       } else {
-        value = match[3] || match[4] || ''
+        value = match[3] ?? match[4] ?? ''
       }
 
       // Substitute DNSControl variables
       if (!value.startsWith('"') && vars[value]) {
-        value = vars[value]
+        value = vars[value]!
       }
 
       if (!name || !value) {

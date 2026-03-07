@@ -121,6 +121,12 @@ function resetState() {
 }
 
 const isTextTab = computed(() => activeTab.value < 3)
+
+const placeholder = computed(() => {
+  if (activeTab.value === 0) return 'name,type,value,ttl,priority\n@,A,192.168.1.1,300,0'
+  if (activeTab.value === 1) return '[{"name":"@","type":"A","value_template":"192.168.1.1"}]'
+  return 'Paste DNSControl D() block here...'
+})
 </script>
 
 <template>
@@ -139,13 +145,7 @@ const isTextTab = computed(() => activeTab.value < 3)
         v-model="rawInput"
         :rows="8"
         class="w-full font-mono"
-        :placeholder="
-          activeTab === 0
-            ? 'name,type,value,ttl,priority\n@,A,192.168.1.1,300,0'
-            : activeTab === 1
-              ? '[{\"name\":\"@\",\"type\":\"A\",\"value_template\":\"192.168.1.1\"}]'
-              : 'Paste DNSControl D() block here...'
-        "
+        :placeholder="placeholder"
       />
       <div class="input-actions">
         <FileUpload
@@ -198,18 +198,18 @@ const isTextTab = computed(() => activeTab.value < 3)
           </template>
         </Column>
         <Column field="value_template" header="Value">
-          <template #body="{ data, index }">
+          <template #body="{ index }">
             <InputText
-              v-model="parseResult!.records[index].value_template"
+              v-model="parseResult!.records[index]!.value_template"
               class="w-full font-mono"
               size="small"
             />
           </template>
         </Column>
         <Column field="ttl" header="TTL" style="width: 5rem">
-          <template #body="{ data, index }">
+          <template #body="{ index }">
             <InputNumber
-              v-model="parseResult!.records[index].ttl"
+              v-model="parseResult!.records[index]!.ttl"
               :min="1"
               size="small"
               class="w-full"

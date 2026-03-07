@@ -126,7 +126,7 @@ async function pushZone(zoneId: number) {
     const actions: DriftAction[] = []
     if (zoneActions) {
       for (const [key, action] of zoneActions) {
-        const [name, type] = key.split('\t')
+        const [name = '', type = ''] = key.split('\t')
         actions.push({ name, type, action })
       }
     }
