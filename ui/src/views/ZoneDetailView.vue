@@ -11,6 +11,7 @@ import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import PageHeader from '../components/shared/PageHeader.vue'
+import ImportDialog from '../components/records/ImportDialog.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import { useConfirmAction } from '../composables/useConfirm'
 import { useRole } from '../composables/useRole'
@@ -32,6 +33,7 @@ const records = ref<DnsRecord[]>([])
 const loading = ref(true)
 
 const dialogVisible = ref(false)
+const importDialogVisible = ref(false)
 const editingRecordId = ref<number | null>(null)
 const form = ref<RecordCreate>({
   name: '',
@@ -144,6 +146,14 @@ onMounted(fetchData)
           icon="pi pi-play"
           severity="success"
           @click="goToDeploy"
+          class="mr-2"
+        />
+        <Button
+          v-if="isOperator"
+          label="Import"
+          icon="pi pi-download"
+          severity="secondary"
+          @click="importDialogVisible = true"
           class="mr-2"
         />
         <Button
@@ -275,6 +285,12 @@ onMounted(fetchData)
         <Button type="submit" :label="editingRecordId ? 'Save' : 'Create'" class="w-full" />
       </form>
     </Dialog>
+
+    <ImportDialog
+      v-model:visible="importDialogVisible"
+      :zoneId="zoneId"
+      @imported="fetchData"
+    />
   </div>
 </template>
 
