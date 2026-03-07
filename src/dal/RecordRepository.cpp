@@ -3,6 +3,7 @@
 #include "common/Errors.hpp"
 #include "dal/ConnectionPool.hpp"
 
+#include <nlohmann/json.hpp>
 #include <pqxx/pqxx>
 
 namespace dns::dal {
@@ -18,9 +19,9 @@ int64_t RecordRepository::create(int64_t iZoneId, const std::string& sName,
 
   try {
     auto result = txn.exec(
-        "INSERT INTO records (zone_id, name, type, ttl, value_template, priority) "
-        "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-        pqxx::params{iZoneId, sName, sType, iTtl, sValueTemplate, iPriority});
+        "INSERT INTO records (zone_id, name, type, ttl, value_template, priority, provider_meta) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) RETURNING id",
+        pqxx::params{iZoneId, sName, sType, iTtl, sValueTemplate, iPriority, nullptr});
     txn.commit();
     return result.one_row()[0].as<int64_t>();
   } catch (const pqxx::foreign_key_violation&) {
@@ -35,7 +36,8 @@ std::vector<RecordRow> RecordRepository::listByZoneId(int64_t iZoneId) {
   auto result = txn.exec(
       "SELECT id, zone_id, name, type, ttl, value_template, priority, last_audit_id, "
       "EXTRACT(EPOCH FROM created_at)::bigint, "
-      "EXTRACT(EPOCH FROM updated_at)::bigint "
+      "EXTRACT(EPOCH FROM updated_at)::bigint, "
+      "provider_meta "
       "FROM records WHERE zone_id = $1 ORDER BY id",
       pqxx::params{iZoneId});
   txn.commit();
@@ -56,6 +58,9 @@ std::vector<RecordRow> RecordRepository::listByZoneId(int64_t iZoneId) {
         std::chrono::seconds(row[8].as<int64_t>()));
     rr.tpUpdatedAt = std::chrono::system_clock::time_point(
         std::chrono::seconds(row[9].as<int64_t>()));
+    if (!row[10].is_null()) {
+      rr.jProviderMeta = nlohmann::json::parse(row[10].as<std::string>());
+    }
     vRows.push_back(std::move(rr));
   }
   return vRows;
@@ -67,7 +72,8 @@ std::optional<RecordRow> RecordRepository::findById(int64_t iId) {
   auto result = txn.exec(
       "SELECT id, zone_id, name, type, ttl, value_template, priority, last_audit_id, "
       "EXTRACT(EPOCH FROM created_at)::bigint, "
-      "EXTRACT(EPOCH FROM updated_at)::bigint "
+      "EXTRACT(EPOCH FROM updated_at)::bigint, "
+      "provider_meta "
       "FROM records WHERE id = $1",
       pqxx::params{iId});
   txn.commit();
@@ -87,6 +93,9 @@ std::optional<RecordRow> RecordRepository::findById(int64_t iId) {
       std::chrono::seconds(result[0][8].as<int64_t>()));
   rr.tpUpdatedAt = std::chrono::system_clock::time_point(
       std::chrono::seconds(result[0][9].as<int64_t>()));
+  if (!result[0][10].is_null()) {
+    rr.jProviderMeta = nlohmann::json::parse(result[0][10].as<std::string>());
+  }
   return rr;
 }
 

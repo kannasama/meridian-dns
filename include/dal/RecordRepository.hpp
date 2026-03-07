@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 namespace dns::dal {
 
 class ConnectionPool;
@@ -19,6 +21,7 @@ struct RecordRow {
   int iTtl = 300;
   std::string sValueTemplate;
   int iPriority = 0;
+  nlohmann::json jProviderMeta;  // nullable JSONB from DB
   std::optional<int64_t> oLastAuditId;
   std::chrono::system_clock::time_point tpCreatedAt;
   std::chrono::system_clock::time_point tpUpdatedAt;

@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 namespace dns::common {
 
 /// DNS record as seen by providers.
@@ -16,6 +18,7 @@ struct DnsRecord {
   uint32_t uTtl = 300;
   std::string sValue;
   int iPriority = 0;
+  nlohmann::json jProviderMeta;  // Provider-specific metadata (e.g., {"proxied": true})
 };
 
 /// Provider health status.
