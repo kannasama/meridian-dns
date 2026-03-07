@@ -24,3 +24,22 @@ export function updateRecord(
 export function deleteRecord(zoneId: number, recordId: number): Promise<{ message: string }> {
   return del(`/zones/${zoneId}/records/${recordId}`)
 }
+
+export function createRecordsBatch(
+  zoneId: number,
+  records: RecordCreate[],
+): Promise<{ ids: number[]; count: number }> {
+  return post(`/zones/${zoneId}/records/batch`, records)
+}
+
+export interface ProviderRecord {
+  name: string
+  type: string
+  value: string
+  ttl: number
+  priority: number
+}
+
+export function fetchProviderRecords(zoneId: number): Promise<ProviderRecord[]> {
+  return get(`/zones/${zoneId}/provider-records`)
+}
