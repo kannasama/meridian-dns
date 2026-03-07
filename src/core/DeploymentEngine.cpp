@@ -176,6 +176,9 @@ void DeploymentEngine::push(int64_t iZoneId,
             dr.sName = diff.sName;
             dr.sType = diff.sType;
             dr.sValue = diff.sSourceValue;
+            dr.uTtl = diff.uTtl;
+            dr.iPriority = diff.iPriority;
+            dr.jProviderMeta = diff.jProviderMeta;
             auto pushResult = upProvider->createRecord(oZone->sName, dr);
             if (!pushResult.bSuccess) {
               throw common::ProviderError("PROVIDER_CREATE_FAILED",
@@ -188,6 +191,9 @@ void DeploymentEngine::push(int64_t iZoneId,
             dr.sName = diff.sName;
             dr.sType = diff.sType;
             dr.sValue = diff.sSourceValue;
+            dr.uTtl = diff.uTtl;
+            dr.iPriority = diff.iPriority;
+            dr.jProviderMeta = diff.jProviderMeta;
             auto pushResult = upProvider->updateRecord(oZone->sName, dr);
             if (!pushResult.bSuccess) {
               throw common::ProviderError("PROVIDER_UPDATE_FAILED",

@@ -141,3 +141,38 @@ TEST(DiffEngineFilterTest, FilterSoaAndNs) {
   vFiltered = DiffEngine::filterRecordTypes(vRecords, true, true);
   ASSERT_EQ(vFiltered.size(), 4u);
 }
+
+TEST(DiffEngineComputeTest, IgnoresProviderMetaInComparison) {
+  // Same record with different provider metadata → no diff
+  DnsRecord drDesired;
+  drDesired.sName = "www.example.com";
+  drDesired.sType = "A";
+  drDesired.uTtl = 300;
+  drDesired.sValue = "1.2.3.4";
+  drDesired.jProviderMeta = {{"proxied", true}};
+
+  DnsRecord drLive;
+  drLive.sProviderRecordId = "rec-1";
+  drLive.sName = "www.example.com";
+  drLive.sType = "A";
+  drLive.uTtl = 300;
+  drLive.sValue = "1.2.3.4";
+  drLive.jProviderMeta = {{"proxied", false}};
+
+  auto vDiffs = DiffEngine::computeDiff({drDesired}, {drLive});
+  EXPECT_TRUE(vDiffs.empty());
+}
+
+TEST(DiffEngineComputeTest, PropagatesProviderMetaInDiff) {
+  DnsRecord drDesired;
+  drDesired.sName = "app.example.com";
+  drDesired.sType = "A";
+  drDesired.uTtl = 300;
+  drDesired.sValue = "10.0.0.1";
+  drDesired.jProviderMeta = {{"proxied", true}};
+
+  auto vDiffs = DiffEngine::computeDiff({drDesired}, {});
+  ASSERT_EQ(vDiffs.size(), 1u);
+  EXPECT_EQ(vDiffs[0].action, DiffAction::Add);
+  EXPECT_TRUE(vDiffs[0].jProviderMeta.value("proxied", false));
+}

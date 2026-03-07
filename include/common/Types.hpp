@@ -45,6 +45,7 @@ struct RecordDiff {
   std::string sSourceValue;
   uint32_t uTtl = 300;
   int iPriority = 0;
+  nlohmann::json jProviderMeta;  // Provider metadata from source record
 };
 
 /// Result of a preview/diff operation.

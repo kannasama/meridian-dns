@@ -86,6 +86,7 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
         rd.sProviderValue = sProviderValue;
         rd.uTtl = dr.uTtl;
         rd.iPriority = dr.iPriority;
+        rd.jProviderMeta = dr.jProviderMeta;
         vDiffs.push_back(std::move(rd));
       } else {
         common::RecordDiff rd;
@@ -95,6 +96,7 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
         rd.sSourceValue = dr.sValue;
         rd.uTtl = dr.uTtl;
         rd.iPriority = dr.iPriority;
+        rd.jProviderMeta = dr.jProviderMeta;
         vDiffs.push_back(std::move(rd));
       }
     } else {
@@ -105,6 +107,7 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
       rd.sSourceValue = dr.sValue;
       rd.uTtl = dr.uTtl;
       rd.iPriority = dr.iPriority;
+      rd.jProviderMeta = dr.jProviderMeta;
       vDiffs.push_back(std::move(rd));
     }
   }
@@ -132,6 +135,7 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
     rd.sProviderValue = dr.sValue;
     rd.uTtl = dr.uTtl;
     rd.iPriority = dr.iPriority;
+    rd.jProviderMeta = dr.jProviderMeta;
     vDiffs.push_back(std::move(rd));
   }
 
@@ -210,11 +214,12 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
   vDesired.reserve(vRecordRows.size());
   for (const auto& row : vRecordRows) {
     common::DnsRecord dr;
-    dr.sName = row.sName;
+    dr.sName = toFqdn(row.sName, oZone->sName);
     dr.sType = row.sType;
     dr.uTtl = static_cast<uint32_t>(row.iTtl);
     dr.sValue = _veEngine.expand(row.sValueTemplate, iZoneId);
     dr.iPriority = row.iPriority;
+    dr.jProviderMeta = row.jProviderMeta;
     vDesired.push_back(std::move(dr));
   }
 
@@ -242,6 +247,27 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
   spLog->info("DiffEngine: zone '{}' — {} diffs, drift={}", oZone->sName, pr.vDiffs.size(),
               pr.bHasDrift);
   return pr;
+}
+
+std::string DiffEngine::toFqdn(const std::string& sRecordName, const std::string& sZoneName) {
+  // Ensure zone name has trailing dot
+  std::string sZoneFqdn = sZoneName;
+  if (!sZoneFqdn.empty() && sZoneFqdn.back() != '.') {
+    sZoneFqdn += '.';
+  }
+
+  // Already an FQDN (trailing dot)
+  if (!sRecordName.empty() && sRecordName.back() == '.') {
+    return sRecordName;
+  }
+
+  // "@" or empty → zone apex
+  if (sRecordName == "@" || sRecordName.empty()) {
+    return sZoneFqdn;
+  }
+
+  // Relative name → prepend to zone
+  return sRecordName + "." + sZoneFqdn;
 }
 
 }  // namespace dns::core
