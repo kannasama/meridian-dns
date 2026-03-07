@@ -176,3 +176,22 @@ TEST(DiffEngineComputeTest, PropagatesProviderMetaInDiff) {
   EXPECT_EQ(vDiffs[0].action, DiffAction::Add);
   EXPECT_TRUE(vDiffs[0].jProviderMeta.value("proxied", false));
 }
+
+TEST(DiffEngineComputeTest, PerProviderDiffIndependent) {
+  // Same desired records, different live records per provider
+  std::vector<DnsRecord> vDesired = {makeRecord("www.example.com.", "A", "1.2.3.4")};
+
+  // Provider A has the record already
+  std::vector<DnsRecord> vLiveA = {makeRecord("www.example.com.", "A", "1.2.3.4")};
+  vLiveA[0].sProviderRecordId = "a1";
+
+  // Provider B does not have the record
+  std::vector<DnsRecord> vLiveB = {};
+
+  auto vDiffsA = DiffEngine::computeDiff(vDesired, vLiveA);
+  auto vDiffsB = DiffEngine::computeDiff(vDesired, vLiveB);
+
+  EXPECT_TRUE(vDiffsA.empty());     // No changes needed for provider A
+  ASSERT_EQ(vDiffsB.size(), 1u);    // Add needed for provider B
+  EXPECT_EQ(vDiffsB[0].action, DiffAction::Add);
+}

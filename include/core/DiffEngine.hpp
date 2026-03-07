@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,15 @@ class DiffEngine {
   /// Fetch raw live records from all providers for a zone.
   /// Used for provider record import.
   std::vector<common::DnsRecord> fetchLiveRecords(int64_t iZoneId);
+
+  /// Fetch live records per provider (keyed by provider ID).
+  /// Used for per-provider diff/push in multi-provider zones.
+  std::map<int64_t, std::vector<common::DnsRecord>> fetchLiveRecordsPerProvider(
+      int64_t iZoneId);
+
+  /// Convert a relative record name to a fully-qualified domain name.
+  /// "@" → "example.com.", "www" → "www.example.com.", already FQDN → unchanged.
+  static std::string toFqdn(const std::string& sRecordName, const std::string& sZoneName);
 
  private:
   dns::dal::ZoneRepository& _zrRepo;

@@ -182,11 +182,39 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
             });
           }
 
+          // Per-provider breakdown
+          nlohmann::json jProviders = nlohmann::json::array();
+          for (const auto& ppr : prResult.vProviderPreviews) {
+            nlohmann::json jProviderDiffs = nlohmann::json::array();
+            for (const auto& d : ppr.vDiffs) {
+              jProviderDiffs.push_back({
+                  {"action", d.action == common::DiffAction::Add      ? "add"
+                             : d.action == common::DiffAction::Update ? "update"
+                             : d.action == common::DiffAction::Delete ? "delete"
+                                                                      : "drift"},
+                  {"name", d.sName},
+                  {"type", d.sType},
+                  {"source_value", d.sSourceValue},
+                  {"provider_value", d.sProviderValue},
+                  {"ttl", d.uTtl},
+                  {"priority", d.iPriority},
+              });
+            }
+            jProviders.push_back({
+                {"provider_id", ppr.iProviderId},
+                {"provider_name", ppr.sProviderName},
+                {"provider_type", ppr.sProviderType},
+                {"has_drift", ppr.bHasDrift},
+                {"diffs", jProviderDiffs},
+            });
+          }
+
           nlohmann::json jResult = {
               {"zone_id", prResult.iZoneId},
               {"zone_name", prResult.sZoneName},
               {"has_drift", prResult.bHasDrift},
               {"diffs", jDiffs},
+              {"providers", jProviders},
           };
           return jsonResponse(200, jResult);
         } catch (const common::AppError& e) {

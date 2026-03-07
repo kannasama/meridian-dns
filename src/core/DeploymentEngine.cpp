@@ -157,18 +157,17 @@ void DeploymentEngine::push(int64_t iZoneId,
 
   // 3. Get zone and view with providers
   auto oZone = _zrRepo.findById(iZoneId);
-  auto oView = _vrRepo.findWithProviders(oZone->iViewId);
 
-  for (int64_t iProviderId : oView->vProviderIds) {
-    auto oProvider = _prRepo.findById(iProviderId);
+  // 4. Execute per-provider diffs
+  for (const auto& ppr : prResult.vProviderPreviews) {
+    auto oProvider = _prRepo.findById(ppr.iProviderId);
     if (!oProvider) continue;
 
     auto upProvider = dns::providers::ProviderFactory::create(
         oProvider->sType, oProvider->sApiEndpoint, oProvider->sDecryptedToken,
         oProvider->jConfig);
 
-    // 4. Execute diffs
-    for (const auto& diff : prResult.vDiffs) {
+    for (const auto& diff : ppr.vDiffs) {
       try {
         switch (diff.action) {
           case common::DiffAction::Add: {

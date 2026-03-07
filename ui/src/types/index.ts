@@ -113,11 +113,20 @@ export interface DriftAction {
   action: 'adopt' | 'delete' | 'ignore'
 }
 
+export interface ProviderPreview {
+  provider_id: number
+  provider_name: string
+  provider_type: string
+  has_drift: boolean
+  diffs: RecordDiff[]
+}
+
 export interface PreviewResult {
   zone_id: number
   zone_name: string
   has_drift: boolean
   diffs: RecordDiff[]
+  providers?: ProviderPreview[]
 }
 
 export interface DeploymentSnapshot {

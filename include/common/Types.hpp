@@ -48,14 +48,25 @@ struct RecordDiff {
   nlohmann::json jProviderMeta;  // Provider metadata from source record
 };
 
+/// Per-provider preview result for multi-provider deployments.
+/// Class abbreviation: ppr
+struct ProviderPreviewResult {
+  int64_t iProviderId = 0;
+  std::string sProviderName;
+  std::string sProviderType;
+  std::vector<RecordDiff> vDiffs;
+  bool bHasDrift = false;
+};
+
 /// Result of a preview/diff operation.
 /// Class abbreviation: pr
 struct PreviewResult {
   int64_t iZoneId = 0;
   std::string sZoneName;
-  std::vector<RecordDiff> vDiffs;
+  std::vector<RecordDiff> vDiffs;             // Merged diffs (backward compat)
   bool bHasDrift = false;
   std::chrono::system_clock::time_point tpGeneratedAt;
+  std::vector<ProviderPreviewResult> vProviderPreviews;  // Per-provider breakdown
 };
 
 /// User decision for a drift record during deployment.

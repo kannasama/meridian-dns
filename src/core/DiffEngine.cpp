@@ -198,6 +198,49 @@ std::vector<common::DnsRecord> DiffEngine::fetchLiveRecords(int64_t iZoneId) {
   return vLive;
 }
 
+std::map<int64_t, std::vector<common::DnsRecord>> DiffEngine::fetchLiveRecordsPerProvider(
+    int64_t iZoneId) {
+  auto spLog = common::Logger::get();
+
+  auto oZone = _zrRepo.findById(iZoneId);
+  if (!oZone) {
+    throw common::NotFoundError("ZONE_NOT_FOUND",
+                                "Zone " + std::to_string(iZoneId) + " not found");
+  }
+
+  auto oView = _vrRepo.findWithProviders(oZone->iViewId);
+  if (!oView) {
+    throw common::NotFoundError("VIEW_NOT_FOUND",
+                                "View " + std::to_string(oZone->iViewId) + " not found");
+  }
+  if (oView->vProviderIds.empty()) {
+    throw common::ValidationError("NO_PROVIDERS",
+                                  "View '" + oView->sName + "' has no providers attached");
+  }
+
+  std::map<int64_t, std::vector<common::DnsRecord>> mResult;
+  for (int64_t iProviderId : oView->vProviderIds) {
+    auto oProvider = _prRepo.findById(iProviderId);
+    if (!oProvider) {
+      spLog->warn("Provider {} not found — skipping", iProviderId);
+      continue;
+    }
+
+    auto upProvider = dns::providers::ProviderFactory::create(
+        oProvider->sType, oProvider->sApiEndpoint, oProvider->sDecryptedToken,
+        oProvider->jConfig);
+
+    try {
+      mResult[iProviderId] = upProvider->listRecords(oZone->sName);
+    } catch (const common::ProviderError& ex) {
+      spLog->error("Failed to list from provider '{}': {}", oProvider->sName, ex.what());
+      throw;
+    }
+  }
+
+  return mResult;
+}
+
 common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
   auto spLog = common::Logger::get();
 
@@ -223,29 +266,45 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
     vDesired.push_back(std::move(dr));
   }
 
-  // 3. Fetch live records from all providers
-  auto vLive = fetchLiveRecords(iZoneId);
-
-  // 4. Filter SOA/NS from both sets based on zone flags
-  vLive = filterRecordTypes(vLive, oZone->bManageSoa, oZone->bManageNs);
   vDesired = filterRecordTypes(vDesired, oZone->bManageSoa, oZone->bManageNs);
 
-  // 5. Compute diff
-  auto vDiffs = computeDiff(vDesired, vLive);
+  // 3. Fetch live records per provider
+  auto mLive = fetchLiveRecordsPerProvider(iZoneId);
 
-  // 6. Build result
+  // 4. Compute per-provider diffs
   common::PreviewResult pr;
   pr.iZoneId = iZoneId;
   pr.sZoneName = oZone->sName;
-  pr.vDiffs = std::move(vDiffs);
+
+  for (auto& [iProviderId, vLive] : mLive) {
+    vLive = filterRecordTypes(vLive, oZone->bManageSoa, oZone->bManageNs);
+    auto vDiffs = computeDiff(vDesired, vLive);
+
+    auto oProvider = _prRepo.findById(iProviderId);
+
+    common::ProviderPreviewResult ppr;
+    ppr.iProviderId = iProviderId;
+    ppr.sProviderName = oProvider ? oProvider->sName : "unknown";
+    ppr.sProviderType = oProvider ? oProvider->sType : "unknown";
+    ppr.vDiffs = vDiffs;
+    ppr.bHasDrift = std::any_of(vDiffs.begin(), vDiffs.end(),
+                                 [](const auto& d) {
+                                   return d.action == common::DiffAction::Drift;
+                                 });
+    pr.vProviderPreviews.push_back(std::move(ppr));
+
+    // Merge into combined diffs for backward compat
+    pr.vDiffs.insert(pr.vDiffs.end(), vDiffs.begin(), vDiffs.end());
+  }
+
   pr.bHasDrift = std::any_of(pr.vDiffs.begin(), pr.vDiffs.end(),
-                              [](const common::RecordDiff& rd) {
-                                return rd.action == common::DiffAction::Drift;
+                              [](const auto& d) {
+                                return d.action == common::DiffAction::Drift;
                               });
   pr.tpGeneratedAt = std::chrono::system_clock::now();
 
-  spLog->info("DiffEngine: zone '{}' — {} diffs, drift={}", oZone->sName, pr.vDiffs.size(),
-              pr.bHasDrift);
+  spLog->info("DiffEngine: zone '{}' — {} diffs across {} providers, drift={}",
+              oZone->sName, pr.vDiffs.size(), pr.vProviderPreviews.size(), pr.bHasDrift);
   return pr;
 }
 
