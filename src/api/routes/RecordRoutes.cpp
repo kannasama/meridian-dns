@@ -285,6 +285,31 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           return invalidJsonResponse();
         }
       });
+
+  // GET /api/v1/zones/<int>/provider-records
+  CROW_ROUTE(app, "/api/v1/zones/<int>/provider-records").methods("GET"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "viewer");
+
+          auto vLiveRecords = _deEngine.fetchLiveRecords(iZoneId);
+
+          nlohmann::json jRecords = nlohmann::json::array();
+          for (const auto& dr : vLiveRecords) {
+            jRecords.push_back({
+                {"name", dr.sName},
+                {"type", dr.sType},
+                {"value", dr.sValue},
+                {"ttl", dr.uTtl},
+                {"priority", dr.iPriority},
+            });
+          }
+          return jsonResponse(200, jRecords);
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
 }
 
 }  // namespace dns::api::routes

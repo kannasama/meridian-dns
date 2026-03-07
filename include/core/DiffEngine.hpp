@@ -44,6 +44,10 @@ class DiffEngine {
       const std::vector<common::DnsRecord>& vRecords,
       bool bIncludeSoa, bool bIncludeNs);
 
+  /// Fetch raw live records from all providers for a zone.
+  /// Used for provider record import.
+  std::vector<common::DnsRecord> fetchLiveRecords(int64_t iZoneId);
+
  private:
   dns::dal::ZoneRepository& _zrRepo;
   dns::dal::ViewRepository& _vrRepo;

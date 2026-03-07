@@ -151,17 +151,15 @@ std::vector<common::DnsRecord> DiffEngine::filterRecordTypes(
   return vFiltered;
 }
 
-common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
+std::vector<common::DnsRecord> DiffEngine::fetchLiveRecords(int64_t iZoneId) {
   auto spLog = common::Logger::get();
 
-  // 1. Look up zone
   auto oZone = _zrRepo.findById(iZoneId);
   if (!oZone) {
     throw common::NotFoundError("ZONE_NOT_FOUND",
                                 "Zone " + std::to_string(iZoneId) + " not found");
   }
 
-  // 2. Look up view with providers
   auto oView = _vrRepo.findWithProviders(oZone->iViewId);
   if (!oView) {
     throw common::NotFoundError("VIEW_NOT_FOUND",
@@ -172,21 +170,6 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
                                   "View '" + oView->sName + "' has no providers attached");
   }
 
-  // 3. Fetch desired records from DB and expand templates
-  auto vRecordRows = _rrRepo.listByZoneId(iZoneId);
-  std::vector<common::DnsRecord> vDesired;
-  vDesired.reserve(vRecordRows.size());
-  for (const auto& row : vRecordRows) {
-    common::DnsRecord dr;
-    dr.sName = row.sName;
-    dr.sType = row.sType;
-    dr.uTtl = static_cast<uint32_t>(row.iTtl);
-    dr.sValue = _veEngine.expand(row.sValueTemplate, iZoneId);
-    dr.iPriority = row.iPriority;
-    vDesired.push_back(std::move(dr));
-  }
-
-  // 4. Fetch live records from all providers for this zone
   std::vector<common::DnsRecord> vLive;
   for (int64_t iProviderId : oView->vProviderIds) {
     auto oProvider = _prRepo.findById(iProviderId);
@@ -208,14 +191,44 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
     }
   }
 
-  // 5. Filter SOA/NS from both sets based on zone flags
+  return vLive;
+}
+
+common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
+  auto spLog = common::Logger::get();
+
+  // 1. Look up zone
+  auto oZone = _zrRepo.findById(iZoneId);
+  if (!oZone) {
+    throw common::NotFoundError("ZONE_NOT_FOUND",
+                                "Zone " + std::to_string(iZoneId) + " not found");
+  }
+
+  // 2. Fetch desired records from DB and expand templates
+  auto vRecordRows = _rrRepo.listByZoneId(iZoneId);
+  std::vector<common::DnsRecord> vDesired;
+  vDesired.reserve(vRecordRows.size());
+  for (const auto& row : vRecordRows) {
+    common::DnsRecord dr;
+    dr.sName = row.sName;
+    dr.sType = row.sType;
+    dr.uTtl = static_cast<uint32_t>(row.iTtl);
+    dr.sValue = _veEngine.expand(row.sValueTemplate, iZoneId);
+    dr.iPriority = row.iPriority;
+    vDesired.push_back(std::move(dr));
+  }
+
+  // 3. Fetch live records from all providers
+  auto vLive = fetchLiveRecords(iZoneId);
+
+  // 4. Filter SOA/NS from both sets based on zone flags
   vLive = filterRecordTypes(vLive, oZone->bManageSoa, oZone->bManageNs);
   vDesired = filterRecordTypes(vDesired, oZone->bManageSoa, oZone->bManageNs);
 
-  // 6. Compute diff
+  // 5. Compute diff
   auto vDiffs = computeDiff(vDesired, vLive);
 
-  // 7. Build result
+  // 6. Build result
   common::PreviewResult pr;
   pr.iZoneId = iZoneId;
   pr.sZoneName = oZone->sName;
