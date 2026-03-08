@@ -43,3 +43,14 @@ export interface ProviderRecord {
 export function fetchProviderRecords(zoneId: number): Promise<ProviderRecord[]> {
   return get(`/zones/${zoneId}/provider-records`)
 }
+
+export function restoreRecord(zoneId: number, recordId: number): Promise<void> {
+  return post(`/zones/${zoneId}/records/${recordId}/restore`)
+}
+
+export function batchRecords(
+  zoneId: number,
+  body: { updates?: Array<Record<string, unknown>>; deletes?: number[] },
+): Promise<DnsRecord[]> {
+  return put(`/zones/${zoneId}/records/batch`, body)
+}

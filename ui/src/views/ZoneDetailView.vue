@@ -25,6 +25,7 @@ import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
 import { useVariableAutocomplete } from '../composables/useVariableAutocomplete'
 import type { Zone, DnsRecord, RecordCreate, Provider } from '../types'
+import Toolbar from 'primevue/toolbar'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +40,9 @@ const loading = ref(true)
 const viewProviders = ref<Provider[]>([])
 const proxied = ref(false)
 const autoTtl = ref(true)
+const selectedRecords = ref<DnsRecord[]>([])
+const bulkTtlDialogVisible = ref(false)
+const bulkTtlValue = ref(300)
 
 const {
   variables, varFilter, varPanelRef, filteredVars,
@@ -155,13 +159,34 @@ async function handleSubmitRecord() {
     }
     if (editingRecordId.value !== null) {
       await recordApi.updateRecord(zoneId, editingRecordId.value, payload)
+      const idx = records.value.findIndex((r) => r.id === editingRecordId.value)
+      if (idx !== -1) {
+        records.value[idx] = {
+          ...records.value[idx],
+          ...payload,
+          provider_meta: payload.provider_meta ?? records.value[idx].provider_meta,
+        }
+      }
       notify.success('Record updated')
     } else {
-      await recordApi.createRecord(zoneId, payload)
+      const result = await recordApi.createRecord(zoneId, payload)
+      records.value.push({
+        id: result.id,
+        zone_id: zoneId,
+        name: payload.name,
+        type: payload.type,
+        ttl: payload.ttl ?? 300,
+        value_template: payload.value_template,
+        priority: payload.priority ?? 0,
+        provider_meta: payload.provider_meta ?? null,
+        last_audit_id: null,
+        pending_delete: false,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      })
       notify.success('Record created')
     }
     dialogVisible.value = false
-    await fetchData()
   } catch (err) {
     const msg = err instanceof ApiRequestError ? err.body.message : 'Failed to save record'
     notify.error('Error', msg)
@@ -172,13 +197,79 @@ function handleDeleteRecord(rec: DnsRecord) {
   confirmDelete(`Delete record "${rec.name}" (${rec.type})?`, async () => {
     try {
       await recordApi.deleteRecord(zoneId, rec.id)
+      const idx = records.value.findIndex((r) => r.id === rec.id)
+      if (idx !== -1) {
+        records.value[idx].pending_delete = true
+      }
       notify.success('Record deleted')
-      await fetchData()
     } catch (err) {
       const msg = err instanceof ApiRequestError ? err.body.message : 'Failed to delete'
       notify.error('Error', msg)
     }
   })
+}
+
+async function handleRestoreRecord(rec: DnsRecord) {
+  try {
+    await recordApi.restoreRecord(zoneId, rec.id)
+    const idx = records.value.findIndex((r) => r.id === rec.id)
+    if (idx !== -1) {
+      records.value[idx].pending_delete = false
+    }
+    notify.success('Record restored')
+  } catch (err) {
+    const msg = err instanceof ApiRequestError ? err.body.message : 'Failed to restore'
+    notify.error('Error', msg)
+  }
+}
+
+function rowClass(data: DnsRecord) {
+  return data.pending_delete ? 'row-pending-delete' : ''
+}
+
+async function handleBulkDelete() {
+  const ids = selectedRecords.value
+    .filter((r) => !r.pending_delete)
+    .map((r) => r.id)
+  if (ids.length === 0) return
+  try {
+    await recordApi.batchRecords(zoneId, { deletes: ids })
+    for (const id of ids) {
+      const idx = records.value.findIndex((r) => r.id === id)
+      if (idx !== -1) {
+        records.value[idx].pending_delete = true
+      }
+    }
+    selectedRecords.value = []
+    notify.success(`${ids.length} record(s) deleted`)
+  } catch (err) {
+    const msg = err instanceof ApiRequestError ? err.body.message : 'Bulk delete failed'
+    notify.error('Error', msg)
+  }
+}
+
+async function handleBulkSetTtl() {
+  const ids = selectedRecords.value
+    .filter((r) => !r.pending_delete)
+    .map((r) => r.id)
+  if (ids.length === 0) return
+  try {
+    await recordApi.batchRecords(zoneId, {
+      updates: ids.map((id) => ({ id, ttl: bulkTtlValue.value })),
+    })
+    for (const id of ids) {
+      const idx = records.value.findIndex((r) => r.id === id)
+      if (idx !== -1) {
+        records.value[idx].ttl = bulkTtlValue.value
+      }
+    }
+    selectedRecords.value = []
+    bulkTtlDialogVisible.value = false
+    notify.success(`TTL updated for ${ids.length} record(s)`)
+  } catch (err) {
+    const msg = err instanceof ApiRequestError ? err.body.message : 'Bulk TTL update failed'
+    notify.error('Error', msg)
+  }
 }
 
 function goToDeploy() {
@@ -258,8 +349,32 @@ onMounted(fetchData)
         />
       </EmptyState>
 
+      <Toolbar v-if="selectedRecords.length > 0" class="mb-2">
+        <template #start>
+          <span class="text-sm font-semibold">{{ selectedRecords.length }} selected</span>
+        </template>
+        <template #end>
+          <Button
+            label="Set TTL"
+            icon="pi pi-clock"
+            severity="secondary"
+            size="small"
+            class="mr-2"
+            @click="bulkTtlDialogVisible = true"
+          />
+          <Button
+            label="Delete Selected"
+            icon="pi pi-trash"
+            severity="danger"
+            size="small"
+            @click="handleBulkDelete"
+          />
+        </template>
+      </Toolbar>
+
       <DataTable
-        v-else
+        v-if="records.length > 0"
+        v-model:selection="selectedRecords"
         :value="records"
         size="small"
         paginator
@@ -268,7 +383,10 @@ onMounted(fetchData)
         sortMode="multiple"
         :multiSortMeta="[{ field: 'type', order: 1 }, { field: 'name', order: 1 }]"
         stripedRows
+        :rowClass="rowClass"
+        dataKey="id"
       >
+        <Column v-if="isOperator" selectionMode="multiple" headerStyle="width: 3rem" />
         <Column field="name" header="Name" sortable>
           <template #body="{ data }">
             <span class="font-mono">{{ data.name }}</span>
@@ -314,25 +432,39 @@ onMounted(fetchData)
         <Column v-if="isOperator" header="Actions" style="width: 6rem; text-align: right">
           <template #body="{ data }">
             <div class="action-buttons">
-              <Button
-                icon="pi pi-pencil"
-                text
-                rounded
-                size="small"
-                aria-label="Edit"
-                v-tooltip.top="'Edit'"
-                @click="openEditRecord(data)"
-              />
-              <Button
-                icon="pi pi-trash"
-                text
-                rounded
-                size="small"
-                severity="danger"
-                aria-label="Delete"
-                v-tooltip.top="'Delete'"
-                @click="handleDeleteRecord(data)"
-              />
+              <template v-if="data.pending_delete">
+                <Button
+                  icon="pi pi-undo"
+                  text
+                  rounded
+                  size="small"
+                  severity="warn"
+                  aria-label="Undo Delete"
+                  v-tooltip.top="'Undo Delete'"
+                  @click="handleRestoreRecord(data)"
+                />
+              </template>
+              <template v-else>
+                <Button
+                  icon="pi pi-pencil"
+                  text
+                  rounded
+                  size="small"
+                  aria-label="Edit"
+                  v-tooltip.top="'Edit'"
+                  @click="openEditRecord(data)"
+                />
+                <Button
+                  icon="pi pi-trash"
+                  text
+                  rounded
+                  size="small"
+                  severity="danger"
+                  aria-label="Delete"
+                  v-tooltip.top="'Delete'"
+                  @click="handleDeleteRecord(data)"
+                />
+              </template>
             </div>
           </template>
         </Column>
@@ -442,6 +574,21 @@ onMounted(fetchData)
       :zoneId="zoneId"
       @imported="fetchData"
     />
+
+    <Dialog
+      v-model:visible="bulkTtlDialogVisible"
+      header="Set TTL for Selected Records"
+      modal
+      class="w-20rem"
+    >
+      <div class="dialog-form">
+        <div class="field">
+          <label for="bulk-ttl">TTL (seconds)</label>
+          <InputNumber id="bulk-ttl" v-model="bulkTtlValue" :min="1" :max="604800" class="w-full" />
+        </div>
+        <Button label="Apply" icon="pi pi-check" class="w-full" @click="handleBulkSetTtl" />
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -576,5 +723,27 @@ onMounted(fetchData)
 
 .w-30rem {
   width: 30rem;
+}
+
+.w-20rem {
+  width: 20rem;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.text-sm {
+  font-size: 0.875rem;
+}
+</style>
+
+<style>
+.row-pending-delete {
+  opacity: 0.5;
+}
+
+.row-pending-delete td span {
+  text-decoration: line-through;
 }
 </style>

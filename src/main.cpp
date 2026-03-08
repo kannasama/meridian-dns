@@ -51,6 +51,9 @@
 #include "security/IJwtSigner.hpp"
 #include "security/SamlReplayCache.hpp"
 
+#include <termios.h>
+#include <unistd.h>
+
 #include <openssl/crypto.h>
 
 // Startup sequence from ARCHITECTURE.md §11.4
@@ -74,9 +77,10 @@ void printUsage(const char* pProgName) {
             << "Meridian DNS — Multi-Provider DNS Management\n"
             << "\n"
             << "Options:\n"
-            << "  --help       Show this help message and exit\n"
-            << "  --version    Show version information and exit\n"
-            << "  --migrate    Run database migrations and exit\n"
+            << "  --help                    Show this help message and exit\n"
+            << "  --version                 Show version information and exit\n"
+            << "  --migrate                 Run database migrations and exit\n"
+            << "  --reset-password <user>   Reset a user's password\n"
             << "\n"
             << "Environment variables (required):\n"
             << "  DNS_DB_URL          PostgreSQL connection string\n"
@@ -118,6 +122,63 @@ int main(int argc, char* argv[]) {
         std::cout.flush();
       } catch (const std::exception& ex) {
         std::cerr << "[fatal] migration failed: " << ex.what() << std::endl;
+        std::cerr.flush();
+        std::quick_exit(EXIT_FAILURE);
+      }
+      std::quick_exit(EXIT_SUCCESS);
+    }
+    if (arg == "--reset-password") {
+      if (i + 1 >= argc) {
+        std::cerr << "Usage: --reset-password <username>\n";
+        std::cerr.flush();
+        std::quick_exit(EXIT_FAILURE);
+      }
+      std::string sUsername = argv[++i];
+      try {
+        auto cfgApp = dns::common::Config::load();
+        dns::common::Logger::init(cfgApp.sLogLevel);
+
+        dns::dal::ConnectionPool cpPool(cfgApp.sDbUrl, 1);
+        dns::dal::UserRepository urRepo(cpPool);
+
+        auto oUser = urRepo.findByUsername(sUsername);
+        if (!oUser) {
+          std::cerr << "User '" << sUsername << "' not found\n";
+          std::cerr.flush();
+          std::quick_exit(EXIT_FAILURE);
+        }
+
+        // Read password from stdin (supports piping and interactive)
+        std::string sNewPassword;
+        if (isatty(STDIN_FILENO)) {
+          std::cout << "New password for '" << sUsername << "': " << std::flush;
+          struct termios tOld, tNew;
+          tcgetattr(STDIN_FILENO, &tOld);
+          tNew = tOld;
+          tNew.c_lflag &= ~ECHO;
+          tcsetattr(STDIN_FILENO, TCSANOW, &tNew);
+          std::getline(std::cin, sNewPassword);
+          tcsetattr(STDIN_FILENO, TCSANOW, &tOld);
+          std::cout << "\n";
+        } else {
+          std::getline(std::cin, sNewPassword);
+        }
+
+        if (sNewPassword.empty() || sNewPassword.size() < 8) {
+          std::cerr << "Password must be at least 8 characters\n";
+          std::cerr.flush();
+          std::quick_exit(EXIT_FAILURE);
+        }
+
+        std::string sHash = dns::security::CryptoService::hashPassword(sNewPassword);
+        urRepo.updatePassword(oUser->iId, sHash);
+        urRepo.setForcePasswordChange(oUser->iId, true);
+
+        std::cout << "Password reset for '" << sUsername << "'. "
+                  << "User will be prompted to change password on next login.\n";
+        std::cout.flush();
+      } catch (const std::exception& ex) {
+        std::cerr << "[fatal] password reset failed: " << ex.what() << std::endl;
         std::cerr.flush();
         std::quick_exit(EXIT_FAILURE);
       }
@@ -334,7 +395,7 @@ int main(int argc, char* argv[]) {
     auto viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*vrRepo, *amMiddleware);
     auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware, *deEngine);
     auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
-        *rrRepo, *zrRepo, *amMiddleware, *deEngine, *depEngine);
+        *rrRepo, *zrRepo, *arRepo, *amMiddleware, *deEngine, *depEngine);
     auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
     auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
     auto deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(

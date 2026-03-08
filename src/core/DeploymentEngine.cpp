@@ -201,7 +201,14 @@ void DeploymentEngine::push(int64_t iZoneId,
             break;
           }
           case common::DiffAction::Delete: {
-            // Records marked Delete should be removed from provider
+            bool bDeleted = upProvider->deleteRecord(oZone->sName, diff.sProviderRecordId);
+            if (!bDeleted) {
+              throw common::ProviderError("PROVIDER_DELETE_FAILED",
+                                         "Failed to delete record: " + diff.sName + "/" +
+                                         diff.sType);
+            }
+            spLog->info("DeploymentEngine: deleted record {}/{} from provider",
+                        diff.sName, diff.sType);
             break;
           }
           case common::DiffAction::Drift: {
@@ -217,8 +224,7 @@ void DeploymentEngine::push(int64_t iZoneId,
                              diff.iPriority);
               spLog->info("DeploymentEngine: adopted drift record {}/{}", diff.sName, diff.sType);
             } else if (itAction->second == "delete") {
-              std::string sRecordId = diff.sName + "/" + diff.sType + "/" + diff.sProviderValue;
-              bool bDeleted = upProvider->deleteRecord(oZone->sName, sRecordId);
+              bool bDeleted = upProvider->deleteRecord(oZone->sName, diff.sProviderRecordId);
               if (!bDeleted) {
                 spLog->warn("DeploymentEngine: failed to delete drift record {}/{}/{}",
                             diff.sName, diff.sType, diff.sProviderValue);
@@ -268,7 +274,14 @@ void DeploymentEngine::push(int64_t iZoneId,
     _pGitMirror->commit(iZoneId, sActor);
   }
 
-  // 9. Update sync status to in_sync after successful push
+  // 9. Hard-delete pending-delete records after successful push
+  int iHardDeleted = _rrRepo.hardDeletePending(iZoneId);
+  if (iHardDeleted > 0) {
+    spLog->info("DeploymentEngine: hard-deleted {} pending records from zone {}",
+                iHardDeleted, iZoneId);
+  }
+
+  // 10. Update sync status to in_sync after successful push
   _zrRepo.updateSyncStatus(iZoneId, "in_sync");
 
   spLog->info("DeploymentEngine: zone '{}' pushed successfully by {}", prResult.sZoneName,

@@ -99,6 +99,13 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
         rd.uTtl = dr.uTtl;
         rd.iPriority = dr.iPriority;
         rd.jProviderMeta = dr.jProviderMeta;
+        for (const auto& liveDr : vLive) {
+          if (liveDr.sName == dr.sName && liveDr.sType == dr.sType
+              && liveDr.sValue == sProviderValue) {
+            rd.sProviderRecordId = liveDr.sProviderRecordId;
+            break;
+          }
+        }
         vDiffs.push_back(std::move(rd));
       } else {
         common::RecordDiff rd;
@@ -148,6 +155,7 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
     rd.uTtl = dr.uTtl;
     rd.iPriority = dr.iPriority;
     rd.jProviderMeta = dr.jProviderMeta;
+    rd.sProviderRecordId = dr.sProviderRecordId;
     vDiffs.push_back(std::move(rd));
   }
 
@@ -266,6 +274,7 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
   // 2. Fetch desired records from DB and expand templates
   auto vRecordRows = _rrRepo.listByZoneId(iZoneId);
   std::vector<common::DnsRecord> vDesired;
+  std::vector<common::DnsRecord> vPendingDelete;
   vDesired.reserve(vRecordRows.size());
   for (const auto& row : vRecordRows) {
     common::DnsRecord dr;
@@ -275,10 +284,15 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
     dr.sValue = _veEngine.expand(row.sValueTemplate, iZoneId);
     dr.iPriority = row.iPriority;
     dr.jProviderMeta = row.jProviderMeta;
-    vDesired.push_back(std::move(dr));
+    if (row.bPendingDelete) {
+      vPendingDelete.push_back(std::move(dr));
+    } else {
+      vDesired.push_back(std::move(dr));
+    }
   }
 
   vDesired = filterRecordTypes(vDesired, oZone->bManageSoa, oZone->bManageNs);
+  vPendingDelete = filterRecordTypes(vPendingDelete, oZone->bManageSoa, oZone->bManageNs);
 
   // 3. Fetch live records per provider
   auto mLive = fetchLiveRecordsPerProvider(iZoneId);
@@ -305,6 +319,26 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
     }
 
     auto vDiffs = computeDiff(vProviderDesired, vLive);
+
+    // Generate Delete diffs for pending-delete records that exist on provider
+    for (const auto& drPending : vPendingDelete) {
+      for (const auto& drLive : vLive) {
+        if (drLive.sName == drPending.sName && drLive.sType == drPending.sType
+            && drLive.sValue == drPending.sValue) {
+          common::RecordDiff rd;
+          rd.action = common::DiffAction::Delete;
+          rd.sName = drLive.sName;
+          rd.sType = drLive.sType;
+          rd.sProviderValue = drLive.sValue;
+          rd.sProviderRecordId = drLive.sProviderRecordId;
+          rd.uTtl = drLive.uTtl;
+          rd.iPriority = drLive.iPriority;
+          rd.jProviderMeta = drLive.jProviderMeta;
+          vDiffs.push_back(std::move(rd));
+          break;
+        }
+      }
+    }
 
     common::ProviderPreviewResult ppr;
     ppr.iProviderId = iProviderId;

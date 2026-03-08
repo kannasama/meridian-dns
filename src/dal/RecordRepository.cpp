@@ -42,7 +42,7 @@ std::vector<RecordRow> RecordRepository::listByZoneId(int64_t iZoneId) {
       "SELECT id, zone_id, name, type, ttl, value_template, priority, last_audit_id, "
       "EXTRACT(EPOCH FROM created_at)::bigint, "
       "EXTRACT(EPOCH FROM updated_at)::bigint, "
-      "provider_meta "
+      "provider_meta, pending_delete "
       "FROM records WHERE zone_id = $1 ORDER BY id",
       pqxx::params{iZoneId});
   txn.commit();
@@ -66,6 +66,7 @@ std::vector<RecordRow> RecordRepository::listByZoneId(int64_t iZoneId) {
     if (!row[10].is_null()) {
       rr.jProviderMeta = nlohmann::json::parse(row[10].as<std::string>());
     }
+    rr.bPendingDelete = row[11].as<bool>();
     vRows.push_back(std::move(rr));
   }
   return vRows;
@@ -78,7 +79,7 @@ std::optional<RecordRow> RecordRepository::findById(int64_t iId) {
       "SELECT id, zone_id, name, type, ttl, value_template, priority, last_audit_id, "
       "EXTRACT(EPOCH FROM created_at)::bigint, "
       "EXTRACT(EPOCH FROM updated_at)::bigint, "
-      "provider_meta "
+      "provider_meta, pending_delete "
       "FROM records WHERE id = $1",
       pqxx::params{iId});
   txn.commit();
@@ -101,6 +102,7 @@ std::optional<RecordRow> RecordRepository::findById(int64_t iId) {
   if (!result[0][10].is_null()) {
     rr.jProviderMeta = nlohmann::json::parse(result[0][10].as<std::string>());
   }
+  rr.bPendingDelete = result[0][11].as<bool>();
   return rr;
 }
 
@@ -130,13 +132,39 @@ void RecordRepository::update(int64_t iId, const std::string& sName,
 void RecordRepository::deleteById(int64_t iId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec("DELETE FROM records WHERE id = $1", pqxx::params{iId});
+  auto result = txn.exec(
+      "UPDATE records SET pending_delete = true, updated_at = NOW() WHERE id = $1",
+      pqxx::params{iId});
   txn.commit();
 
   if (result.affected_rows() == 0) {
     throw common::NotFoundError("RECORD_NOT_FOUND",
                                 "Record with id " + std::to_string(iId) + " not found");
   }
+}
+
+void RecordRepository::restoreById(int64_t iId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "UPDATE records SET pending_delete = false, updated_at = NOW() WHERE id = $1",
+      pqxx::params{iId});
+  txn.commit();
+
+  if (result.affected_rows() == 0) {
+    throw common::NotFoundError("RECORD_NOT_FOUND",
+                                "Record with id " + std::to_string(iId) + " not found");
+  }
+}
+
+int RecordRepository::hardDeletePending(int64_t iZoneId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "DELETE FROM records WHERE zone_id = $1 AND pending_delete = true",
+      pqxx::params{iZoneId});
+  txn.commit();
+  return static_cast<int>(result.affected_rows());
 }
 
 int RecordRepository::deleteAllByZoneId(int64_t iZoneId) {
@@ -198,6 +226,59 @@ std::vector<int64_t> RecordRepository::createBatch(
                                   "Zone with id " + std::to_string(iZoneId) + " not found");
   }
   return vIds;
+}
+
+void RecordRepository::batchUpdate(int64_t iZoneId,
+                                    const std::vector<BatchUpdateEntry>& vUpdates) {
+  if (vUpdates.empty()) return;
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  for (const auto& entry : vUpdates) {
+    // Fetch current record to merge partial updates
+    auto result = txn.exec(
+        "SELECT name, type, ttl, value_template, priority FROM records "
+        "WHERE id = $1 AND zone_id = $2",
+        pqxx::params{entry.iId, iZoneId});
+
+    if (result.empty()) {
+      throw common::NotFoundError("RECORD_NOT_FOUND",
+                                  "Record " + std::to_string(entry.iId) +
+                                  " not found in zone " + std::to_string(iZoneId));
+    }
+
+    std::string sName = entry.oName.value_or(result[0][0].as<std::string>());
+    std::string sType = entry.oType.value_or(result[0][1].as<std::string>());
+    int iTtl = entry.oTtl.value_or(result[0][2].as<int>());
+    std::string sValueTemplate = entry.oValueTemplate.value_or(result[0][3].as<std::string>());
+    int iPriority = entry.oPriority.value_or(result[0][4].as<int>());
+
+    txn.exec(
+        "UPDATE records SET name = $2, type = $3, ttl = $4, value_template = $5, "
+        "priority = $6, updated_at = NOW() WHERE id = $1",
+        pqxx::params{entry.iId, sName, sType, iTtl, sValueTemplate, iPriority});
+  }
+  txn.commit();
+}
+
+void RecordRepository::batchSoftDelete(int64_t iZoneId,
+                                       const std::vector<int64_t>& vRecordIds) {
+  if (vRecordIds.empty()) return;
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  for (int64_t iRecordId : vRecordIds) {
+    auto result = txn.exec(
+        "UPDATE records SET pending_delete = true, updated_at = NOW() "
+        "WHERE id = $1 AND zone_id = $2",
+        pqxx::params{iRecordId, iZoneId});
+    if (result.affected_rows() == 0) {
+      throw common::NotFoundError("RECORD_NOT_FOUND",
+                                  "Record " + std::to_string(iRecordId) +
+                                  " not found in zone " + std::to_string(iZoneId));
+    }
+  }
+  txn.commit();
 }
 
 }  // namespace dns::dal

@@ -7,6 +7,7 @@
 #include "common/Types.hpp"
 #include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
+#include "dal/AuditRepository.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/ZoneRepository.hpp"
 
@@ -16,10 +17,11 @@ namespace dns::api::routes {
 
 RecordRoutes::RecordRoutes(dns::dal::RecordRepository& rrRepo,
                            dns::dal::ZoneRepository& zrRepo,
+                           dns::dal::AuditRepository& arRepo,
                            const dns::api::AuthMiddleware& amMiddleware,
                            dns::core::DiffEngine& deEngine,
                            dns::core::DeploymentEngine& depEngine)
-    : _rrRepo(rrRepo), _zrRepo(zrRepo), _amMiddleware(amMiddleware),
+    : _rrRepo(rrRepo), _zrRepo(zrRepo), _arRepo(arRepo), _amMiddleware(amMiddleware),
       _deEngine(deEngine), _depEngine(depEngine) {}
 
 RecordRoutes::~RecordRoutes() = default;
@@ -52,6 +54,7 @@ nlohmann::json recordRowToJson(const dns::dal::RecordRow& row) {
   } else {
     j["provider_meta"] = nullptr;
   }
+  j["pending_delete"] = row.bPendingDelete;
   return j;
 }
 
@@ -102,7 +105,17 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
 
           int64_t iId = _rrRepo.create(iZoneId, sName, sType, iTtl,
                                        sValueTemplate, iPriority, jProviderMeta);
-          return jsonResponse(201, {{"id", iId}});
+
+          // Audit trail
+          nlohmann::json jNewValue = {
+              {"name", sName}, {"type", sType}, {"ttl", iTtl},
+              {"value_template", sValueTemplate}, {"priority", iPriority},
+          };
+          _arRepo.insert("record", iId, "create", std::nullopt, jNewValue,
+                         rcCtx.sUsername, std::nullopt, std::nullopt);
+
+          auto oCreated = _rrRepo.findById(iId);
+          return jsonResponse(201, recordRowToJson(*oCreated));
         } catch (const common::AppError& e) {
           return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
@@ -151,8 +164,30 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
             jProviderMeta = jBody["provider_meta"];
           }
 
+          // Capture old state for audit
+          auto oOldRecord = _rrRepo.findById(iRecordId);
+          nlohmann::json jOldValue;
+          if (oOldRecord) {
+            jOldValue = {
+                {"name", oOldRecord->sName}, {"type", oOldRecord->sType},
+                {"ttl", oOldRecord->iTtl},
+                {"value_template", oOldRecord->sValueTemplate},
+                {"priority", oOldRecord->iPriority},
+            };
+          }
+
           _rrRepo.update(iRecordId, sName, sType, iTtl, sValueTemplate, iPriority, jProviderMeta);
-          return jsonResponse(200, {{"message", "Record updated"}});
+
+          // Audit trail
+          nlohmann::json jNewValue = {
+              {"name", sName}, {"type", sType}, {"ttl", iTtl},
+              {"value_template", sValueTemplate}, {"priority", iPriority},
+          };
+          _arRepo.insert("record", iRecordId, "update", jOldValue, jNewValue,
+                         rcCtx.sUsername, std::nullopt, std::nullopt);
+
+          auto oUpdated = _rrRepo.findById(iRecordId);
+          return jsonResponse(200, recordRowToJson(*oUpdated));
         } catch (const common::AppError& e) {
           return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
@@ -167,8 +202,54 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           auto rcCtx = authenticate(_amMiddleware, req);
           requireRole(rcCtx, "operator");
 
+          // Capture old state for audit
+          auto oOldRecord = _rrRepo.findById(iRecordId);
+          nlohmann::json jOldValue;
+          if (oOldRecord) {
+            jOldValue = {
+                {"name", oOldRecord->sName}, {"type", oOldRecord->sType},
+                {"ttl", oOldRecord->iTtl},
+                {"value_template", oOldRecord->sValueTemplate},
+                {"priority", oOldRecord->iPriority},
+            };
+          }
+
           _rrRepo.deleteById(iRecordId);
-          return jsonResponse(200, {{"message", "Record deleted"}});
+
+          // Audit trail
+          _arRepo.insert("record", iRecordId, "delete", jOldValue, std::nullopt,
+                         rcCtx.sUsername, std::nullopt, std::nullopt);
+
+          return jsonResponse(200, {{"message", "Record marked for deletion"}});
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
+  // POST /api/v1/zones/<int>/records/<int>/restore
+  CROW_ROUTE(app, "/api/v1/zones/<int>/records/<int>/restore").methods("POST"_method)(
+      [this](const crow::request& req, int /*iZoneId*/, int iRecordId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "operator");
+
+          _rrRepo.restoreById(iRecordId);
+
+          // Audit trail
+          auto oRestored = _rrRepo.findById(iRecordId);
+          nlohmann::json jNewValue;
+          if (oRestored) {
+            jNewValue = {
+                {"name", oRestored->sName}, {"type", oRestored->sType},
+                {"ttl", oRestored->iTtl},
+                {"value_template", oRestored->sValueTemplate},
+                {"priority", oRestored->iPriority},
+            };
+          }
+          _arRepo.insert("record", iRecordId, "restore", std::nullopt, jNewValue,
+                         rcCtx.sUsername, std::nullopt, std::nullopt);
+
+          return jsonResponse(200, recordRowToJson(*oRestored));
         } catch (const common::AppError& e) {
           return errorResponse(e);
         }
@@ -324,6 +405,82 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           nlohmann::json jIds = nlohmann::json::array();
           for (auto id : vIds) jIds.push_back(id);
           return jsonResponse(201, {{"ids", jIds}, {"count", vIds.size()}});
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        } catch (const nlohmann::json::exception&) {
+          return invalidJsonResponse();
+        }
+      });
+
+  // PUT /api/v1/zones/<int>/records/batch
+  CROW_ROUTE(app, "/api/v1/zones/<int>/records/batch").methods("PUT"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "operator");
+
+          auto jBody = nlohmann::json::parse(req.body);
+
+          // Process updates
+          std::vector<dns::dal::RecordRepository::BatchUpdateEntry> vUpdates;
+          nlohmann::json jAuditUpdates = nlohmann::json::array();
+
+          if (jBody.contains("updates") && jBody["updates"].is_array()) {
+            for (const auto& jUpd : jBody["updates"]) {
+              dns::dal::RecordRepository::BatchUpdateEntry entry;
+              entry.iId = jUpd.value("id", int64_t{0});
+              if (entry.iId == 0) {
+                throw common::ValidationError("MISSING_ID", "Each update must have an 'id'");
+              }
+              if (jUpd.contains("name")) entry.oName = jUpd["name"].get<std::string>();
+              if (jUpd.contains("type")) entry.oType = jUpd["type"].get<std::string>();
+              if (jUpd.contains("ttl")) entry.oTtl = jUpd["ttl"].get<int>();
+              if (jUpd.contains("value_template"))
+                entry.oValueTemplate = jUpd["value_template"].get<std::string>();
+              if (jUpd.contains("priority")) entry.oPriority = jUpd["priority"].get<int>();
+              vUpdates.push_back(std::move(entry));
+              jAuditUpdates.push_back(jUpd);
+            }
+          }
+
+          // Process deletes
+          std::vector<int64_t> vDeleteIds;
+          nlohmann::json jAuditDeletes = nlohmann::json::array();
+
+          if (jBody.contains("deletes") && jBody["deletes"].is_array()) {
+            for (const auto& jId : jBody["deletes"]) {
+              int64_t iId = jId.get<int64_t>();
+              vDeleteIds.push_back(iId);
+              jAuditDeletes.push_back(iId);
+            }
+          }
+
+          if (vUpdates.empty() && vDeleteIds.empty()) {
+            throw common::ValidationError("EMPTY_BATCH", "No updates or deletes specified");
+          }
+
+          if (!vUpdates.empty()) {
+            _rrRepo.batchUpdate(iZoneId, vUpdates);
+          }
+          if (!vDeleteIds.empty()) {
+            _rrRepo.batchSoftDelete(iZoneId, vDeleteIds);
+          }
+
+          // Single audit entry for the entire batch
+          nlohmann::json jNewValue = {
+              {"updates", jAuditUpdates},
+              {"deletes", jAuditDeletes},
+          };
+          _arRepo.insert("record", iZoneId, "batch_update", std::nullopt, jNewValue,
+                         rcCtx.sUsername, std::nullopt, std::nullopt);
+
+          // Return updated records list
+          auto vRows = _rrRepo.listByZoneId(iZoneId);
+          nlohmann::json jArr = nlohmann::json::array();
+          for (const auto& row : vRows) {
+            jArr.push_back(recordRowToJson(row));
+          }
+          return jsonResponse(200, jArr);
         } catch (const common::AppError& e) {
           return errorResponse(e);
         } catch (const nlohmann::json::exception&) {

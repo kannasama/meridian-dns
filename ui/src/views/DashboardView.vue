@@ -82,9 +82,10 @@ function syncStatusSeverity(status?: string) {
   }
 }
 
-function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return 'Never'
-  const diff = Date.now() - new Date(iso).getTime()
+function relativeTime(ts: string | number | null | undefined): string {
+  if (ts == null) return 'Never'
+  const ms = typeof ts === 'number' ? ts * 1000 : new Date(ts).getTime()
+  const diff = Date.now() - ms
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'Just now'
   if (mins < 60) return `${mins}m ago`

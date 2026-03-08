@@ -22,6 +22,7 @@ struct RecordRow {
   std::string sValueTemplate;
   int iPriority = 0;
   nlohmann::json jProviderMeta;  // nullable JSONB from DB
+  bool bPendingDelete = false;
   std::optional<int64_t> oLastAuditId;
   std::chrono::system_clock::time_point tpCreatedAt;
   std::chrono::system_clock::time_point tpUpdatedAt;
@@ -50,17 +51,38 @@ class RecordRepository {
               int iTtl, const std::string& sValueTemplate, int iPriority,
               const nlohmann::json& jProviderMeta = nullptr);
 
-  /// Delete a record by ID. Throws NotFoundError if not found.
+  /// Soft-delete a record by ID (sets pending_delete = true).
   void deleteById(int64_t iId);
+
+  /// Restore a soft-deleted record (clears pending_delete flag).
+  void restoreById(int64_t iId);
+
+  /// Hard-delete all pending-delete records for a zone (after successful push).
+  int hardDeletePending(int64_t iZoneId);
 
   /// Delete all records for a zone. Returns deleted count.
   int deleteAllByZoneId(int64_t iZoneId);
+
+  /// Batch soft-delete records by IDs. All must belong to iZoneId.
+  void batchSoftDelete(int64_t iZoneId, const std::vector<int64_t>& vRecordIds);
 
   /// Create multiple records in a single transaction. Returns created IDs.
   /// Throws ValidationError with per-record details on failure.
   std::vector<int64_t> createBatch(int64_t iZoneId,
                                     const std::vector<std::tuple<std::string, std::string,
                                                                  int, std::string, int>>& vRecords);
+
+  /// Batch update records. Each entry specifies an ID and optional field overrides.
+  /// All records must belong to iZoneId. Executes in a single transaction.
+  struct BatchUpdateEntry {
+    int64_t iId = 0;
+    std::optional<std::string> oName;
+    std::optional<std::string> oType;
+    std::optional<int> oTtl;
+    std::optional<std::string> oValueTemplate;
+    std::optional<int> oPriority;
+  };
+  void batchUpdate(int64_t iZoneId, const std::vector<BatchUpdateEntry>& vUpdates);
 
   /// Upsert a record by ID. If the ID exists, update it. Otherwise, create a new record.
   /// Returns the record ID (existing or newly created).

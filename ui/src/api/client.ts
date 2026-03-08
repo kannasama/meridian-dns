@@ -42,9 +42,20 @@ export async function apiRequest<T>(
   })
 
   if (response.status === 401) {
+    const body = await response.json().catch(() => ({
+      error: 'unauthorized',
+      message: 'Session expired',
+    }))
+
+    // Only redirect for session expiry (non-auth endpoints where we had a token)
+    const hadToken = !!localStorage.getItem('jwt')
     localStorage.removeItem('jwt')
-    window.location.href = '/login'
-    throw new ApiRequestError(401, { error: 'unauthorized', message: 'Session expired' })
+
+    if (hadToken && !path.startsWith('/auth/')) {
+      window.location.href = '/login'
+    }
+
+    throw new ApiRequestError(401, body)
   }
 
   if (!response.ok) {

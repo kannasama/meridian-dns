@@ -46,6 +46,7 @@ struct RecordDiff {
   uint32_t uTtl = 300;
   int iPriority = 0;
   nlohmann::json jProviderMeta;  // Provider metadata from source record
+  std::string sProviderRecordId;  // Provider's native record ID for deletes
 };
 
 /// Per-provider preview result for multi-provider deployments.

@@ -67,7 +67,15 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
               sStatus = "error";
             }
             _zrRepo.updateSyncStatus(zone.iId, sStatus);
-            jResults.push_back({{"zone_id", zone.iId}, {"sync_status", sStatus}});
+            auto oUpdated = _zrRepo.findById(zone.iId);
+            nlohmann::json jEntry = {{"zone_id", zone.iId}, {"sync_status", sStatus}};
+            if (oUpdated && oUpdated->oSyncCheckedAt.has_value()) {
+              jEntry["sync_checked_at"] = std::chrono::duration_cast<std::chrono::seconds>(
+                  oUpdated->oSyncCheckedAt->time_since_epoch()).count();
+            } else {
+              jEntry["sync_checked_at"] = nullptr;
+            }
+            jResults.push_back(jEntry);
           }
           return jsonResponse(200, jResults);
         } catch (const common::AppError& e) {

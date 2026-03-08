@@ -7,6 +7,7 @@ import Button from 'primevue/button'
 import { useAuthStore } from '../stores/auth'
 import { completeSetup } from '../api/setup'
 import { ApiRequestError } from '../api/client'
+import { markSetupComplete } from '../router'
 
 declare global {
   interface Window {
@@ -47,7 +48,8 @@ async function handleSetup() {
       email: email.value,
       password: password.value,
     })
-    // Auto-login after successful setup
+    // Mark setup complete before login to prevent redirect loop
+    markSetupComplete()
     await auth.login(username.value, password.value)
     router.push('/')
   } catch (err) {

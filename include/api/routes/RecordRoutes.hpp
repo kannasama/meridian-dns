@@ -3,6 +3,7 @@
 #include <crow.h>
 
 namespace dns::dal {
+class AuditRepository;
 class RecordRepository;
 class ZoneRepository;
 }
@@ -24,6 +25,7 @@ class RecordRoutes {
  public:
   RecordRoutes(dns::dal::RecordRepository& rrRepo,
                dns::dal::ZoneRepository& zrRepo,
+               dns::dal::AuditRepository& arRepo,
                const dns::api::AuthMiddleware& amMiddleware,
                dns::core::DiffEngine& deEngine,
                dns::core::DeploymentEngine& depEngine);
@@ -34,6 +36,7 @@ class RecordRoutes {
  private:
   dns::dal::RecordRepository& _rrRepo;
   dns::dal::ZoneRepository& _zrRepo;
+  dns::dal::AuditRepository& _arRepo;
   const dns::api::AuthMiddleware& _amMiddleware;
   dns::core::DiffEngine& _deEngine;
   dns::core::DeploymentEngine& _depEngine;

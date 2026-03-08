@@ -101,7 +101,9 @@ const char* kSelectVariables =
 std::vector<VariableRow> VariableRepository::listAll() {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec(std::string(kSelectVariables) + " ORDER BY id");
+  auto result = txn.exec(
+      std::string(kSelectVariables) +
+          " ORDER BY CASE WHEN scope = 'global' THEN 0 ELSE 1 END, name");
   txn.commit();
 
   std::vector<VariableRow> vRows;
@@ -116,7 +118,7 @@ std::vector<VariableRow> VariableRepository::listByScope(const std::string& sSco
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      std::string(kSelectVariables) + " WHERE scope = $1::variable_scope ORDER BY id",
+      std::string(kSelectVariables) + " WHERE scope = $1::variable_scope ORDER BY name",
       pqxx::params{sScope});
   txn.commit();
 
@@ -133,7 +135,8 @@ std::vector<VariableRow> VariableRepository::listByZoneId(int64_t iZoneId) {
   pqxx::work txn(*cg);
   auto result = txn.exec(
       std::string(kSelectVariables) +
-          " WHERE zone_id = $1 OR scope = 'global' ORDER BY id",
+          " WHERE zone_id = $1 OR scope = 'global'"
+          " ORDER BY CASE WHEN scope = 'global' THEN 0 ELSE 1 END, name",
       pqxx::params{iZoneId});
   txn.commit();
 

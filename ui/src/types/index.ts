@@ -67,6 +67,7 @@ export interface DnsRecord {
   priority: number
   provider_meta: Record<string, unknown> | null
   last_audit_id: number | null
+  pending_delete: boolean
   created_at: number
   updated_at: number
 }
