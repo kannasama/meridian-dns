@@ -161,10 +161,15 @@ async function handleSubmitRecord() {
       await recordApi.updateRecord(zoneId, editingRecordId.value, payload)
       const idx = records.value.findIndex((r) => r.id === editingRecordId.value)
       if (idx !== -1) {
+        const existing = records.value[idx]!
         records.value[idx] = {
-          ...records.value[idx],
-          ...payload,
-          provider_meta: payload.provider_meta ?? records.value[idx].provider_meta,
+          ...existing,
+          name: payload.name,
+          type: payload.type,
+          ttl: payload.ttl ?? existing.ttl,
+          value_template: payload.value_template,
+          priority: payload.priority ?? existing.priority,
+          provider_meta: payload.provider_meta ?? existing.provider_meta,
         }
       }
       notify.success('Record updated')
@@ -199,7 +204,7 @@ function handleDeleteRecord(rec: DnsRecord) {
       await recordApi.deleteRecord(zoneId, rec.id)
       const idx = records.value.findIndex((r) => r.id === rec.id)
       if (idx !== -1) {
-        records.value[idx].pending_delete = true
+        records.value[idx]!.pending_delete = true
       }
       notify.success('Record deleted')
     } catch (err) {
@@ -214,7 +219,7 @@ async function handleRestoreRecord(rec: DnsRecord) {
     await recordApi.restoreRecord(zoneId, rec.id)
     const idx = records.value.findIndex((r) => r.id === rec.id)
     if (idx !== -1) {
-      records.value[idx].pending_delete = false
+      records.value[idx]!.pending_delete = false
     }
     notify.success('Record restored')
   } catch (err) {
@@ -237,7 +242,7 @@ async function handleBulkDelete() {
     for (const id of ids) {
       const idx = records.value.findIndex((r) => r.id === id)
       if (idx !== -1) {
-        records.value[idx].pending_delete = true
+        records.value[idx]!.pending_delete = true
       }
     }
     selectedRecords.value = []
@@ -260,7 +265,7 @@ async function handleBulkSetTtl() {
     for (const id of ids) {
       const idx = records.value.findIndex((r) => r.id === id)
       if (idx !== -1) {
-        records.value[idx].ttl = bulkTtlValue.value
+        records.value[idx]!.ttl = bulkTtlValue.value
       }
     }
     selectedRecords.value = []
