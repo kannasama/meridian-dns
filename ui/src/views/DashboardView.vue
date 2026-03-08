@@ -11,7 +11,7 @@ import * as providerApi from '../api/providers'
 import * as zoneApi from '../api/zones'
 import * as viewApi from '../api/views'
 import * as healthApi from '../api/health'
-import { syncCheckZone, syncCheckAll, type SyncCheckAllResult } from '../api/zones'
+import { syncCheckZone, syncCheckAll } from '../api/zones'
 import type { Zone, View, ProviderHealth } from '../types'
 
 const router = useRouter()
