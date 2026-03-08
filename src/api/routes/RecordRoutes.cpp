@@ -47,6 +47,11 @@ nlohmann::json recordRowToJson(const dns::dal::RecordRow& row) {
   } else {
     j["last_audit_id"] = nullptr;
   }
+  if (!row.jProviderMeta.is_null()) {
+    j["provider_meta"] = row.jProviderMeta;
+  } else {
+    j["provider_meta"] = nullptr;
+  }
   return j;
 }
 
@@ -90,8 +95,13 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           RequestValidator::validateTtl(iTtl);
           RequestValidator::validateValueTemplate(sValueTemplate);
 
+          nlohmann::json jProviderMeta;
+          if (jBody.contains("provider_meta") && jBody["provider_meta"].is_object()) {
+            jProviderMeta = jBody["provider_meta"];
+          }
+
           int64_t iId = _rrRepo.create(iZoneId, sName, sType, iTtl,
-                                       sValueTemplate, iPriority);
+                                       sValueTemplate, iPriority, jProviderMeta);
           return jsonResponse(201, {{"id", iId}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
@@ -136,7 +146,12 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           RequestValidator::validateTtl(iTtl);
           RequestValidator::validateValueTemplate(sValueTemplate);
 
-          _rrRepo.update(iRecordId, sName, sType, iTtl, sValueTemplate, iPriority);
+          nlohmann::json jProviderMeta;
+          if (jBody.contains("provider_meta") && jBody["provider_meta"].is_object()) {
+            jProviderMeta = jBody["provider_meta"];
+          }
+
+          _rrRepo.update(iRecordId, sName, sType, iTtl, sValueTemplate, iPriority, jProviderMeta);
           return jsonResponse(200, {{"message", "Record updated"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);

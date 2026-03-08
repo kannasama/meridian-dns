@@ -23,8 +23,8 @@ import * as zoneApi from '../api/zones'
 import * as recordApi from '../api/records'
 import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
-import { listVariables } from '../api/variables'
-import type { Zone, DnsRecord, RecordCreate, Provider, Variable } from '../types'
+import { useVariableAutocomplete } from '../composables/useVariableAutocomplete'
+import type { Zone, DnsRecord, RecordCreate, Provider } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -38,40 +38,17 @@ const records = ref<DnsRecord[]>([])
 const loading = ref(true)
 const viewProviders = ref<Provider[]>([])
 const proxied = ref(false)
+const autoTtl = ref(true)
 
-const variables = ref<Variable[]>([])
-const varFilter = ref('')
-const varPanelRef = ref()
-
-const filteredVars = computed(() => {
-  if (!varFilter.value) return variables.value
-  const q = varFilter.value.toLowerCase()
-  return variables.value.filter(v => v.name.toLowerCase().includes(q))
-})
-
-async function loadVariables() {
-  try {
-    variables.value = await listVariables(undefined, zoneId)
-    // Also load global variables
-    const globals = await listVariables('global')
-    const ids = new Set(variables.value.map(v => v.id))
-    for (const g of globals) {
-      if (!ids.has(g.id)) variables.value.push(g)
-    }
-  } catch { /* non-critical */ }
-}
+const {
+  variables, varFilter, varPanelRef, filteredVars,
+  loadVariables, togglePanel, hidePanel, onValueInput,
+} = useVariableAutocomplete(zoneId)
+void varPanelRef // used as template ref
 
 function insertVariable(varName: string) {
   form.value.value_template += `{{${varName}}}`
-  varPanelRef.value?.hide()
-}
-
-function onValueInput(e: Event) {
-  const val = (e.target as HTMLInputElement).value
-  if (val.endsWith('{{')) {
-    loadVariables()
-    varPanelRef.value?.show(e)
-  }
+  hidePanel()
 }
 
 const dialogVisible = ref(false)
@@ -100,6 +77,8 @@ const showProxyToggle = computed(
     ['A', 'AAAA', 'CNAME'].includes(form.value.type),
 )
 
+const showAutoTtlToggle = computed(() => hasCloudflareProvider.value)
+
 async function fetchData() {
   loading.value = true
   try {
@@ -119,6 +98,7 @@ async function fetchData() {
         // Non-critical — proxy toggle just won't show
       }
     }
+    loadVariables()
   } catch {
     notify.error('Failed to load zone')
   } finally {
@@ -126,10 +106,26 @@ async function fetchData() {
   }
 }
 
+function expandTemplate(sTemplate: string): string | null {
+  if (!sTemplate.includes('{{')) return null
+  return sTemplate.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (_match, varName) => {
+    const zoneVar = variables.value.find(v => v.name === varName && v.scope === 'zone')
+    const globalVar = variables.value.find(v => v.name === varName && v.scope === 'global')
+    const resolved = zoneVar || globalVar
+    return resolved ? resolved.value : `{{${varName}}}`
+  })
+}
+
+function hasUnresolvedVars(sTemplate: string): boolean {
+  const expanded = expandTemplate(sTemplate)
+  return expanded !== null && /\{\{[A-Za-z0-9_]+\}\}/.test(expanded)
+}
+
 function openCreateRecord() {
   editingRecordId.value = null
   form.value = { name: '', type: 'A', ttl: 300, value_template: '', priority: 0 }
   proxied.value = false
+  autoTtl.value = hasCloudflareProvider.value
   dialogVisible.value = true
 }
 
@@ -143,14 +139,19 @@ function openEditRecord(rec: DnsRecord) {
     priority: rec.priority,
   }
   proxied.value = (rec.provider_meta as Record<string, unknown>)?.proxied === true
+  autoTtl.value = (rec.provider_meta as Record<string, unknown>)?.auto_ttl === true
   dialogVisible.value = true
 }
 
 async function handleSubmitRecord() {
   try {
     const payload: RecordCreate = { ...form.value }
-    if (hasCloudflareProvider.value && ['A', 'AAAA', 'CNAME'].includes(payload.type)) {
-      payload.provider_meta = { proxied: proxied.value }
+    if (hasCloudflareProvider.value) {
+      const meta: Record<string, unknown> = { auto_ttl: autoTtl.value }
+      if (['A', 'AAAA', 'CNAME'].includes(payload.type)) {
+        meta.proxied = proxied.value
+      }
+      payload.provider_meta = meta
     }
     if (editingRecordId.value !== null) {
       await recordApi.updateRecord(zoneId, editingRecordId.value, payload)
@@ -201,6 +202,12 @@ watch(
     }
   },
 )
+
+watch(proxied, (bProxied) => {
+  if (bProxied) {
+    autoTtl.value = true  // Cloudflare enforces TTL=1 on proxied records
+  }
+})
 
 onMounted(fetchData)
 </script>
@@ -274,12 +281,24 @@ onMounted(fetchData)
         </Column>
         <Column field="value_template" header="Value">
           <template #body="{ data }">
-            <span class="font-mono">{{ data.value_template }}</span>
+            <div v-if="expandTemplate(data.value_template)" class="value-expanded">
+              <span class="font-mono" :class="{ 'text-warn': hasUnresolvedVars(data.value_template) }">
+                {{ expandTemplate(data.value_template) }}
+              </span>
+              <span class="font-mono value-template-raw">{{ data.value_template }}</span>
+            </div>
+            <span v-else class="font-mono">{{ data.value_template }}</span>
           </template>
         </Column>
-        <Column field="ttl" header="TTL" sortable style="width: 5rem">
+        <Column field="ttl" header="TTL" sortable style="width: 7rem">
           <template #body="{ data }">
             <span class="font-mono">{{ data.ttl }}</span>
+            <Tag
+              v-if="hasCloudflareProvider && data.provider_meta?.auto_ttl"
+              value="Auto"
+              severity="secondary"
+              class="ml-auto-ttl"
+            />
           </template>
         </Column>
         <Column v-if="hasPriorityRecords" field="priority" header="Priority" sortable style="width: 5rem">
@@ -358,7 +377,7 @@ onMounted(fetchData)
               text
               aria-label="Browse variables"
               v-tooltip.top="'Browse variables'"
-              @click="(e: any) => { loadVariables(); varPanelRef.toggle(e) }"
+              @click="(e: any) => togglePanel(e)"
             />
           </div>
           <Popover ref="varPanelRef">
@@ -375,7 +394,10 @@ onMounted(fetchData)
                   class="var-panel-item"
                   @click="insertVariable(v.name)"
                 >
-                  <span class="font-mono text-sm" v-text="'{{' + v.name + '}}'"></span>
+                  <div class="var-item-content">
+                    <span class="font-mono text-sm" v-text="'{{' + v.name + '}}'"></span>
+                    <span class="font-mono var-item-value">{{ v.value }}</span>
+                  </div>
                   <Tag :value="v.scope" :severity="v.scope === 'global' ? 'info' : 'warn'" />
                 </div>
                 <div v-if="filteredVars.length === 0" class="var-panel-empty">
@@ -401,6 +423,15 @@ onMounted(fetchData)
             <ToggleSwitch id="rec-proxied" v-model="proxied" />
           </div>
           <small class="text-muted">Route traffic through Cloudflare's CDN/WAF</small>
+        </div>
+        <div v-if="showAutoTtlToggle" class="field">
+          <div class="proxy-row">
+            <label for="rec-auto-ttl">Cloudflare Auto TTL</label>
+            <ToggleSwitch id="rec-auto-ttl" v-model="autoTtl" :disabled="proxied" />
+          </div>
+          <small class="text-muted">
+            {{ proxied ? 'Auto TTL is required for proxied records' : 'Cloudflare will use Auto TTL (other providers use the TTL value above)' }}
+          </small>
         </div>
         <Button type="submit" :label="editingRecordId ? 'Save' : 'Create'" class="w-full" />
       </form>
@@ -478,10 +509,46 @@ onMounted(fetchData)
   background: var(--p-surface-hover);
 }
 
+.var-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  flex: 1;
+  overflow: hidden;
+}
+
+.var-item-value {
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .var-panel-empty {
   color: var(--p-text-muted-color);
   font-size: 0.875rem;
   padding: 0.5rem;
+}
+
+.value-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.value-template-raw {
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color);
+}
+
+.text-warn {
+  color: var(--p-orange-400);
+}
+
+.ml-auto-ttl {
+  margin-left: 0.375rem;
+  font-size: 0.7rem;
 }
 
 .text-muted {

@@ -334,45 +334,108 @@ onMounted(async () => {
         </template>
 
         <div v-if="preview.diffs.length > 0" class="diff-list">
-          <div
-            v-for="(diff, idx) in preview.diffs"
-            :key="idx"
-            class="diff-row"
-            :style="{ borderLeftColor: actionColor(diff.action) }"
-          >
-            <div class="diff-header">
-              <Tag :value="diff.action" :severity="diff.action === 'add' ? 'success' : diff.action === 'delete' ? 'danger' : 'warn'" />
-              <span class="font-mono diff-name">{{ diff.name }}</span>
-              <Tag :value="diff.type" severity="secondary" />
-            </div>
-            <div class="diff-values">
-              <div v-if="diff.source_value" class="diff-value">
-                <span class="diff-label">Desired:</span>
-                <span class="font-mono">{{ diff.source_value }}</span>
+          <!-- Per-provider grouping when multiple providers -->
+          <template v-if="preview.providers && preview.providers.length > 1">
+            <div v-for="prov in preview.providers" :key="prov.provider_id" class="provider-group">
+              <div class="provider-group-header">
+                <span class="provider-group-name">{{ prov.provider_name }}</span>
+                <Tag :value="prov.provider_type" severity="secondary" size="small" />
+                <Tag
+                  v-if="prov.diffs.length === 0"
+                  value="In sync"
+                  severity="success"
+                  size="small"
+                />
+                <Tag
+                  v-else-if="prov.has_drift"
+                  :value="`${prov.diffs.length} change${prov.diffs.length > 1 ? 's' : ''}`"
+                  severity="warn"
+                  size="small"
+                />
               </div>
-              <div v-if="diff.provider_value" class="diff-value">
-                <span class="diff-label">Provider:</span>
-                <span class="font-mono" :class="{ 'text-muted': diff.action === 'delete' }">
-                  {{ diff.provider_value }}
-                </span>
+              <div
+                v-for="(diff, idx) in prov.diffs"
+                :key="idx"
+                class="diff-row"
+                :style="{ borderLeftColor: actionColor(diff.action) }"
+              >
+                <div class="diff-header">
+                  <Tag :value="diff.action" :severity="diff.action === 'add' ? 'success' : diff.action === 'delete' ? 'danger' : 'warn'" />
+                  <span class="font-mono diff-name">{{ diff.name }}</span>
+                  <Tag :value="diff.type" severity="secondary" />
+                </div>
+                <div class="diff-values">
+                  <div v-if="diff.source_value" class="diff-value">
+                    <span class="diff-label">Desired:</span>
+                    <span class="font-mono">{{ diff.source_value }}</span>
+                  </div>
+                  <div v-if="diff.provider_value" class="diff-value">
+                    <span class="diff-label">Provider:</span>
+                    <span class="font-mono" :class="{ 'text-muted': diff.action === 'delete' }">
+                      {{ diff.provider_value }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="diff.action === 'drift' && isOperator" class="drift-actions">
+                  <SelectButton
+                    :modelValue="getDriftAction(preview.zone_id, diff.name, diff.type)"
+                    @update:modelValue="(v: string) => setDriftAction(preview.zone_id, diff.name, diff.type, v as 'adopt' | 'delete' | 'ignore')"
+                    :options="[
+                      { label: 'Adopt', value: 'adopt' },
+                      { label: 'Delete', value: 'delete' },
+                      { label: 'Ignore', value: 'ignore' },
+                    ]"
+                    optionLabel="label"
+                    optionValue="value"
+                    :allowEmpty="false"
+                    size="small"
+                  />
+                </div>
               </div>
             </div>
-            <div v-if="diff.action === 'drift' && isOperator" class="drift-actions">
-              <SelectButton
-                :modelValue="getDriftAction(preview.zone_id, diff.name, diff.type)"
-                @update:modelValue="(v: string) => setDriftAction(preview.zone_id, diff.name, diff.type, v as 'adopt' | 'delete' | 'ignore')"
-                :options="[
-                  { label: 'Adopt', value: 'adopt' },
-                  { label: 'Delete', value: 'delete' },
-                  { label: 'Ignore', value: 'ignore' },
-                ]"
-                optionLabel="label"
-                optionValue="value"
-                :allowEmpty="false"
-                size="small"
-              />
+          </template>
+          <!-- Single provider or fallback: flat list -->
+          <template v-else>
+            <div
+              v-for="(diff, idx) in preview.diffs"
+              :key="idx"
+              class="diff-row"
+              :style="{ borderLeftColor: actionColor(diff.action) }"
+            >
+              <div class="diff-header">
+                <Tag :value="diff.action" :severity="diff.action === 'add' ? 'success' : diff.action === 'delete' ? 'danger' : 'warn'" />
+                <span class="font-mono diff-name">{{ diff.name }}</span>
+                <Tag :value="diff.type" severity="secondary" />
+              </div>
+              <div class="diff-values">
+                <div v-if="diff.source_value" class="diff-value">
+                  <span class="diff-label">Desired:</span>
+                  <span class="font-mono">{{ diff.source_value }}</span>
+                </div>
+                <div v-if="diff.provider_value" class="diff-value">
+                  <span class="diff-label">Provider:</span>
+                  <span class="font-mono" :class="{ 'text-muted': diff.action === 'delete' }">
+                    {{ diff.provider_value }}
+                  </span>
+                </div>
+              </div>
+              <div v-if="diff.action === 'drift' && isOperator" class="drift-actions">
+                <SelectButton
+                  :modelValue="getDriftAction(preview.zone_id, diff.name, diff.type)"
+                  @update:modelValue="(v: string) => setDriftAction(preview.zone_id, diff.name, diff.type, v as 'adopt' | 'delete' | 'ignore')"
+                  :options="[
+                    { label: 'Adopt', value: 'adopt' },
+                    { label: 'Delete', value: 'delete' },
+                    { label: 'Ignore', value: 'ignore' },
+                  ]"
+                  optionLabel="label"
+                  optionValue="value"
+                  :allowEmpty="false"
+                  size="small"
+                />
+              </div>
             </div>
-          </div>
+          </template>
         </div>
         <div v-else class="in-sync">
           <i class="pi pi-check-circle" /> All records are in sync.
@@ -491,6 +554,33 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.provider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.provider-group + .provider-group {
+  margin-top: 0.75rem;
+}
+
+.provider-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--p-surface-700);
+}
+
+:root:not(.app-dark) .provider-group-header {
+  border-bottom-color: var(--p-surface-200);
+}
+
+.provider-group-name {
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 .diff-row {

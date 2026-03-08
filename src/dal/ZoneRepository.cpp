@@ -135,7 +135,7 @@ std::optional<ZoneRow> ZoneRepository::findById(int64_t iId) {
   return zr;
 }
 
-void ZoneRepository::update(int64_t iId, const std::string& sName,
+void ZoneRepository::update(int64_t iId, const std::string& sName, int64_t iViewId,
                             std::optional<int> oRetention,
                             bool bManageSoa, bool bManageNs) {
   auto cg = _cpPool.checkout();
@@ -145,14 +145,14 @@ void ZoneRepository::update(int64_t iId, const std::string& sName,
   try {
     if (oRetention.has_value()) {
       result = txn.exec(
-          "UPDATE zones SET name = $2, deployment_retention = $3, "
-          "manage_soa = $4, manage_ns = $5 WHERE id = $1",
-          pqxx::params{iId, sName, *oRetention, bManageSoa, bManageNs});
+          "UPDATE zones SET name = $2, view_id = $3, deployment_retention = $4, "
+          "manage_soa = $5, manage_ns = $6 WHERE id = $1",
+          pqxx::params{iId, sName, iViewId, *oRetention, bManageSoa, bManageNs});
     } else {
       result = txn.exec(
-          "UPDATE zones SET name = $2, deployment_retention = NULL, "
-          "manage_soa = $3, manage_ns = $4 WHERE id = $1",
-          pqxx::params{iId, sName, bManageSoa, bManageNs});
+          "UPDATE zones SET name = $2, view_id = $3, deployment_retention = NULL, "
+          "manage_soa = $4, manage_ns = $5 WHERE id = $1",
+          pqxx::params{iId, sName, iViewId, bManageSoa, bManageNs});
     }
     txn.commit();
   } catch (const pqxx::unique_violation&) {

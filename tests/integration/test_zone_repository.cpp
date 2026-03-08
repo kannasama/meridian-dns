@@ -137,7 +137,7 @@ TEST_F(ZoneRepositoryTest, UpdateSoaNsFlags) {
   EXPECT_FALSE(oRow->bManageSoa);
   EXPECT_FALSE(oRow->bManageNs);
 
-  _zrRepo->update(iId, "ns-test.com.", std::nullopt, false, true);
+  _zrRepo->update(iId, "ns-test.com.", _iViewId, std::nullopt, false, true);
   oRow = _zrRepo->findById(iId);
   EXPECT_FALSE(oRow->bManageSoa);
   EXPECT_TRUE(oRow->bManageNs);

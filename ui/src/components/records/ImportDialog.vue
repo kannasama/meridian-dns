@@ -8,10 +8,12 @@ import Column from 'primevue/column'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import Popover from 'primevue/popover'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import FileUpload from 'primevue/fileupload'
 import { useNotificationStore } from '../../stores/notification'
+import { useVariableAutocomplete } from '../../composables/useVariableAutocomplete'
 import { ApiRequestError } from '../../api/client'
 import * as recordApi from '../../api/records'
 import type { RecordCreate } from '../../types'
@@ -29,6 +31,22 @@ const emit = defineEmits<{
 }>()
 
 const notify = useNotificationStore()
+const { varFilter, varPanelRef, filteredVars, togglePanel, hidePanel, onValueInput } =
+  useVariableAutocomplete(props.zoneId)
+void varPanelRef // used as template ref
+const activeImportIndex = ref<number | null>(null)
+
+function insertImportVariable(varName: string) {
+  if (activeImportIndex.value !== null && parseResult.value) {
+    parseResult.value.records[activeImportIndex.value]!.value_template += `{{${varName}}}`
+  }
+  hidePanel()
+}
+
+function onImportValueInput(index: number, e: Event) {
+  activeImportIndex.value = index
+  onValueInput(e)
+}
 
 const tabs = [
   { label: 'CSV', icon: 'pi pi-file' },
@@ -207,11 +225,23 @@ const placeholder = computed(() => {
         </Column>
         <Column field="value_template" header="Value">
           <template #body="{ index }">
-            <InputText
-              v-model="parseResult!.records[index]!.value_template"
-              class="w-full font-mono"
-              size="small"
-            />
+            <div class="var-input-row">
+              <InputText
+                v-model="parseResult!.records[index]!.value_template"
+                class="flex-1 font-mono"
+                size="small"
+                @input="(e: Event) => onImportValueInput(index, e)"
+              />
+              <Button
+                icon="pi pi-search"
+                severity="secondary"
+                text
+                size="small"
+                aria-label="Browse variables"
+                v-tooltip.top="'Browse variables'"
+                @click="(e: any) => { activeImportIndex = index; togglePanel(e) }"
+              />
+            </div>
           </template>
         </Column>
         <Column field="ttl" header="TTL" style="width: 5rem">
@@ -235,6 +265,33 @@ const placeholder = computed(() => {
         @click="handleImport"
       />
     </div>
+
+    <Popover ref="varPanelRef">
+      <div class="var-panel">
+        <InputText
+          v-model="varFilter"
+          placeholder="Filter variables..."
+          class="w-full var-panel-filter"
+        />
+        <div class="var-panel-list">
+          <div
+            v-for="v in filteredVars"
+            :key="v.id"
+            class="var-panel-item"
+            @click="insertImportVariable(v.name)"
+          >
+            <div class="var-item-content">
+              <span class="font-mono text-sm" v-text="'{{' + v.name + '}}'"></span>
+              <span class="font-mono var-item-value">{{ v.value }}</span>
+            </div>
+            <Tag :value="v.scope" :severity="v.scope === 'global' ? 'info' : 'warn'" />
+          </div>
+          <div v-if="filteredVars.length === 0" class="var-panel-empty">
+            No variables found
+          </div>
+        </div>
+      </div>
+    </Popover>
   </Dialog>
 </template>
 
@@ -277,5 +334,63 @@ const placeholder = computed(() => {
 
 .upload-btn :deep(.p-button) {
   font-size: 0.85rem;
+}
+
+.var-input-row {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.var-panel {
+  width: 20rem;
+}
+
+.var-panel-filter {
+  margin-bottom: 0.5rem;
+}
+
+.var-panel-list {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.var-panel-item {
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: var(--p-border-radius);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.var-panel-item:hover {
+  background: var(--p-surface-hover);
+}
+
+.var-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  flex: 1;
+  overflow: hidden;
+}
+
+.var-item-value {
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.var-panel-empty {
+  color: var(--p-text-muted-color);
+  font-size: 0.875rem;
+  padding: 0.5rem;
 }
 </style>

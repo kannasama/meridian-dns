@@ -177,6 +177,85 @@ TEST(DiffEngineComputeTest, PropagatesProviderMetaInDiff) {
   EXPECT_TRUE(vDiffs[0].jProviderMeta.value("proxied", false));
 }
 
+TEST(DiffEngineComputeTest, MultipleTxtRecordsBothChanged) {
+  // Two TXT records at @ (SPF + verification token), both values updated
+  // Must produce correct 1:1 pairings, not cross-match
+  std::vector<DnsRecord> vDesired = {
+      makeRecord("example.com.", "TXT", "v=spf1 include:_spf.google.com ~all"),
+      makeRecord("example.com.", "TXT", "google-site-verification=NEW_TOKEN"),
+  };
+  std::vector<DnsRecord> vLive = {
+      makeRecord("example.com.", "TXT", "v=spf1 include:_spf.old.com ~all"),
+      makeRecord("example.com.", "TXT", "google-site-verification=OLD_TOKEN"),
+  };
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+
+  // Should produce exactly 2 updates with no drift
+  ASSERT_EQ(vDiffs.size(), 2u);
+
+  std::sort(vDiffs.begin(), vDiffs.end(),
+            [](const RecordDiff& a, const RecordDiff& b) {
+              return a.sSourceValue < b.sSourceValue;
+            });
+
+  // google-site-verification update
+  EXPECT_EQ(vDiffs[0].action, DiffAction::Update);
+  EXPECT_EQ(vDiffs[0].sSourceValue, "google-site-verification=NEW_TOKEN");
+  EXPECT_EQ(vDiffs[0].sProviderValue, "google-site-verification=OLD_TOKEN");
+
+  // SPF update
+  EXPECT_EQ(vDiffs[1].action, DiffAction::Update);
+  EXPECT_EQ(vDiffs[1].sSourceValue, "v=spf1 include:_spf.google.com ~all");
+  EXPECT_EQ(vDiffs[1].sProviderValue, "v=spf1 include:_spf.old.com ~all");
+}
+
+TEST(DiffEngineComputeTest, MultipleTxtRecordsOneChanged) {
+  // Two TXT records at @: SPF unchanged, verification token updated
+  std::vector<DnsRecord> vDesired = {
+      makeRecord("example.com.", "TXT", "v=spf1 include:_spf.google.com ~all"),
+      makeRecord("example.com.", "TXT", "google-site-verification=NEW_TOKEN"),
+  };
+  std::vector<DnsRecord> vLive = {
+      makeRecord("example.com.", "TXT", "v=spf1 include:_spf.google.com ~all"),
+      makeRecord("example.com.", "TXT", "google-site-verification=OLD_TOKEN"),
+  };
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+
+  // Only 1 update (verification token), SPF exact-matches
+  ASSERT_EQ(vDiffs.size(), 1u);
+  EXPECT_EQ(vDiffs[0].action, DiffAction::Update);
+  EXPECT_EQ(vDiffs[0].sSourceValue, "google-site-verification=NEW_TOKEN");
+  EXPECT_EQ(vDiffs[0].sProviderValue, "google-site-verification=OLD_TOKEN");
+}
+
+TEST(DiffEngineComputeTest, AutoTtlNormalizedDesiredMatchesLive) {
+  // When DiffEngine::preview() normalizes desired TTL to 1 for Cloudflare,
+  // the computeDiff should see no diff (name+type+value match)
+  auto drDesired = makeRecord("www.example.com.", "A", "1.2.3.4", 1);  // normalized
+  drDesired.jProviderMeta = {{"proxied", true}, {"auto_ttl", true}};
+
+  auto drLive = makeRecord("www.example.com.", "A", "1.2.3.4", 1);  // Cloudflare returns 1
+  drLive.jProviderMeta = {{"proxied", true}};
+
+  auto vDiffs = DiffEngine::computeDiff({drDesired}, {drLive});
+  EXPECT_TRUE(vDiffs.empty());
+}
+
+TEST(DiffEngineComputeTest, AutoTtlPropagatesInAddDiff) {
+  DnsRecord drDesired;
+  drDesired.sName = "cdn.example.com.";
+  drDesired.sType = "CNAME";
+  drDesired.uTtl = 1;  // normalized for Cloudflare
+  drDesired.sValue = "cdn.provider.com.";
+  drDesired.jProviderMeta = {{"proxied", true}, {"auto_ttl", true}};
+
+  auto vDiffs = DiffEngine::computeDiff({drDesired}, {});
+  ASSERT_EQ(vDiffs.size(), 1u);
+  EXPECT_EQ(vDiffs[0].action, DiffAction::Add);
+  EXPECT_TRUE(vDiffs[0].jProviderMeta.value("auto_ttl", false));
+  EXPECT_EQ(vDiffs[0].uTtl, 1u);
+}
+
 TEST(DiffEngineComputeTest, PerProviderDiffIndependent) {
   // Same desired records, different live records per provider
   std::vector<DnsRecord> vDesired = {makeRecord("www.example.com.", "A", "1.2.3.4")};

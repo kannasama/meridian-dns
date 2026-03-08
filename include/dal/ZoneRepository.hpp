@@ -44,9 +44,10 @@ class ZoneRepository {
   /// Find a zone by ID. Returns nullopt if not found.
   std::optional<ZoneRow> findById(int64_t iId);
 
-  /// Update a zone's name and retention. Does NOT change view_id.
-  void update(int64_t iId, const std::string& sName, std::optional<int> oRetention,
-              bool bManageSoa = false, bool bManageNs = false);
+  /// Update a zone's name, view, and retention.
+  void update(int64_t iId, const std::string& sName, int64_t iViewId,
+              std::optional<int> oRetention, bool bManageSoa = false,
+              bool bManageNs = false);
 
   /// Update a zone's sync status and set sync_checked_at to NOW().
   void updateSyncStatus(int64_t iZoneId, const std::string& sSyncStatus);

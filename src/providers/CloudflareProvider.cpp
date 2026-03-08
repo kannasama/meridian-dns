@@ -137,7 +137,8 @@ std::vector<common::DnsRecord> CloudflareProvider::parseRecordsResponse(
 
     // Capture provider-specific metadata
     bool bProxied = jRec.value("proxied", false);
-    dr.jProviderMeta = {{"proxied", bProxied}};
+    bool bAutoTtl = (dr.uTtl == 1);
+    dr.jProviderMeta = {{"proxied", bProxied}, {"auto_ttl", bAutoTtl}};
 
     vRecords.push_back(std::move(dr));
   }
@@ -187,11 +188,17 @@ std::vector<common::DnsRecord> CloudflareProvider::listRecords(
 // ---------------------------------------------------------------------------
 
 nlohmann::json CloudflareProvider::buildRecordBody(const common::DnsRecord& drRecord) {
+  // Auto-TTL: send TTL=1 (Cloudflare "Auto") when auto_ttl is set
+  uint32_t uEffectiveTtl = drRecord.uTtl;
+  if (!drRecord.jProviderMeta.is_null() && drRecord.jProviderMeta.value("auto_ttl", false)) {
+    uEffectiveTtl = 1;
+  }
+
   json jBody = {
       {"type", drRecord.sType},
       {"name", drRecord.sName},
       {"content", drRecord.sValue},
-      {"ttl", drRecord.uTtl},
+      {"ttl", uEffectiveTtl},
   };
 
   // MX/SRV have priority as a separate field in Cloudflare API

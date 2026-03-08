@@ -197,6 +197,11 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
 
           RequestValidator::validateZoneName(sName);
 
+          int64_t iViewId = jBody.value("view_id", static_cast<int64_t>(0));
+          if (iViewId <= 0) {
+            throw common::ValidationError("INVALID_VIEW", "view_id is required");
+          }
+
           std::optional<int> oRetention;
           if (jBody.contains("deployment_retention") &&
               !jBody["deployment_retention"].is_null()) {
@@ -206,7 +211,7 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           bool bManageSoa = jBody.value("manage_soa", false);
           bool bManageNs = jBody.value("manage_ns", false);
 
-          _zrRepo.update(iId, sName, oRetention, bManageSoa, bManageNs);
+          _zrRepo.update(iId, sName, iViewId, oRetention, bManageSoa, bManageNs);
           return jsonResponse(200, {{"message", "Zone updated"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);

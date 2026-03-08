@@ -36,7 +36,8 @@ class RecordRepository {
 
   /// Create a record. Returns the new ID.
   int64_t create(int64_t iZoneId, const std::string& sName, const std::string& sType,
-                 int iTtl, const std::string& sValueTemplate, int iPriority);
+                 int iTtl, const std::string& sValueTemplate, int iPriority,
+                 const nlohmann::json& jProviderMeta = nullptr);
 
   /// List records for a zone.
   std::vector<RecordRow> listByZoneId(int64_t iZoneId);
@@ -46,7 +47,8 @@ class RecordRepository {
 
   /// Update a record.
   void update(int64_t iId, const std::string& sName, const std::string& sType,
-              int iTtl, const std::string& sValueTemplate, int iPriority);
+              int iTtl, const std::string& sValueTemplate, int iPriority,
+              const nlohmann::json& jProviderMeta = nullptr);
 
   /// Delete a record by ID. Throws NotFoundError if not found.
   void deleteById(int64_t iId);

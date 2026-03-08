@@ -13,15 +13,20 @@ RecordRepository::~RecordRepository() = default;
 
 int64_t RecordRepository::create(int64_t iZoneId, const std::string& sName,
                                  const std::string& sType, int iTtl,
-                                 const std::string& sValueTemplate, int iPriority) {
+                                 const std::string& sValueTemplate, int iPriority,
+                                 const nlohmann::json& jProviderMeta) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
 
   try {
+    std::optional<std::string> sMetaJson;
+    if (!jProviderMeta.is_null()) {
+      sMetaJson = jProviderMeta.dump();
+    }
     auto result = txn.exec(
         "INSERT INTO records (zone_id, name, type, ttl, value_template, priority, provider_meta) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) RETURNING id",
-        pqxx::params{iZoneId, sName, sType, iTtl, sValueTemplate, iPriority, nullptr});
+        pqxx::params{iZoneId, sName, sType, iTtl, sValueTemplate, iPriority, sMetaJson});
     txn.commit();
     return result.one_row()[0].as<int64_t>();
   } catch (const pqxx::foreign_key_violation&) {
@@ -101,13 +106,19 @@ std::optional<RecordRow> RecordRepository::findById(int64_t iId) {
 
 void RecordRepository::update(int64_t iId, const std::string& sName,
                               const std::string& sType, int iTtl,
-                              const std::string& sValueTemplate, int iPriority) {
+                              const std::string& sValueTemplate, int iPriority,
+                              const nlohmann::json& jProviderMeta) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
+
+  std::optional<std::string> sMetaJson;
+  if (!jProviderMeta.is_null()) {
+    sMetaJson = jProviderMeta.dump();
+  }
   auto result = txn.exec(
       "UPDATE records SET name = $2, type = $3, ttl = $4, value_template = $5, "
-      "priority = $6, updated_at = NOW() WHERE id = $1",
-      pqxx::params{iId, sName, sType, iTtl, sValueTemplate, iPriority});
+      "priority = $6, provider_meta = $7::jsonb, updated_at = NOW() WHERE id = $1",
+      pqxx::params{iId, sName, sType, iTtl, sValueTemplate, iPriority, sMetaJson});
   txn.commit();
 
   if (result.affected_rows() == 0) {

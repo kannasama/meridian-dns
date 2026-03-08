@@ -60,6 +60,17 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
     mLiveByNameType[sKey].push_back(dr.sValue);
   }
 
+  // Track which live values have been consumed by update pairings
+  std::set<std::string> sConsumedLive;
+
+  // Mark exact matches as consumed so they aren't paired with other desired records
+  for (const auto& dr : vDesired) {
+    std::string sExactKey = dr.sName + "\t" + dr.sType + "\t" + dr.sValue;
+    if (sLiveKeys.count(sExactKey)) {
+      sConsumedLive.insert(sExactKey);
+    }
+  }
+
   // 1. Check desired records: Add or Update
   for (const auto& dr : vDesired) {
     std::string sExactKey = dr.sName + "\t" + dr.sType + "\t" + dr.sValue;
@@ -72,12 +83,13 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
       std::string sProviderValue;
       for (const auto& sLiveVal : itLive->second) {
         std::string sLiveExact = dr.sName + "\t" + dr.sType + "\t" + sLiveVal;
-        if (!sDesiredKeys.count(sLiveExact)) {
+        if (!sDesiredKeys.count(sLiveExact) && !sConsumedLive.count(sLiveExact)) {
           sProviderValue = sLiveVal;
           break;
         }
       }
       if (!sProviderValue.empty()) {
+        sConsumedLive.insert(dr.sName + "\t" + dr.sType + "\t" + sProviderValue);
         common::RecordDiff rd;
         rd.action = common::DiffAction::Update;
         rd.sName = dr.sName;
@@ -278,9 +290,21 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
 
   for (auto& [iProviderId, vLive] : mLive) {
     vLive = filterRecordTypes(vLive, oZone->bManageSoa, oZone->bManageNs);
-    auto vDiffs = computeDiff(vDesired, vLive);
 
     auto oProvider = _prRepo.findById(iProviderId);
+
+    // For Cloudflare providers, normalize desired TTL to 1 for auto_ttl records
+    // so the diff doesn't flag a false TTL mismatch against Cloudflare's TTL=1
+    auto vProviderDesired = vDesired;
+    if (oProvider && oProvider->sType == "cloudflare") {
+      for (auto& dr : vProviderDesired) {
+        if (!dr.jProviderMeta.is_null() && dr.jProviderMeta.value("auto_ttl", false)) {
+          dr.uTtl = 1;
+        }
+      }
+    }
+
+    auto vDiffs = computeDiff(vProviderDesired, vLive);
 
     common::ProviderPreviewResult ppr;
     ppr.iProviderId = iProviderId;
