@@ -1300,7 +1300,7 @@ For sensitive secrets (`DNS_MASTER_KEY`, `DNS_JWT_SECRET`), a `_FILE` variant is
 | `DNS_GIT_REMOTE_URL` | No | — | Git remote URL for GitOps mirror (disabled if unset) |
 | `DNS_GIT_LOCAL_PATH` | No | `/var/meridian-dns/repo` | Local path for Git mirror clone |
 | `DNS_GIT_SSH_KEY_PATH` | No | — | Path to SSH private key for Git push auth |
-| `DNS_GIT_KNOWN_HOSTS_FILE` | No | — | Path to known_hosts file for SSH host verification (future implementation; SEC-09) |
+| `DNS_GIT_KNOWN_HOSTS_FILE` | No | — | Path to known_hosts file for SSH host verification; when set, only listed hosts are accepted (SEC-09) |
 | `DNS_OIDC_ISSUER` | No | — | OIDC issuer URL (enables OIDC if set) |
 | `DNS_OIDC_CLIENT_ID` | No | — | OIDC client ID |
 | `DNS_OIDC_CLIENT_SECRET` | No | — | OIDC client secret |
@@ -1782,7 +1782,7 @@ When `DNS_GIT_REMOTE_URL` is configured, the following security requirements app
 | **Deploy key scope** | The SSH key at `DNS_GIT_SSH_KEY_PATH` must be a repository-scoped deploy key, not a user key. It must have write access to exactly one repository. |
 | **Key permissions** | The SSH private key file must be mode `0400` (owner read-only). |
 | **Remote access** | The Git remote should be on an internal network or accessed via VPN where possible. |
-| **Host verification** | `DNS_GIT_KNOWN_HOSTS_FILE` is reserved for a future implementation of SSH host fingerprint verification via `libgit2` `certificate_check` callback. When implemented, connections to hosts not listed in the known_hosts file will be rejected. |
+| **Host verification** | When `DNS_GIT_KNOWN_HOSTS_FILE` is set, the `certificate_check` callback validates the remote host against the file; connections to unlisted hosts are rejected. When unset, all hosts are accepted (suitable for internal networks). |
 | **Force-push** | The GitOps mirror uses force-push to resolve conflicts (DB state always wins). The remote repository should be configured to allow force-push only from the deploy key, and to protect the branch from deletion. |
 
 > **Multi-instance SAML note:** The `SamlReplayCache` is process-local (in-memory). If the application is deployed with multiple instances behind a load balancer, a shared external cache (e.g., Redis) must be used to prevent assertion replay across instances. This is a future enhancement; document in your deployment runbook if running multi-instance.

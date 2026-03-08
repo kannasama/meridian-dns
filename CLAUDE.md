@@ -307,6 +307,18 @@ Separate repository: `meridian-dns-tui`. Consumes REST API. See `docs/TUI_DESIGN
 
 ---
 
+### Future Backlog
+
+- **Git configuration via UI:** Move GitOps settings (remote URL, SSH key, known_hosts) from
+  environment variables into the web UI with encrypted storage in the database. This would
+  allow runtime reconfiguration without restarting the service.
+- **Git personal access token auth:** Add support for HTTPS remote URLs with personal access
+  tokens as an alternative to SSH key authentication. Requires `git_credential_userpass_plaintext_new`
+  in the credentials callback.
+- **Self-service password reset:** Requires SMTP/email infrastructure (deferred from v0.9.5).
+
+---
+
 ## Code Standards
 
 **Naming (Hungarian notation variant):**

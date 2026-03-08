@@ -131,6 +131,33 @@ void GitOpsMirror::initialize(const std::string& sRemoteUrl, const std::string& 
   _oKnownHostsFile = oKnownHostsFile;
 
   namespace fs = std::filesystem;
+
+  // libgit2's SSH transport reads $HOMEDIR/.ssh/known_hosts internally before
+  // invoking our certificate_check callback. In container/service contexts,
+  // ~/.ssh/known_hosts often doesn't exist, causing "error loading known_hosts".
+  // Fix: set HOMEDIR to a directory where we control .ssh/known_hosts.
+  fs::path sshHome = fs::path(sLocalPath) / ".gitssh";
+  fs::path sshDir = sshHome / ".ssh";
+  fs::create_directories(sshDir);
+  fs::path knownHostsPath = sshDir / "known_hosts";
+  if (oKnownHostsFile.has_value()) {
+    // Symlink to the user-provided known_hosts file
+    std::error_code ec;
+    fs::remove(knownHostsPath, ec);
+    fs::create_symlink(oKnownHostsFile.value(), knownHostsPath, ec);
+    if (ec) {
+      // Fallback: copy the file if symlink fails
+      fs::copy_file(oKnownHostsFile.value(), knownHostsPath,
+                    fs::copy_options::overwrite_existing, ec);
+    }
+    spLog->info("GitOpsMirror: using known_hosts from '{}'", oKnownHostsFile.value());
+  } else if (!fs::exists(knownHostsPath)) {
+    // Create empty known_hosts so libgit2 SSH transport doesn't error.
+    // Our certificate_check callback accepts all hosts when no file is configured.
+    std::ofstream ofs(knownHostsPath);
+    ofs.close();
+  }
+  git_libgit2_opts(GIT_OPT_SET_HOMEDIR, sshHome.c_str());
   if (fs::exists(sLocalPath + "/.git") || fs::exists(sLocalPath + "/HEAD")) {
     // Open existing repo
     int iErr = git_repository_open(&_pRepo, sLocalPath.c_str());
