@@ -4,6 +4,7 @@
 #include "dal/ConnectionPool.hpp"
 
 #include <pqxx/pqxx>
+#include <sstream>
 
 namespace dns::dal {
 
@@ -30,9 +31,13 @@ std::vector<ViewRow> ViewRepository::listAll() {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      "SELECT id, name, COALESCE(description, ''), "
-      "EXTRACT(EPOCH FROM created_at)::bigint "
-      "FROM views ORDER BY id");
+      "SELECT v.id, v.name, COALESCE(v.description, ''), "
+      "EXTRACT(EPOCH FROM v.created_at)::bigint, "
+      "COALESCE(array_agg(vp.provider_id ORDER BY vp.provider_id) "
+      "  FILTER (WHERE vp.provider_id IS NOT NULL), '{}') "
+      "FROM views v "
+      "LEFT JOIN view_providers vp ON vp.view_id = v.id "
+      "GROUP BY v.id ORDER BY v.id");
   txn.commit();
 
   std::vector<ViewRow> vRows;
@@ -44,6 +49,18 @@ std::vector<ViewRow> ViewRepository::listAll() {
     vr.sDescription = row[2].as<std::string>();
     vr.tpCreatedAt = std::chrono::system_clock::time_point(
         std::chrono::seconds(row[3].as<int64_t>()));
+
+    // Parse PostgreSQL array literal "{1,2,3}" into vector
+    auto sArr = row[4].as<std::string>();
+    if (sArr.size() > 2) {  // not just "{}"
+      auto sInner = sArr.substr(1, sArr.size() - 2);
+      std::istringstream iss(sInner);
+      std::string sToken;
+      while (std::getline(iss, sToken, ',')) {
+        vr.vProviderIds.push_back(std::stoll(sToken));
+      }
+    }
+
     vRows.push_back(std::move(vr));
   }
   return vRows;
@@ -53,9 +70,13 @@ std::optional<ViewRow> ViewRepository::findById(int64_t iId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      "SELECT id, name, COALESCE(description, ''), "
-      "EXTRACT(EPOCH FROM created_at)::bigint "
-      "FROM views WHERE id = $1",
+      "SELECT v.id, v.name, COALESCE(v.description, ''), "
+      "EXTRACT(EPOCH FROM v.created_at)::bigint, "
+      "COALESCE(array_agg(vp.provider_id ORDER BY vp.provider_id) "
+      "  FILTER (WHERE vp.provider_id IS NOT NULL), '{}') "
+      "FROM views v "
+      "LEFT JOIN view_providers vp ON vp.view_id = v.id "
+      "WHERE v.id = $1 GROUP BY v.id",
       pqxx::params{iId});
   txn.commit();
 
@@ -67,6 +88,17 @@ std::optional<ViewRow> ViewRepository::findById(int64_t iId) {
   vr.sDescription = result[0][2].as<std::string>();
   vr.tpCreatedAt = std::chrono::system_clock::time_point(
       std::chrono::seconds(result[0][3].as<int64_t>()));
+
+  auto sArr = result[0][4].as<std::string>();
+  if (sArr.size() > 2) {
+    auto sInner = sArr.substr(1, sArr.size() - 2);
+    std::istringstream iss(sInner);
+    std::string sToken;
+    while (std::getline(iss, sToken, ',')) {
+      vr.vProviderIds.push_back(std::stoll(sToken));
+    }
+  }
+
   return vr;
 }
 

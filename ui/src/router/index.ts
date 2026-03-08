@@ -21,6 +21,11 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/change-password',
+      name: 'change-password',
+      component: () => import('../views/ChangePasswordView.vue'),
+    },
+    {
       path: '/',
       component: () => import('../components/layout/AppShell.vue'),
       children: [
@@ -64,6 +69,21 @@ const router = createRouter({
           name: 'audit',
           component: () => import('../views/AuditView.vue'),
         },
+        {
+          path: 'users',
+          name: 'users',
+          component: () => import('../views/UsersView.vue'),
+        },
+        {
+          path: 'groups',
+          name: 'groups',
+          component: () => import('../views/GroupsView.vue'),
+        },
+        {
+          path: 'profile',
+          name: 'profile',
+          component: () => import('../views/ProfileView.vue'),
+        },
       ],
     },
   ],
@@ -101,6 +121,11 @@ router.beforeEach(async (to) => {
       return { name: 'login' }
     }
   }
+
+  if (auth.user?.force_password_change && to.name !== 'change-password' && to.name !== 'login') {
+    return { name: 'change-password' }
+  }
+
   return true
 })
 

@@ -122,6 +122,15 @@ TEST_F(ZoneRepositoryTest, CreateWithSoaNsFlags) {
   EXPECT_TRUE(oRow->bManageNs);
 }
 
+TEST_F(ZoneRepositoryTest, UpdateSyncStatusSetsFields) {
+  auto iZoneId = _zrRepo->create("sync-test.com", _iViewId, std::nullopt, false, false);
+  _zrRepo->updateSyncStatus(iZoneId, "in_sync");
+  auto oZone = _zrRepo->findById(iZoneId);
+  ASSERT_TRUE(oZone.has_value());
+  EXPECT_EQ(oZone->sSyncStatus, "in_sync");
+  EXPECT_TRUE(oZone->oSyncCheckedAt.has_value());
+}
+
 TEST_F(ZoneRepositoryTest, UpdateSoaNsFlags) {
   auto iId = _zrRepo->create("ns-test.com.", _iViewId, std::nullopt);
   auto oRow = _zrRepo->findById(iId);

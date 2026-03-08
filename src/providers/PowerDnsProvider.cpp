@@ -22,7 +22,10 @@ PowerDnsProvider::PowerDnsProvider(std::string sApiEndpoint, std::string sToken,
       _sToken(std::move(sToken)),
       _sServerId(jConfig.value("server_id", "localhost")),
       _jConfig(std::move(jConfig)),
-      _upClient(std::make_unique<httplib::Client>(_sApiEndpoint)) {
+      _upClient(nullptr) {
+  while (!_sApiEndpoint.empty() && _sApiEndpoint.back() == '/')
+    _sApiEndpoint.pop_back();
+  _upClient = std::make_unique<httplib::Client>(_sApiEndpoint);
   _upClient->set_default_headers({{"X-API-Key", _sToken}});
   _upClient->set_connection_timeout(5);
   _upClient->set_read_timeout(10);

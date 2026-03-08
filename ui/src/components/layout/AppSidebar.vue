@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
+const auth = useAuthStore()
 
 const navItems = [
-  { label: 'Dashboard', icon: 'pi pi-home', to: '/' },
-  { label: 'Providers', icon: 'pi pi-server', to: '/providers' },
-  { label: 'Views', icon: 'pi pi-eye', to: '/views' },
-  { label: 'Zones', icon: 'pi pi-globe', to: '/zones' },
-  { label: 'Variables', icon: 'pi pi-code', to: '/variables' },
-  { label: 'Deployments', icon: 'pi pi-upload', to: '/deployments' },
-  { label: 'Audit Log', icon: 'pi pi-history', to: '/audit' },
+  { label: 'Dashboard', icon: 'pi pi-home', to: '/', adminOnly: false },
+  { label: 'Providers', icon: 'pi pi-server', to: '/providers', adminOnly: false },
+  { label: 'Views', icon: 'pi pi-eye', to: '/views', adminOnly: false },
+  { label: 'Zones', icon: 'pi pi-globe', to: '/zones', adminOnly: false },
+  { label: 'Variables', icon: 'pi pi-code', to: '/variables', adminOnly: false },
+  { label: 'Deployments', icon: 'pi pi-upload', to: '/deployments', adminOnly: false },
+  { label: 'Audit Log', icon: 'pi pi-history', to: '/audit', adminOnly: false },
+  { label: 'Users', icon: 'pi pi-users', to: '/users', adminOnly: true },
+  { label: 'Groups', icon: 'pi pi-id-card', to: '/groups', adminOnly: true },
 ]
 
 function isActive(to: string) {
@@ -22,7 +26,7 @@ function isActive(to: string) {
 <template>
   <nav class="app-sidebar" aria-label="Main navigation">
     <ul class="app-sidebar-nav">
-      <li v-for="item in navItems" :key="item.to">
+      <li v-for="item in navItems" :key="item.to" v-show="!item.adminOnly || auth.isAdmin">
         <router-link
           :to="item.to"
           class="app-nav-item"

@@ -26,12 +26,12 @@ const { confirmDelete } = useConfirmAction()
 const { items: zones, loading, fetch: fetchZones, create, update, remove } = useCrud<
   Zone,
   ZoneCreate,
-  { name: string; deployment_retention?: number | null; manage_soa?: boolean; manage_ns?: boolean }
+  { name: string; view_id?: number | null; deployment_retention?: number | null; manage_soa?: boolean; manage_ns?: boolean }
 >(
   {
     list: () => zoneApi.listZones(),
     create: zoneApi.createZone,
-    update: (id: number, data: { name: string; deployment_retention?: number | null; manage_soa?: boolean; manage_ns?: boolean }) =>
+    update: (id: number, data: { name: string; view_id?: number | null; deployment_retention?: number | null; manage_soa?: boolean; manage_ns?: boolean }) =>
       zoneApi.updateZone(id, data),
     remove: zoneApi.deleteZone,
   },
@@ -72,6 +72,7 @@ async function handleSubmit() {
   if (editingId.value !== null) {
     ok = await update(editingId.value, {
       name: form.value.name,
+      view_id: form.value.view_id,
       deployment_retention: form.value.deployment_retention,
       manage_soa: form.value.manage_soa,
       manage_ns: form.value.manage_ns,
@@ -185,7 +186,7 @@ onMounted(async () => {
           <label for="zone-name">Name</label>
           <InputText id="zone-name" v-model="form.name" class="w-full" placeholder="example.com" />
         </div>
-        <div class="field" v-if="!editingId">
+        <div class="field">
           <label for="zone-view">View</label>
           <Select
             id="zone-view"
@@ -207,6 +208,7 @@ onMounted(async () => {
             class="w-full"
             placeholder="Default"
           />
+          <small class="text-surface-400">Leave blank to use system default (10)</small>
         </div>
         <div class="field-group">
           <label class="field-group-label">Record Management</label>

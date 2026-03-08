@@ -30,6 +30,7 @@ void ViewRoutes::registerRoutes(crow::SimpleApp& app) {
                 {"id", row.iId},
                 {"name", row.sName},
                 {"description", row.sDescription},
+                {"provider_ids", row.vProviderIds},
                 {"created_at", std::chrono::duration_cast<std::chrono::seconds>(
                                    row.tpCreatedAt.time_since_epoch())
                                    .count()},

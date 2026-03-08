@@ -44,6 +44,8 @@ export interface Zone {
   deployment_retention: number | null
   manage_soa: boolean
   manage_ns: boolean
+  sync_status?: string
+  sync_checked_at?: string
   created_at: number
 }
 
@@ -168,6 +170,7 @@ export interface User {
   username: string
   role: 'admin' | 'operator' | 'viewer'
   auth_method: string
+  force_password_change: boolean
 }
 
 export interface ApiError {
@@ -178,4 +181,50 @@ export interface ApiError {
 export interface PurgeResult {
   deleted: number
   oldest_remaining: string | null
+}
+
+export interface UserDetail {
+  id: number
+  username: string
+  email: string
+  auth_method: string
+  is_active: boolean
+  force_password_change: boolean
+  groups: { id: number; name: string }[]
+}
+
+export interface Group {
+  id: number
+  name: string
+  role: 'admin' | 'operator' | 'viewer'
+  description: string
+  member_count: number
+}
+
+export interface GroupDetail extends Group {
+  members: { id: number; username: string }[]
+}
+
+export interface ApiKeyEntry {
+  id: number
+  description: string
+  prefix: string
+  user_id: number
+  created_at: string
+  expires_at: string | null
+  last_used_at: string | null
+}
+
+export interface ProviderHealth {
+  id: number
+  name: string
+  type: string
+  status: 'healthy' | 'unreachable' | 'error'
+  message: string
+}
+
+export interface ZoneSyncResult {
+  zone_id: number
+  sync_status: string
+  sync_checked_at?: string
 }

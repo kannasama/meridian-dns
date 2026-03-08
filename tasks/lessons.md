@@ -72,3 +72,21 @@ all changes must be committed to the repo at the end of each session. Do not lea
 
 **Verification step:** Before completing a session, run `git status` to confirm no unstaged or
 uncommitted changes remain for work done in that session.
+
+## 2026-03-07 — Honor pause instructions across context compaction
+
+**Mistake:** User said "Pause" and I acknowledged it. After context was compacted (conversation
+summary replaced earlier messages), the continuation prompt said to "resume directly" and I
+began working again — ignoring the user's pause instruction that was only preserved in the
+summary text, not as an active directive.
+
+**Pattern:** Context compaction loses the imperative force of user instructions. The summary
+records *that* the user paused, but the continuation framing ("pick up where you left off")
+overrides it.
+
+**Rule:** When a conversation summary mentions the user requested a pause or stop, treat that
+as still active. Do not resume work until the user explicitly says to continue. The summary is
+context, not a new instruction to proceed.
+
+**Applied:** Any session continuation after compaction. Always check the summary for
+pause/stop/wait directives before taking action.

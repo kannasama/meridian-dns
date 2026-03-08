@@ -7,6 +7,7 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import Popover from 'primevue/popover'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
@@ -22,7 +23,8 @@ import * as zoneApi from '../api/zones'
 import * as recordApi from '../api/records'
 import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
-import type { Zone, DnsRecord, RecordCreate, Provider } from '../types'
+import { listVariables } from '../api/variables'
+import type { Zone, DnsRecord, RecordCreate, Provider, Variable } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +38,41 @@ const records = ref<DnsRecord[]>([])
 const loading = ref(true)
 const viewProviders = ref<Provider[]>([])
 const proxied = ref(false)
+
+const variables = ref<Variable[]>([])
+const varFilter = ref('')
+const varPanelRef = ref()
+
+const filteredVars = computed(() => {
+  if (!varFilter.value) return variables.value
+  const q = varFilter.value.toLowerCase()
+  return variables.value.filter(v => v.name.toLowerCase().includes(q))
+})
+
+async function loadVariables() {
+  try {
+    variables.value = await listVariables(undefined, zoneId)
+    // Also load global variables
+    const globals = await listVariables('global')
+    const ids = new Set(variables.value.map(v => v.id))
+    for (const g of globals) {
+      if (!ids.has(g.id)) variables.value.push(g)
+    }
+  } catch { /* non-critical */ }
+}
+
+function insertVariable(varName: string) {
+  form.value.value_template += `{{${varName}}}`
+  varPanelRef.value?.hide()
+}
+
+function onValueInput(e: Event) {
+  const val = (e.target as HTMLInputElement).value
+  if (val.endsWith('{{')) {
+    loadVariables()
+    varPanelRef.value?.show(e)
+  }
+}
 
 const dialogVisible = ref(false)
 const importDialogVisible = ref(false)
@@ -221,8 +258,8 @@ onMounted(fetchData)
         paginator
         :rows="50"
         :rowsPerPageOptions="[25, 50, 100]"
-        sortField="name"
-        :sortOrder="1"
+        sortMode="multiple"
+        :multiSortMeta="[{ field: 'type', order: 1 }, { field: 'name', order: 1 }]"
         stripedRows
       >
         <Column field="name" header="Name" sortable>
@@ -307,12 +344,46 @@ onMounted(fetchData)
         </div>
         <div class="field">
           <label for="rec-value">Value Template</label>
-          <InputText
-            id="rec-value"
-            v-model="form.value_template"
-            class="w-full font-mono"
-            placeholder="192.168.1.1 or {{my_var}}"
-          />
+          <div class="var-input-row">
+            <InputText
+              id="rec-value"
+              v-model="form.value_template"
+              class="flex-1 font-mono"
+              placeholder="192.168.1.1 or {{my_var}}"
+              @input="onValueInput"
+            />
+            <Button
+              icon="pi pi-search"
+              severity="secondary"
+              text
+              aria-label="Browse variables"
+              v-tooltip.top="'Browse variables'"
+              @click="(e: any) => { loadVariables(); varPanelRef.toggle(e) }"
+            />
+          </div>
+          <Popover ref="varPanelRef">
+            <div class="var-panel">
+              <InputText
+                v-model="varFilter"
+                placeholder="Filter variables..."
+                class="w-full var-panel-filter"
+              />
+              <div class="var-panel-list">
+                <div
+                  v-for="v in filteredVars"
+                  :key="v.id"
+                  class="var-panel-item"
+                  @click="insertVariable(v.name)"
+                >
+                  <span class="font-mono text-sm" v-text="'{{' + v.name + '}}'"></span>
+                  <Tag :value="v.scope" :severity="v.scope === 'global' ? 'info' : 'warn'" />
+                </div>
+                <div v-if="filteredVars.length === 0" class="var-panel-empty">
+                  No variables found
+                </div>
+              </div>
+            </div>
+          </Popover>
         </div>
         <div class="form-row">
           <div class="field flex-1">
@@ -373,6 +444,44 @@ onMounted(fetchData)
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.var-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.var-panel {
+  width: 20rem;
+}
+
+.var-panel-filter {
+  margin-bottom: 0.5rem;
+}
+
+.var-panel-list {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.var-panel-item {
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: var(--p-border-radius);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.var-panel-item:hover {
+  background: var(--p-surface-hover);
+}
+
+.var-panel-empty {
+  color: var(--p-text-muted-color);
+  font-size: 0.875rem;
+  padding: 0.5rem;
 }
 
 .text-muted {

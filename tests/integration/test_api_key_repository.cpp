@@ -93,3 +93,60 @@ TEST_F(ApiKeyRepositoryTest, PruneDoesNotDeleteFutureGrace) {
   auto oKey = _akrRepo->findByHash("future-delete-hash");
   EXPECT_TRUE(oKey.has_value());
 }
+
+TEST_F(ApiKeyRepositoryTest, FindByHashPopulatesTimeFields) {
+  int64_t iId = _akrRepo->create(_iTestUserId, "time-fields-hash", "timed key", std::nullopt);
+  EXPECT_GT(iId, 0);
+
+  auto oKey = _akrRepo->findByHash("time-fields-hash");
+  ASSERT_TRUE(oKey.has_value());
+  EXPECT_EQ(oKey->sKeyPrefix, "time-fie");
+  // created_at should be recent (within last minute)
+  auto tpNow = std::chrono::system_clock::now();
+  auto tpDiff = tpNow - oKey->tpCreatedAt;
+  EXPECT_LT(std::chrono::duration_cast<std::chrono::seconds>(tpDiff).count(), 60);
+  EXPECT_FALSE(oKey->oLastUsedAt.has_value());
+}
+
+TEST_F(ApiKeyRepositoryTest, ListByUserReturnsUserKeys) {
+  _akrRepo->create(_iTestUserId, "user-key-1", "key one", std::nullopt);
+  _akrRepo->create(_iTestUserId, "user-key-2", "key two", std::nullopt);
+
+  // Create another user with a key
+  auto cg = _cpPool->checkout();
+  pqxx::work txn(*cg);
+  auto r = txn.exec(
+      "INSERT INTO users (username, email, password_hash, auth_method) "
+      "VALUES ('otheruser', 'other@example.com', 'hash', 'local') RETURNING id");
+  int64_t iOtherUserId = r.one_row()[0].as<int64_t>();
+  txn.commit();
+  _akrRepo->create(iOtherUserId, "other-user-key", "other key", std::nullopt);
+
+  auto vKeys = _akrRepo->listByUser(_iTestUserId);
+  EXPECT_EQ(vKeys.size(), 2u);
+
+  // Verify all belong to test user
+  for (const auto& key : vKeys) {
+    EXPECT_EQ(key.iUserId, _iTestUserId);
+  }
+}
+
+TEST_F(ApiKeyRepositoryTest, ListAllReturnsAllKeys) {
+  _akrRepo->create(_iTestUserId, "all-key-1", "first", std::nullopt);
+  _akrRepo->create(_iTestUserId, "all-key-2", "second", std::nullopt);
+
+  auto vKeys = _akrRepo->listAll();
+  EXPECT_GE(vKeys.size(), 2u);
+}
+
+TEST_F(ApiKeyRepositoryTest, ListByUserExcludesScheduledDelete) {
+  _akrRepo->create(_iTestUserId, "active-key", "active", std::nullopt);
+  int64_t iDeleteId = _akrRepo->create(_iTestUserId, "deleted-key", "deleted", std::nullopt);
+  _akrRepo->scheduleDelete(iDeleteId, 0);
+
+  auto vKeys = _akrRepo->listByUser(_iTestUserId);
+  // The scheduled-for-delete key should still appear (delete_after is set but not NULL filter)
+  // Actually our query filters delete_after IS NULL, so it should be excluded
+  EXPECT_EQ(vKeys.size(), 1u);
+  EXPECT_EQ(vKeys[0].sDescription, "active");
+}

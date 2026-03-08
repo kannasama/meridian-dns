@@ -99,3 +99,83 @@ TEST_F(UserRepositoryTest, GetHighestRoleReturnsEmptyForNoGroups) {
   std::string sRole = _urRepo->getHighestRole(iUserId);
   EXPECT_TRUE(sRole.empty());
 }
+
+TEST_F(UserRepositoryTest, ListAllReturnsAllUsers) {
+  _urRepo->create("alice", "alice@example.com", "hash1");
+  _urRepo->create("bob", "bob@example.com", "hash2");
+
+  auto vUsers = _urRepo->listAll();
+  ASSERT_EQ(vUsers.size(), 2u);
+  // Ordered by username
+  EXPECT_EQ(vUsers[0].sUsername, "alice");
+  EXPECT_EQ(vUsers[1].sUsername, "bob");
+}
+
+TEST_F(UserRepositoryTest, UpdateEmailAndActive) {
+  int64_t iId = _urRepo->create("eve", "eve@example.com", "hash");
+
+  _urRepo->update(iId, "eve-new@example.com", false);
+
+  auto oUser = _urRepo->findById(iId);
+  ASSERT_TRUE(oUser.has_value());
+  EXPECT_EQ(oUser->sEmail, "eve-new@example.com");
+  EXPECT_FALSE(oUser->bIsActive);
+}
+
+TEST_F(UserRepositoryTest, DeactivateUser) {
+  int64_t iId = _urRepo->create("frank", "frank@example.com", "hash");
+
+  _urRepo->deactivate(iId);
+
+  auto oUser = _urRepo->findById(iId);
+  ASSERT_TRUE(oUser.has_value());
+  EXPECT_FALSE(oUser->bIsActive);
+}
+
+TEST_F(UserRepositoryTest, UpdatePassword) {
+  int64_t iId = _urRepo->create("grace", "grace@example.com", "old-hash");
+
+  _urRepo->updatePassword(iId, "new-hash");
+
+  auto oUser = _urRepo->findById(iId);
+  ASSERT_TRUE(oUser.has_value());
+  EXPECT_EQ(oUser->sPasswordHash, "new-hash");
+}
+
+TEST_F(UserRepositoryTest, SetForcePasswordChange) {
+  int64_t iId = _urRepo->create("heidi", "heidi@example.com", "hash");
+
+  _urRepo->setForcePasswordChange(iId, true);
+  auto oUser = _urRepo->findById(iId);
+  ASSERT_TRUE(oUser.has_value());
+  EXPECT_TRUE(oUser->bForcePasswordChange);
+
+  _urRepo->setForcePasswordChange(iId, false);
+  oUser = _urRepo->findById(iId);
+  ASSERT_TRUE(oUser.has_value());
+  EXPECT_FALSE(oUser->bForcePasswordChange);
+}
+
+TEST_F(UserRepositoryTest, AddRemoveGroupAndListGroups) {
+  int64_t iUserId = _urRepo->create("ivan", "ivan@example.com", "hash");
+
+  // Create groups
+  auto cg = _cpPool->checkout();
+  pqxx::work txn(*cg);
+  auto r1 = txn.exec("INSERT INTO groups (name, role) VALUES ('grp-a', 'admin') RETURNING id");
+  auto r2 = txn.exec("INSERT INTO groups (name, role) VALUES ('grp-b', 'viewer') RETURNING id");
+  int64_t iGrpA = r1.one_row()[0].as<int64_t>();
+  int64_t iGrpB = r2.one_row()[0].as<int64_t>();
+  txn.commit();
+
+  _urRepo->addToGroup(iUserId, iGrpA);
+  _urRepo->addToGroup(iUserId, iGrpB);
+
+  auto vGroups = _urRepo->listGroupsForUser(iUserId);
+  ASSERT_EQ(vGroups.size(), 2u);
+
+  _urRepo->removeFromGroup(iUserId, iGrpA);
+  vGroups = _urRepo->listGroupsForUser(iUserId);
+  ASSERT_EQ(vGroups.size(), 1u);
+  EXPECT_EQ(vGroups[0].first, iGrpB);
+}

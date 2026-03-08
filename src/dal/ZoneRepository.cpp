@@ -45,7 +45,8 @@ std::vector<ZoneRow> ZoneRepository::listAll() {
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, name, view_id, deployment_retention, manage_soa, manage_ns, "
-      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "EXTRACT(EPOCH FROM created_at)::bigint, "
+      "sync_status, EXTRACT(EPOCH FROM sync_checked_at)::bigint "
       "FROM zones ORDER BY id");
   txn.commit();
 
@@ -61,6 +62,11 @@ std::vector<ZoneRow> ZoneRepository::listAll() {
     zr.bManageNs = row[5].as<bool>();
     zr.tpCreatedAt = std::chrono::system_clock::time_point(
         std::chrono::seconds(row[6].as<int64_t>()));
+    zr.sSyncStatus = row[7].as<std::string>();
+    if (!row[8].is_null()) {
+      zr.oSyncCheckedAt = std::chrono::system_clock::time_point(
+          std::chrono::seconds(row[8].as<int64_t>()));
+    }
     vRows.push_back(std::move(zr));
   }
   return vRows;
@@ -71,7 +77,8 @@ std::vector<ZoneRow> ZoneRepository::listByViewId(int64_t iViewId) {
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, name, view_id, deployment_retention, manage_soa, manage_ns, "
-      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "EXTRACT(EPOCH FROM created_at)::bigint, "
+      "sync_status, EXTRACT(EPOCH FROM sync_checked_at)::bigint "
       "FROM zones WHERE view_id = $1 ORDER BY id",
       pqxx::params{iViewId});
   txn.commit();
@@ -88,6 +95,11 @@ std::vector<ZoneRow> ZoneRepository::listByViewId(int64_t iViewId) {
     zr.bManageNs = row[5].as<bool>();
     zr.tpCreatedAt = std::chrono::system_clock::time_point(
         std::chrono::seconds(row[6].as<int64_t>()));
+    zr.sSyncStatus = row[7].as<std::string>();
+    if (!row[8].is_null()) {
+      zr.oSyncCheckedAt = std::chrono::system_clock::time_point(
+          std::chrono::seconds(row[8].as<int64_t>()));
+    }
     vRows.push_back(std::move(zr));
   }
   return vRows;
@@ -98,7 +110,8 @@ std::optional<ZoneRow> ZoneRepository::findById(int64_t iId) {
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, name, view_id, deployment_retention, manage_soa, manage_ns, "
-      "EXTRACT(EPOCH FROM created_at)::bigint "
+      "EXTRACT(EPOCH FROM created_at)::bigint, "
+      "sync_status, EXTRACT(EPOCH FROM sync_checked_at)::bigint "
       "FROM zones WHERE id = $1",
       pqxx::params{iId});
   txn.commit();
@@ -114,6 +127,11 @@ std::optional<ZoneRow> ZoneRepository::findById(int64_t iId) {
   zr.bManageNs = result[0][5].as<bool>();
   zr.tpCreatedAt = std::chrono::system_clock::time_point(
       std::chrono::seconds(result[0][6].as<int64_t>()));
+  zr.sSyncStatus = result[0][7].as<std::string>();
+  if (!result[0][8].is_null()) {
+    zr.oSyncCheckedAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(result[0][8].as<int64_t>()));
+  }
   return zr;
 }
 
@@ -146,6 +164,15 @@ void ZoneRepository::update(int64_t iId, const std::string& sName,
     throw common::NotFoundError("ZONE_NOT_FOUND",
                                 "Zone with id " + std::to_string(iId) + " not found");
   }
+}
+
+void ZoneRepository::updateSyncStatus(int64_t iZoneId, const std::string& sSyncStatus) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  txn.exec(
+      "UPDATE zones SET sync_status = $1, sync_checked_at = NOW() WHERE id = $2",
+      pqxx::params{sSyncStatus, iZoneId});
+  txn.commit();
 }
 
 void ZoneRepository::deleteById(int64_t iId) {

@@ -55,6 +55,9 @@ struct Config {
   // ── Migrations ──────────────────────────────────────────────────────
   std::string sMigrationsDir = "/opt/meridian-dns/db";  // path to migration version directories
 
+  // ── Sync check ─────────────────────────────────────────────────────────
+  int iSyncCheckInterval = 3600;  // seconds, 0 = disabled
+
   // ── Audit ─────────────────────────────────────────────────────────────
   std::optional<std::string> oAuditDbUrl;
   bool bAuditStdout = false;

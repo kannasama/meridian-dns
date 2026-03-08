@@ -1,4 +1,4 @@
-import { get, post } from './client'
+import { get, post, put } from './client'
 import type { User } from '../types'
 
 export function login(username: string, password: string): Promise<{ token: string }> {
@@ -11,4 +11,15 @@ export function logout(): Promise<{ message: string }> {
 
 export function me(): Promise<User> {
   return get('/auth/me')
+}
+
+export function updateProfile(data: { email: string }): Promise<{ message: string }> {
+  return put('/auth/profile', data)
+}
+
+export function changePassword(data: {
+  current_password: string
+  new_password: string
+}): Promise<{ message: string }> {
+  return post('/auth/change-password', data)
 }

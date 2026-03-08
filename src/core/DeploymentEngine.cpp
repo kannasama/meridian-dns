@@ -268,6 +268,9 @@ void DeploymentEngine::push(int64_t iZoneId,
     _pGitMirror->commit(iZoneId, sActor);
   }
 
+  // 9. Update sync status to in_sync after successful push
+  _zrRepo.updateSyncStatus(iZoneId, "in_sync");
+
   spLog->info("DeploymentEngine: zone '{}' pushed successfully by {}", prResult.sZoneName,
               sActor);
 }

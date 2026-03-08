@@ -2,7 +2,11 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { updatePreset } from '@primevue/themes'
 
-export type AccentColor = 'indigo' | 'blue' | 'teal' | 'green' | 'amber' | 'rose'
+export type AccentColor =
+  | 'noir' | 'emerald' | 'green' | 'lime'
+  | 'orange' | 'amber' | 'yellow' | 'cyan'
+  | 'sky' | 'blue' | 'indigo' | 'violet'
+  | 'purple' | 'fuchsia' | 'pink' | 'rose'
 
 export const useThemeStore = defineStore('theme', () => {
   const darkMode = ref(localStorage.getItem('theme-dark') !== 'false')
@@ -19,20 +23,21 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   function applyAccent(color: AccentColor) {
+    const palette = color === 'noir' ? 'zinc' : color
     updatePreset({
       semantic: {
         primary: {
-          50: `{${color}.50}`,
-          100: `{${color}.100}`,
-          200: `{${color}.200}`,
-          300: `{${color}.300}`,
-          400: `{${color}.400}`,
-          500: `{${color}.500}`,
-          600: `{${color}.600}`,
-          700: `{${color}.700}`,
-          800: `{${color}.800}`,
-          900: `{${color}.900}`,
-          950: `{${color}.950}`,
+          50: `{${palette}.50}`,
+          100: `{${palette}.100}`,
+          200: `{${palette}.200}`,
+          300: `{${palette}.300}`,
+          400: `{${palette}.400}`,
+          500: `{${palette}.500}`,
+          600: `{${palette}.600}`,
+          700: `{${palette}.700}`,
+          800: `{${palette}.800}`,
+          900: `{${palette}.900}`,
+          950: `{${palette}.950}`,
         },
       },
     })

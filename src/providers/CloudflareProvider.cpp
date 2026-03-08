@@ -22,7 +22,10 @@ CloudflareProvider::CloudflareProvider(std::string sApiEndpoint, std::string sTo
       _sToken(std::move(sToken)),
       _sAccountId(jConfig.value("account_id", "")),
       _jConfig(std::move(jConfig)),
-      _upClient(std::make_unique<httplib::Client>(_sApiEndpoint)) {
+      _upClient(nullptr) {
+  while (!_sApiEndpoint.empty() && _sApiEndpoint.back() == '/')
+    _sApiEndpoint.pop_back();
+  _upClient = std::make_unique<httplib::Client>(_sApiEndpoint);
   _upClient->set_default_headers({
       {"Authorization", "Bearer " + _sToken},
       {"Content-Type", "application/json"},

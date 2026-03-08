@@ -4,6 +4,7 @@
 #include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
+#include "core/DiffEngine.hpp"
 #include "dal/ZoneRepository.hpp"
 
 #include <nlohmann/json.hpp>
@@ -11,8 +12,9 @@
 namespace dns::api::routes {
 
 ZoneRoutes::ZoneRoutes(dns::dal::ZoneRepository& zrRepo,
-                       const dns::api::AuthMiddleware& amMiddleware)
-    : _zrRepo(zrRepo), _amMiddleware(amMiddleware) {}
+                       const dns::api::AuthMiddleware& amMiddleware,
+                       dns::core::DiffEngine& deEngine)
+    : _zrRepo(zrRepo), _amMiddleware(amMiddleware), _deEngine(deEngine) {}
 
 ZoneRoutes::~ZoneRoutes() = default;
 
@@ -34,12 +36,78 @@ nlohmann::json zoneRowToJson(const dns::dal::ZoneRow& row) {
   } else {
     j["deployment_retention"] = nullptr;
   }
+  j["sync_status"] = row.sSyncStatus;
+  if (row.oSyncCheckedAt.has_value()) {
+    j["sync_checked_at"] = std::chrono::duration_cast<std::chrono::seconds>(
+                               row.oSyncCheckedAt->time_since_epoch())
+                               .count();
+  } else {
+    j["sync_checked_at"] = nullptr;
+  }
   return j;
 }
 
 }  // namespace
 
 void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
+  // POST /api/v1/zones/sync-check (bulk) — registered FIRST to avoid Crow matching as <int>
+  CROW_ROUTE(app, "/api/v1/zones/sync-check").methods("POST"_method)(
+      [this](const crow::request& req) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "operator");
+          auto vZones = _zrRepo.listAll();
+          nlohmann::json jResults = nlohmann::json::array();
+          for (const auto& zone : vZones) {
+            std::string sStatus = "in_sync";
+            try {
+              auto preview = _deEngine.preview(zone.iId);
+              sStatus = preview.bHasDrift ? "drift" : "in_sync";
+            } catch (...) {
+              sStatus = "error";
+            }
+            _zrRepo.updateSyncStatus(zone.iId, sStatus);
+            jResults.push_back({{"zone_id", zone.iId}, {"sync_status", sStatus}});
+          }
+          return jsonResponse(200, jResults);
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
+  // POST /api/v1/zones/<int>/sync-check (single zone)
+  CROW_ROUTE(app, "/api/v1/zones/<int>/sync-check").methods("POST"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "operator");
+          auto oZone = _zrRepo.findById(iZoneId);
+          if (!oZone) throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
+          std::string sStatus = "in_sync";
+          try {
+            auto preview = _deEngine.preview(iZoneId);
+            sStatus = preview.bHasDrift ? "drift" : "in_sync";
+          } catch (...) {
+            sStatus = "error";
+          }
+          _zrRepo.updateSyncStatus(iZoneId, sStatus);
+          auto oUpdated = _zrRepo.findById(iZoneId);
+          nlohmann::json jResult = {
+              {"zone_id", iZoneId},
+              {"sync_status", oUpdated->sSyncStatus},
+          };
+          if (oUpdated->oSyncCheckedAt.has_value()) {
+            jResult["sync_checked_at"] = std::chrono::duration_cast<std::chrono::seconds>(
+                oUpdated->oSyncCheckedAt->time_since_epoch()).count();
+          } else {
+            jResult["sync_checked_at"] = nullptr;
+          }
+          return jsonResponse(200, jResult);
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
   // GET /api/v1/zones
   CROW_ROUTE(app, "/api/v1/zones").methods("GET"_method)(
       [this](const crow::request& req) -> crow::response {
