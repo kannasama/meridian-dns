@@ -142,6 +142,19 @@ async function pushZone(zoneId: number) {
   }
 }
 
+async function repreviewZone(zoneId: number) {
+  try {
+    const result = await deployApi.previewZone(zoneId)
+    const idx = previews.value.findIndex((p) => p.zone_id === zoneId)
+    if (idx !== -1) {
+      previews.value[idx] = result
+    }
+    pushedZones.value.delete(zoneId)
+  } catch {
+    // Non-critical — old preview remains visible
+  }
+}
+
 function handlePushAll() {
   const zones = zonesWithChanges.value
   const { adds, mods, dels } = totalChanges.value
@@ -155,6 +168,7 @@ function handlePushAll() {
         }
       }
       await loadHistory()
+      await handlePreview()
     },
   )
 }
@@ -167,16 +181,18 @@ function handlePushSingle(zoneId: number) {
     async () => {
       await pushZone(zoneId)
       await loadHistory()
+      await repreviewZone(zoneId)
     },
   )
 }
 
-async function loadHistory() {
-  if (selectedZoneIds.value.length === 0) return
+async function loadHistory(zoneIds?: number[]) {
+  const ids = zoneIds ?? selectedZoneIds.value
+  if (ids.length === 0) return
   historyLoading.value = true
   try {
     const results = await Promise.all(
-      selectedZoneIds.value.map((id) => deployApi.listDeployments(id, 20)),
+      ids.map((id) => deployApi.listDeployments(id, 20)),
     )
     deployments.value = results
       .flat()
@@ -249,8 +265,20 @@ onMounted(async () => {
   allZones.value = zones
 
   const queryZones = route.query.zones
-  if (typeof queryZones === 'string') {
+  const arrivedFromZone = typeof queryZones === 'string' && queryZones.length > 0
+  if (arrivedFromZone) {
     selectedZoneIds.value = queryZones.split(',').map(Number).filter(Boolean)
+  }
+
+  // Auto-load history: selected zones if navigated from zone detail, all zones otherwise
+  const historyIds = selectedZoneIds.value.length > 0
+    ? selectedZoneIds.value
+    : zones.map((z) => z.id)
+  await loadHistory(historyIds)
+
+  // Auto-preview only when arriving from zone detail
+  if (arrivedFromZone && selectedZoneIds.value.length > 0) {
+    await handlePreview()
   }
 })
 </script>
@@ -438,24 +466,27 @@ onMounted(async () => {
           </template>
         </div>
         <div v-else class="in-sync">
-          <i class="pi pi-check-circle" /> All records are in sync.
+          <i class="pi pi-check-circle" /> All records are in sync. No pending changes.
         </div>
       </Panel>
     </div>
 
-    <Divider v-if="selectedZoneIds.length > 0" />
+    <Divider />
 
-    <div v-if="selectedZoneIds.length > 0" class="history-section">
-      <h3 class="section-title">Deployment History</h3>
-      <Button
-        label="Load History"
-        icon="pi pi-refresh"
-        text
-        size="small"
-        :loading="historyLoading"
-        @click="loadHistory"
-        class="mb-1"
-      />
+    <div class="history-section">
+      <div class="history-header">
+        <h3 class="section-title">Deployment History</h3>
+        <Button
+          icon="pi pi-refresh"
+          text
+          rounded
+          size="small"
+          :loading="historyLoading"
+          aria-label="Refresh history"
+          v-tooltip.top="'Refresh history'"
+          @click="loadHistory()"
+        />
+      </div>
 
       <DataTable
         v-if="deployments.length > 0"
@@ -640,6 +671,12 @@ onMounted(async () => {
 
 .history-section {
   margin-top: 1rem;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .section-title {

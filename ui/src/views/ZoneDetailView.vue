@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, watch } from 'vue'
+import { onMounted, ref, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -54,8 +54,27 @@ const {
 } = useVariableAutocomplete(zoneId)
 void varPanelRef // used as template ref
 
+const valueInputRef = ref<{ $el?: HTMLElement } | null>(null)
+
 function insertVariable(varName: string) {
-  form.value.value_template += `{{${varName}}}`
+  const input = valueInputRef.value?.$el?.querySelector?.('input') as HTMLInputElement
+    ?? document.getElementById('rec-value') as HTMLInputElement
+  if (input) {
+    const start = input.selectionStart ?? form.value.value_template.length
+    const end = input.selectionEnd ?? start
+    const before = form.value.value_template.slice(0, start)
+    const after = form.value.value_template.slice(end)
+    const token = `{{${varName}}}`
+    form.value.value_template = before + token + after
+    // Restore cursor after the inserted token
+    const cursorPos = start + token.length
+    nextTick(() => {
+      input.focus()
+      input.setSelectionRange(cursorPos, cursorPos)
+    })
+  } else {
+    form.value.value_template += `{{${varName}}}`
+  }
   hidePanel()
 }
 
@@ -590,10 +609,20 @@ onMounted(fetchData)
           <div class="var-input-row">
             <InputText
               id="rec-value"
+              ref="valueInputRef"
               v-model="form.value_template"
               class="flex-1 font-mono"
               placeholder="192.168.1.1 or {{my_var}}"
               @input="onValueInput"
+            />
+            <Button
+              v-if="form.value_template"
+              icon="pi pi-times"
+              severity="secondary"
+              text
+              aria-label="Clear value"
+              v-tooltip.top="'Clear value'"
+              @click="form.value_template = ''"
             />
             <Button
               icon="pi pi-search"
