@@ -135,8 +135,9 @@ void GitOpsMirror::initialize(const std::string& sRemoteUrl, const std::string& 
   // libgit2's SSH transport reads $HOMEDIR/.ssh/known_hosts internally before
   // invoking our certificate_check callback. In container/service contexts,
   // ~/.ssh/known_hosts often doesn't exist, causing "error loading known_hosts".
-  // Fix: set HOMEDIR to a directory where we control .ssh/known_hosts.
-  fs::path sshHome = fs::path(sLocalPath) / ".gitssh";
+  // Fix: set HOMEDIR to a sibling directory of the repo path so it stays outside
+  // the git working tree but within the same mount (e.g. /var/meridian-dns/.gitssh).
+  fs::path sshHome = fs::path(sLocalPath).parent_path() / ".gitssh";
   fs::path sshDir = sshHome / ".ssh";
   fs::create_directories(sshDir);
   fs::path knownHostsPath = sshDir / "known_hosts";

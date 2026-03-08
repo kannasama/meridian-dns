@@ -30,8 +30,8 @@ services:
     ports:
       - "${DNS_HTTP_PORT:-8080}:8080"
     volumes:
-      - gitrepo:/var/meridian-dns/repo
+      - meridian-data:/var/meridian-dns
 
 volumes:
   pgdata:
-  gitrepo:
+  meridian-data:
