@@ -8,16 +8,18 @@
 #include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
 #include "dal/RecordRepository.hpp"
+#include "dal/ZoneRepository.hpp"
 
 #include <nlohmann/json.hpp>
 
 namespace dns::api::routes {
 
 RecordRoutes::RecordRoutes(dns::dal::RecordRepository& rrRepo,
+                           dns::dal::ZoneRepository& zrRepo,
                            const dns::api::AuthMiddleware& amMiddleware,
                            dns::core::DiffEngine& deEngine,
                            dns::core::DeploymentEngine& depEngine)
-    : _rrRepo(rrRepo), _amMiddleware(amMiddleware),
+    : _rrRepo(rrRepo), _zrRepo(zrRepo), _amMiddleware(amMiddleware),
       _deEngine(deEngine), _depEngine(depEngine) {}
 
 RecordRoutes::~RecordRoutes() = default;
@@ -322,6 +324,17 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           requireRole(rcCtx, "viewer");
 
           auto vLiveRecords = _deEngine.fetchLiveRecords(iZoneId);
+
+          auto oZone = _zrRepo.findById(iZoneId);
+          if (!oZone) {
+            throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
+          }
+
+          std::erase_if(vLiveRecords, [&](const auto& dr) {
+            if (!oZone->bManageSoa && dr.sType == "SOA") return true;
+            if (!oZone->bManageNs && dr.sType == "NS") return true;
+            return false;
+          });
 
           nlohmann::json jRecords = nlohmann::json::array();
           for (const auto& dr : vLiveRecords) {

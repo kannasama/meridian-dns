@@ -217,6 +217,7 @@ onMounted(fetchProviders)
         <div class="field">
           <label for="prov-endpoint">API Endpoint</label>
           <InputText id="prov-endpoint" v-model="form.api_endpoint" class="w-full" />
+          <small class="text-surface-400">Full URL without trailing slash, e.g. https://dns.example.com</small>
         </div>
         <div class="field">
           <label for="prov-token">

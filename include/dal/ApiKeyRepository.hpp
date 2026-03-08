@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace dns::dal {
 
@@ -15,8 +16,11 @@ struct ApiKeyRow {
   int64_t iUserId = 0;
   std::string sKeyHash;
   std::string sDescription;
+  std::string sKeyPrefix;
   bool bRevoked = false;
   std::optional<std::chrono::system_clock::time_point> oExpiresAt;
+  std::chrono::system_clock::time_point tpCreatedAt;
+  std::optional<std::chrono::system_clock::time_point> oLastUsedAt;
 };
 
 /// Manages the api_keys table; create, findByHash, scheduleDelete, pruneScheduled.
@@ -39,6 +43,12 @@ class ApiKeyRepository {
 
   /// Delete all API key rows where delete_after < NOW(). Returns rows deleted.
   int pruneScheduled();
+
+  /// List all API keys for a specific user.
+  std::vector<ApiKeyRow> listByUser(int64_t iUserId);
+
+  /// List all API keys.
+  std::vector<ApiKeyRow> listAll();
 
  private:
   ConnectionPool& _cpPool;

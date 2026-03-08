@@ -15,7 +15,8 @@ import { useConfirmAction } from '../composables/useConfirm'
 import { useRole } from '../composables/useRole'
 import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
-import type { View, ViewCreate, Provider } from '../types'
+import * as zoneApi from '../api/zones'
+import type { View, ViewCreate, Provider, Zone } from '../types'
 
 const { isAdmin } = useRole()
 const { confirmDelete } = useConfirmAction()
@@ -35,6 +36,7 @@ const { items: views, loading, fetch: fetchViews, create, update, remove } = use
 )
 
 const allProviders = ref<Provider[]>([])
+const viewZones = ref<Zone[]>([])
 const drawerVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({
@@ -50,13 +52,17 @@ function openCreate() {
 }
 
 async function openEdit(view: View) {
-  const full = await viewApi.getView(view.id)
+  const [full, allZones] = await Promise.all([
+    viewApi.getView(view.id),
+    zoneApi.listZones(),
+  ])
   editingId.value = view.id
   form.value = {
     name: full.name,
     description: full.description || '',
     providerIds: full.provider_ids || [],
   }
+  viewZones.value = allZones.filter(z => z.view_id === view.id)
   drawerVisible.value = true
 }
 
@@ -212,6 +218,21 @@ onMounted(async () => {
             class="w-full"
             display="chip"
           />
+        </div>
+        <div v-if="editingId" class="mt-4">
+          <label class="font-semibold text-sm">Zones in this View</label>
+          <div v-if="viewZones.length === 0" class="text-surface-400 text-sm mt-1">
+            No zones assigned
+          </div>
+          <div v-else class="flex flex-col gap-1 mt-1">
+            <router-link
+              v-for="z in viewZones" :key="z.id"
+              :to="'/zones/' + z.id"
+              class="text-primary-400 hover:underline text-sm"
+            >
+              {{ z.name }}
+            </router-link>
+          </div>
         </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>

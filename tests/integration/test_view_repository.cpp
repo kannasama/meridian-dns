@@ -130,6 +130,30 @@ TEST_F(ViewRepositoryTest, DeleteBlockedByZones) {
   EXPECT_THROW(_vrRepo->deleteById(iViewId), dns::common::ConflictError);
 }
 
+TEST_F(ViewRepositoryTest, ListAllIncludesProviderIds) {
+  int64_t iViewId = _vrRepo->create("list-prov-test", "test");
+  int64_t iProvId = _prRepo->create("pdns-list", "powerdns", "http://l:8081", "k");
+  _vrRepo->attachProvider(iViewId, iProvId);
+
+  auto vViews = _vrRepo->listAll();
+  auto it = std::find_if(vViews.begin(), vViews.end(),
+      [&](const auto& v) { return v.iId == iViewId; });
+  ASSERT_NE(it, vViews.end());
+  EXPECT_EQ(it->vProviderIds.size(), 1u);
+  EXPECT_EQ(it->vProviderIds[0], iProvId);
+}
+
+TEST_F(ViewRepositoryTest, FindByIdIncludesProviderIds) {
+  int64_t iViewId = _vrRepo->create("find-prov-test", "test");
+  int64_t iProvId = _prRepo->create("pdns-find", "powerdns", "http://f:8081", "k");
+  _vrRepo->attachProvider(iViewId, iProvId);
+
+  auto oView = _vrRepo->findById(iViewId);
+  ASSERT_TRUE(oView.has_value());
+  EXPECT_EQ(oView->vProviderIds.size(), 1u);
+  EXPECT_EQ(oView->vProviderIds[0], iProvId);
+}
+
 TEST_F(ViewRepositoryTest, DuplicateNameThrows) {
   _vrRepo->create("unique-view", "first");
   EXPECT_THROW(_vrRepo->create("unique-view", "second"), dns::common::ConflictError);

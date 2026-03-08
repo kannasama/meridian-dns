@@ -4,6 +4,7 @@
 
 namespace dns::dal {
 class RecordRepository;
+class ZoneRepository;
 }
 
 namespace dns::core {
@@ -22,6 +23,7 @@ namespace dns::api::routes {
 class RecordRoutes {
  public:
   RecordRoutes(dns::dal::RecordRepository& rrRepo,
+               dns::dal::ZoneRepository& zrRepo,
                const dns::api::AuthMiddleware& amMiddleware,
                dns::core::DiffEngine& deEngine,
                dns::core::DeploymentEngine& depEngine);
@@ -31,6 +33,7 @@ class RecordRoutes {
 
  private:
   dns::dal::RecordRepository& _rrRepo;
+  dns::dal::ZoneRepository& _zrRepo;
   const dns::api::AuthMiddleware& _amMiddleware;
   dns::core::DiffEngine& _deEngine;
   dns::core::DeploymentEngine& _depEngine;

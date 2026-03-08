@@ -145,6 +145,9 @@ Config Config::load() {
     cfg.sMigrationsDir = sMigrationsDir;
   }
 
+  // Sync check
+  cfg.iSyncCheckInterval = getEnvInt("DNS_SYNC_CHECK_INTERVAL", 3600);
+
   // Audit
   const std::string sAuditDbUrl = getEnv("DNS_AUDIT_DB_URL");
   if (!sAuditDbUrl.empty()) {

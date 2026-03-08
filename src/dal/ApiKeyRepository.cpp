@@ -2,6 +2,7 @@
 
 #include "dal/ConnectionPool.hpp"
 
+#include <algorithm>
 #include <pqxx/pqxx>
 
 namespace dns::dal {
@@ -40,7 +41,9 @@ std::optional<ApiKeyRow> ApiKeyRepository::findByHash(const std::string& sKeyHas
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, user_id, key_hash, COALESCE(description, ''), revoked, "
-      "EXTRACT(EPOCH FROM expires_at)::bigint "
+      "EXTRACT(EPOCH FROM expires_at)::bigint, "
+      "EXTRACT(EPOCH FROM created_at)::bigint, "
+      "EXTRACT(EPOCH FROM last_used_at)::bigint "
       "FROM api_keys WHERE key_hash = $1",
       pqxx::params{sKeyHash});
   txn.commit();
@@ -53,10 +56,17 @@ std::optional<ApiKeyRow> ApiKeyRepository::findByHash(const std::string& sKeyHas
   akRow.iUserId = row[1].as<int64_t>();
   akRow.sKeyHash = row[2].as<std::string>();
   akRow.sDescription = row[3].as<std::string>();
+  akRow.sKeyPrefix = akRow.sKeyHash.substr(0, std::min<size_t>(8, akRow.sKeyHash.size()));
   akRow.bRevoked = row[4].as<bool>();
   if (!row[5].is_null()) {
     akRow.oExpiresAt = std::chrono::system_clock::time_point(
         std::chrono::seconds(row[5].as<int64_t>()));
+  }
+  akRow.tpCreatedAt = std::chrono::system_clock::time_point(
+      std::chrono::seconds(row[6].as<int64_t>()));
+  if (!row[7].is_null()) {
+    akRow.oLastUsedAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(row[7].as<int64_t>()));
   }
   return akRow;
 }
@@ -78,6 +88,72 @@ int ApiKeyRepository::pruneScheduled() {
       "DELETE FROM api_keys WHERE delete_after IS NOT NULL AND delete_after < NOW()");
   txn.commit();
   return static_cast<int>(result.affected_rows());
+}
+
+namespace {
+
+ApiKeyRow parseApiKeyRow(const pqxx::row& row) {
+  ApiKeyRow akRow;
+  akRow.iId = row[0].as<int64_t>();
+  akRow.iUserId = row[1].as<int64_t>();
+  akRow.sKeyHash = row[2].as<std::string>();
+  akRow.sDescription = row[3].as<std::string>();
+  akRow.sKeyPrefix = akRow.sKeyHash.substr(0, std::min<size_t>(8, akRow.sKeyHash.size()));
+  akRow.bRevoked = row[4].as<bool>();
+  if (!row[5].is_null()) {
+    akRow.oExpiresAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(row[5].as<int64_t>()));
+  }
+  akRow.tpCreatedAt = std::chrono::system_clock::time_point(
+      std::chrono::seconds(row[6].as<int64_t>()));
+  if (!row[7].is_null()) {
+    akRow.oLastUsedAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(row[7].as<int64_t>()));
+  }
+  return akRow;
+}
+
+}  // namespace
+
+std::vector<ApiKeyRow> ApiKeyRepository::listByUser(int64_t iUserId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "SELECT id, user_id, key_hash, COALESCE(description, ''), revoked, "
+      "EXTRACT(EPOCH FROM expires_at)::bigint, "
+      "EXTRACT(EPOCH FROM created_at)::bigint, "
+      "EXTRACT(EPOCH FROM last_used_at)::bigint "
+      "FROM api_keys WHERE user_id = $1 AND delete_after IS NULL "
+      "ORDER BY created_at DESC",
+      pqxx::params{iUserId});
+  txn.commit();
+
+  std::vector<ApiKeyRow> vRows;
+  vRows.reserve(result.size());
+  for (const auto& row : result) {
+    vRows.push_back(parseApiKeyRow(row));
+  }
+  return vRows;
+}
+
+std::vector<ApiKeyRow> ApiKeyRepository::listAll() {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "SELECT id, user_id, key_hash, COALESCE(description, ''), revoked, "
+      "EXTRACT(EPOCH FROM expires_at)::bigint, "
+      "EXTRACT(EPOCH FROM created_at)::bigint, "
+      "EXTRACT(EPOCH FROM last_used_at)::bigint "
+      "FROM api_keys WHERE delete_after IS NULL "
+      "ORDER BY created_at DESC");
+  txn.commit();
+
+  std::vector<ApiKeyRow> vRows;
+  vRows.reserve(result.size());
+  for (const auto& row : result) {
+    vRows.push_back(parseApiKeyRow(row));
+  }
+  return vRows;
 }
 
 }  // namespace dns::dal

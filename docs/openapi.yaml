@@ -75,6 +75,8 @@ components:
         auth_method:
           type: string
           enum: [jwt, api_key]
+        force_password_change:
+          type: boolean
 
     Provider:
       type: object
@@ -453,6 +455,174 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    UserDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        auth_method:
+          type: string
+        is_active:
+          type: boolean
+        force_password_change:
+          type: boolean
+        groups:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+
+    UserCreate:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+        group_ids:
+          type: array
+          items:
+            type: integer
+        force_password_change:
+          type: boolean
+          default: true
+
+    UserUpdate:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+        is_active:
+          type: boolean
+        group_ids:
+          type: array
+          items:
+            type: integer
+
+    Group:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        description:
+          type: string
+        member_count:
+          type: integer
+
+    GroupDetail:
+      allOf:
+        - $ref: '#/components/schemas/Group'
+        - type: object
+          properties:
+            members:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  username:
+                    type: string
+
+    GroupCreate:
+      type: object
+      required: [name, role]
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        description:
+          type: string
+
+    ApiKeyEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+        prefix:
+          type: string
+        user_id:
+          type: integer
+        created_at:
+          type: string
+        expires_at:
+          type: string
+          nullable: true
+        last_used_at:
+          type: string
+          nullable: true
+
+    ProviderHealth:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+          enum: [healthy, unreachable, error]
+        message:
+          type: string
+
+    ZoneSyncResult:
+      type: object
+      properties:
+        zone_id:
+          type: integer
+        sync_status:
+          type: string
+          enum: [unknown, in_sync, drift, error]
+        sync_checked_at:
+          type: string
+          nullable: true
+
+    ProfileUpdate:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+
+    ResetPasswordRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
 
 paths:
   /health:
@@ -1553,3 +1723,326 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /users:
+    get:
+      summary: List all users
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserDetail'
+    post:
+      summary: Create a user
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+
+  /users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get user by ID
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+    put:
+      summary: Update user
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: User updated
+    delete:
+      summary: Deactivate user
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User deactivated
+
+  /users/{userId}/reset-password:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Admin password reset
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password reset
+
+  /groups:
+    get:
+      summary: List all groups
+      tags: [Groups]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+    post:
+      summary: Create a group
+      tags: [Groups]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupCreate'
+      responses:
+        '201':
+          description: Group created
+
+  /groups/{groupId}:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get group by ID with members
+      tags: [Groups]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Group details with member list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupDetail'
+    put:
+      summary: Update group
+      tags: [Groups]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupCreate'
+      responses:
+        '200':
+          description: Group updated
+    delete:
+      summary: Delete group
+      tags: [Groups]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Group deleted
+
+  /auth/profile:
+    put:
+      summary: Update own profile
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: Profile updated
+
+  /auth/change-password:
+    post:
+      summary: Change own password
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed
+
+  /api-keys:
+    get:
+      summary: List API keys
+      description: Admin sees all keys, non-admin sees own keys only
+      tags: [API Keys]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApiKeyEntry'
+    post:
+      summary: Create API key
+      tags: [API Keys]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [description]
+              properties:
+                description:
+                  type: string
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: API key created (key shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  key:
+                    type: string
+                    description: Full API key (shown only once)
+                  prefix:
+                    type: string
+
+  /api-keys/{keyId}:
+    parameters:
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      summary: Revoke API key
+      tags: [API Keys]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: API key revoked
+
+  /providers/health:
+    get:
+      summary: Provider connectivity health check
+      tags: [Providers]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of provider health statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProviderHealth'
+
+  /zones/sync-check:
+    post:
+      summary: Bulk sync check all zones
+      tags: [Zones]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of sync results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ZoneSyncResult'
+
+  /zones/{zoneId}/sync-check:
+    parameters:
+      - name: zoneId
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Sync check single zone
+      tags: [Zones]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZoneSyncResult'

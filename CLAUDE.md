@@ -16,8 +16,9 @@ architectural decisions, and development roadmap so context transfers across mac
 - **Phase 8 complete:** REST API Hardening + Docker Compose
 - **Phase 9 complete:** Web UI (Vue 3 + TypeScript + PrimeVue)
 - **Phase 10 complete:** Cloudflare + DigitalOcean providers, conformance tests
-- **Next task:** v0.9.5 (bug fixes, UX improvements, user/group/API key management)
-- **Tests:** 268 total (162 pass, 106 skip — DB integration tests need `DNS_DB_URL`)
+- **v0.9.5 complete:** Bug fixes, UX improvements, user/group/API key management
+- **Next task:** Phase 11 — TUI Client (separate repository)
+- **Tests:** 285 total (162 pass, 123 skip — DB integration tests need `DNS_DB_URL`)
 
 Build and test:
 ```bash
@@ -261,7 +262,7 @@ for correct multi-provider zone management. Conformance test suite.
 
 ---
 
-### v0.9.5 — Bug Fixes, UX Improvements, User Management ← IN PROGRESS
+### v0.9.5 — Bug Fixes, UX Improvements, User Management ← COMPLETE
 
 **Summary:** Feedback-driven iteration covering bug fixes, UX polish, dashboard enhancements,
 and user/group/API key management. Full design in `docs/plans/2026-03-07-v0.9.5-design.md`.
@@ -293,6 +294,8 @@ and user/group/API key management. Full design in `docs/plans/2026-03-07-v0.9.5-
 
 **New endpoints (19):** Users (6), Groups (5), Profile (2), API Keys (3), Provider Health (1),
 Sync Check (2)
+
+**Tests:** 285 total (162 pass, 123 skip — 17 new tests added in v0.9.5)
 
 **Deferred:** Self-service password reset (requires SMTP/email infrastructure)
 
@@ -344,19 +347,19 @@ only for non-owning references.
 | `docs/TUI_DESIGN.md` | TUI client design spec |
 | `scripts/db/001_initial_schema.sql` | Full PostgreSQL schema (11 tables) |
 | `scripts/db/002_add_indexes.sql` | 11 performance indexes |
-| `src/main.cpp` | Startup sequence (all steps 1–12 wired; Phase 9 complete) |
+| `src/main.cpp` | Startup sequence (all steps 1–12 wired; v0.9.5 complete) |
 | `include/common/Types.hpp` | Core data types: `DnsRecord`, `PreviewResult`, `RequestContext` |
 | `include/common/Errors.hpp` | `AppError` hierarchy (incl. `RateLimitedError` 429) |
 | `include/api/RouteHelpers.hpp` | Shared route helpers (auth, response, security headers) |
 | `include/api/RequestValidator.hpp` | Input validation (field length/format constraints) |
 | `include/api/RateLimiter.hpp` | Token-bucket rate limiter for auth endpoints |
-| `docs/openapi.yaml` | OpenAPI 3.1 specification (24 endpoints) |
+| `docs/openapi.yaml` | OpenAPI 3.1 specification (43 endpoints) |
 | `Dockerfile` | Multi-stage build (node UI → C++ builder → runtime) |
 | `docker-compose.yml` | PostgreSQL 16 + PowerDNS + app |
 | `include/api/StaticFileHandler.hpp` | Crow SPA static file serving |
 | `ui/` | Vue 3 + TypeScript web UI (Vite project) |
-| `ui/src/api/` | Typed API client modules (10 files, all 24 endpoints) |
-| `ui/src/views/` | Page-level Vue components (9 views) |
+| `ui/src/api/` | Typed API client modules (13 files, all 43 endpoints) |
+| `ui/src/views/` | Page-level Vue components (14 views) |
 | `ui/src/composables/` | Shared logic: `useCrud`, `useConfirm`, `useRole` |
 | `ui/src/stores/` | Pinia stores: auth, theme, notification |
 | `ui/src/theme/preset.ts` | PrimeVue Aura preset with indigo primary |

@@ -92,12 +92,12 @@ class CrudRoutesTest : public ::testing::Test {
         *_urRepo, *_srRepo, *_jsSigner, 3600, 86400);
 
     // Routes
-    _authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*_asService, *_amMiddleware);
+    _authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*_asService, *_amMiddleware, *_urRepo);
     _providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*_prRepo, *_amMiddleware);
     _viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*_vrRepo, *_amMiddleware);
-    _zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*_zrRepo, *_amMiddleware);
+    _zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*_zrRepo, *_amMiddleware, *_deEngine);
     _recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
-        *_rrRepo, *_amMiddleware, *_deEngine, *_depEngine);
+        *_rrRepo, *_zrRepo, *_amMiddleware, *_deEngine, *_depEngine);
     _variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*_varRepo, *_amMiddleware);
     _healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
     _deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(

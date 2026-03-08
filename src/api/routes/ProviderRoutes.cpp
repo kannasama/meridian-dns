@@ -5,6 +5,8 @@
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "dal/ProviderRepository.hpp"
+#include "providers/IProvider.hpp"
+#include "providers/ProviderFactory.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -17,6 +19,54 @@ ProviderRoutes::ProviderRoutes(dns::dal::ProviderRepository& prRepo,
 ProviderRoutes::~ProviderRoutes() = default;
 
 void ProviderRoutes::registerRoutes(crow::SimpleApp& app) {
+  // GET /api/v1/providers/health
+  CROW_ROUTE(app, "/api/v1/providers/health").methods("GET"_method)(
+      [this](const crow::request& req) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requireRole(rcCtx, "viewer");
+
+          auto vProviders = _prRepo.listAll();
+          nlohmann::json jResults = nlohmann::json::array();
+          for (const auto& pr : vProviders) {
+            std::string sStatus = "error";
+            std::string sMessage;
+            try {
+              auto upProvider = dns::providers::ProviderFactory::create(
+                  pr.sType, pr.sApiEndpoint, pr.sDecryptedToken, pr.jConfig);
+              auto hs = upProvider->testConnectivity();
+              switch (hs) {
+                case dns::common::HealthStatus::Ok:
+                  sStatus = "healthy";
+                  sMessage = "Connected successfully";
+                  break;
+                case dns::common::HealthStatus::Degraded:
+                  sStatus = "degraded";
+                  sMessage = "Provider is degraded";
+                  break;
+                case dns::common::HealthStatus::Unreachable:
+                  sStatus = "error";
+                  sMessage = "Provider is unreachable";
+                  break;
+              }
+            } catch (const std::exception& e) {
+              sStatus = "error";
+              sMessage = e.what();
+            }
+            jResults.push_back({
+                {"id", pr.iId},
+                {"name", pr.sName},
+                {"type", pr.sType},
+                {"status", sStatus},
+                {"message", sMessage},
+            });
+          }
+          return jsonResponse(200, jResults);
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
   // GET /api/v1/providers
   CROW_ROUTE(app, "/api/v1/providers").methods("GET"_method)(
       [this](const crow::request& req) -> crow::response {

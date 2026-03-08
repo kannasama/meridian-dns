@@ -10,11 +10,14 @@
 #include "api/ApiServer.hpp"
 #include "api/AuthMiddleware.hpp"
 #include "api/StaticFileHandler.hpp"
+#include "api/routes/ApiKeyRoutes.hpp"
 #include "api/routes/AuthRoutes.hpp"
+#include "api/routes/GroupRoutes.hpp"
 #include "api/routes/HealthRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
 #include "api/routes/SetupRoutes.hpp"
+#include "api/routes/UserRoutes.hpp"
 #include "api/routes/VariableRoutes.hpp"
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
@@ -33,6 +36,7 @@
 #include "dal/AuditRepository.hpp"
 #include "dal/ConnectionPool.hpp"
 #include "dal/DeploymentRepository.hpp"
+#include "dal/GroupRepository.hpp"
 #include "dal/MigrationRunner.hpp"
 #include "dal/ProviderRepository.hpp"
 #include "dal/RecordRepository.hpp"
@@ -199,6 +203,7 @@ int main(int argc, char* argv[]) {
     auto varRepo = std::make_unique<dns::dal::VariableRepository>(*cpPool);
     auto drRepo = std::make_unique<dns::dal::DeploymentRepository>(*cpPool);
     auto arRepo = std::make_unique<dns::dal::AuditRepository>(*cpPool);
+    auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
 
     auto msScheduler = std::make_unique<dns::core::MaintenanceScheduler>();
 
@@ -291,6 +296,29 @@ int main(int argc, char* argv[]) {
     spLog->info("Step 9: Core engines initialized "
                 "(VariableEngine, DiffEngine, DeploymentEngine, RollbackEngine)");
 
+    // Schedule sync-check maintenance task (requires DiffEngine from Step 9)
+    if (cfgApp.iSyncCheckInterval > 0) {
+      msScheduler->schedule("sync-check",
+          std::chrono::seconds(cfgApp.iSyncCheckInterval),
+          [&zrRepo = *zrRepo, &deEngine = *deEngine]() {
+            auto spLog = dns::common::Logger::get();
+            auto vZones = zrRepo.listAll();
+            int iChecked = 0;
+            for (const auto& zone : vZones) {
+              std::string sStatus = "in_sync";
+              try {
+                auto preview = deEngine.preview(zone.iId);
+                sStatus = preview.bHasDrift ? "drift" : "in_sync";
+              } catch (...) {
+                sStatus = "error";
+              }
+              zrRepo.updateSyncStatus(zone.iId, sStatus);
+              ++iChecked;
+            }
+            spLog->info("Sync check complete: {} zones checked", iChecked);
+          });
+    }
+
     // ── Step 10: Construct auth layer + route handlers ────────────────────
     auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
         *upSigner, *srRepo, *akrRepo, *urRepo,
@@ -300,18 +328,22 @@ int main(int argc, char* argv[]) {
         *urRepo, *srRepo, *upSigner,
         cfgApp.iJwtTtlSeconds, cfgApp.iSessionAbsoluteTtlSeconds);
 
-    auto authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*asService, *amMiddleware);
+    auto authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*asService, *amMiddleware, *urRepo);
     auto providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*prRepo, *amMiddleware);
     auto viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*vrRepo, *amMiddleware);
-    auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware);
+    auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware, *deEngine);
     auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
-        *rrRepo, *amMiddleware, *deEngine, *depEngine);
+        *rrRepo, *zrRepo, *amMiddleware, *deEngine, *depEngine);
     auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
     auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
     auto deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(
         *drRepo, *rrRepo, *amMiddleware, *reEngine);
     auto auditRoutes = std::make_unique<dns::api::routes::AuditRoutes>(
         *arRepo, *amMiddleware, cfgApp.iAuditRetentionDays);
+    auto userRoutes = std::make_unique<dns::api::routes::UserRoutes>(
+        *urRepo, *grRepo, *amMiddleware);
+    auto groupRoutes = std::make_unique<dns::api::routes::GroupRoutes>(*grRepo, *amMiddleware);
+    auto apiKeyRoutes = std::make_unique<dns::api::routes::ApiKeyRoutes>(*akrRepo, *amMiddleware);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
@@ -320,6 +352,9 @@ int main(int argc, char* argv[]) {
         *variableRoutes);
 
     apiServer->registerRoutes();
+    userRoutes->registerRoutes(crowApp);
+    groupRoutes->registerRoutes(crowApp);
+    apiKeyRoutes->registerRoutes(crowApp);
 
     // Serve static UI files (SPA fallback) — must be registered after API routes
     auto sfhHandler = std::make_unique<dns::api::StaticFileHandler>(cfgApp.sUiDir);

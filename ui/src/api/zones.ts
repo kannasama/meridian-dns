@@ -1,5 +1,5 @@
 import { get, post, put, del } from './client'
-import type { Zone, ZoneCreate } from '../types'
+import type { Zone, ZoneCreate, ZoneSyncResult } from '../types'
 
 export function listZones(viewId?: number): Promise<Zone[]> {
   const query = viewId !== undefined ? `?view_id=${viewId}` : ''
@@ -18,6 +18,7 @@ export function updateZone(
   id: number,
   data: {
     name: string
+    view_id?: number | null
     deployment_retention?: number | null
     manage_soa?: boolean
     manage_ns?: boolean
@@ -28,4 +29,12 @@ export function updateZone(
 
 export function deleteZone(id: number): Promise<{ message: string }> {
   return del(`/zones/${id}`)
+}
+
+export function syncCheckZone(id: number): Promise<ZoneSyncResult> {
+  return post(`/zones/${id}/sync-check`)
+}
+
+export function syncCheckAll(): Promise<ZoneSyncResult[]> {
+  return post('/zones/sync-check')
 }

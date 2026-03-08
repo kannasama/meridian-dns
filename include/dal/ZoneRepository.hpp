@@ -18,6 +18,8 @@ struct ZoneRow {
   std::optional<int> oDeploymentRetention;
   bool bManageSoa = false;
   bool bManageNs = false;
+  std::string sSyncStatus;  // "unknown", "in_sync", "drift", "error"
+  std::optional<std::chrono::system_clock::time_point> oSyncCheckedAt;
   std::chrono::system_clock::time_point tpCreatedAt;
 };
 
@@ -45,6 +47,9 @@ class ZoneRepository {
   /// Update a zone's name and retention. Does NOT change view_id.
   void update(int64_t iId, const std::string& sName, std::optional<int> oRetention,
               bool bManageSoa = false, bool bManageNs = false);
+
+  /// Update a zone's sync status and set sync_checked_at to NOW().
+  void updateSyncStatus(int64_t iZoneId, const std::string& sSyncStatus);
 
   /// Delete a zone. Cascades to records, variables, deployments.
   void deleteById(int64_t iId);
