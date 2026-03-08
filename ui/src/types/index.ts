@@ -169,6 +169,7 @@ export interface AuditEntry {
 export interface User {
   user_id: number
   username: string
+  email: string
   role: 'admin' | 'operator' | 'viewer'
   auth_method: string
   force_password_change: boolean
@@ -228,4 +229,5 @@ export interface ZoneSyncResult {
   zone_id: number
   sync_status: string
   sync_checked_at?: string
+  server_time?: number
 }

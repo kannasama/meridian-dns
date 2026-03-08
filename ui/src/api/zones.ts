@@ -35,6 +35,11 @@ export function syncCheckZone(id: number): Promise<ZoneSyncResult> {
   return post(`/zones/${id}/sync-check`)
 }
 
-export function syncCheckAll(): Promise<ZoneSyncResult[]> {
+export interface SyncCheckAllResult {
+  results: ZoneSyncResult[]
+  server_time: number
+}
+
+export async function syncCheckAll(): Promise<SyncCheckAllResult> {
   return post('/zones/sync-check')
 }

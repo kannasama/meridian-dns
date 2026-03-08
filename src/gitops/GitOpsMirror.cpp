@@ -337,22 +337,50 @@ void GitOpsMirror::gitAddCommitPush(const std::string& sMessage) {
   if (pHead) git_reference_free(pHead);
 
   // Push to origin
-  git_remote* pRemote = nullptr;
-  if (git_remote_lookup(&pRemote, _pRepo, "origin") == 0) {
-    const char* vRefspecs[] = {"refs/heads/main:refs/heads/main"};
-    git_strarray refspecs = {const_cast<char**>(vRefspecs), 1};
+  if (_sRemoteUrl.empty()) {
+    spLog->info("GitOpsMirror: no remote URL configured — skipping push");
+  } else {
+    git_remote* pRemote = nullptr;
+    int iLookup = git_remote_lookup(&pRemote, _pRepo, "origin");
+    if (iLookup != 0) {
+      spLog->warn("GitOpsMirror: no 'origin' remote found — skipping push. "
+                   "Check DNS_GIT_REMOTE_URL and ensure the repo was cloned from a remote.");
+    } else {
+      // Determine the branch name from HEAD (which we just committed to)
+      git_reference* pHeadRef = nullptr;
+      std::string sRefspec;
+      if (git_repository_head(&pHeadRef, _pRepo) == 0) {
+        const char* pRefName = git_reference_name(pHeadRef);
+        if (pRefName) {
+          sRefspec = std::string(pRefName) + ":" + std::string(pRefName);
+          spLog->info("GitOpsMirror: pushing refspec '{}'", sRefspec);
+        }
+        git_reference_free(pHeadRef);
+      }
 
-    git_push_options pushOpts;
-    git_push_options_init(&pushOpts, GIT_PUSH_OPTIONS_VERSION);
-    applyRemoteCallbacks(pushOpts.callbacks, const_cast<GitOpsMirror*>(this),
-                         _oSshKeyPath.has_value());
+      if (sRefspec.empty()) {
+        spLog->warn("GitOpsMirror: could not determine HEAD branch — skipping push");
+        git_remote_free(pRemote);
+      } else {
+        const char* vRefspecs[] = {sRefspec.c_str()};
+        git_strarray refspecs = {const_cast<char**>(vRefspecs), 1};
 
-    int iErr = git_remote_push(pRemote, &refspecs, &pushOpts);
-    if (iErr < 0) {
-      const git_error* pErr = git_error_last();
-      spLog->warn("GitOpsMirror: push failed: {}", pErr ? pErr->message : "unknown");
+        git_push_options pushOpts;
+        git_push_options_init(&pushOpts, GIT_PUSH_OPTIONS_VERSION);
+        applyRemoteCallbacks(pushOpts.callbacks, const_cast<GitOpsMirror*>(this),
+                             _oSshKeyPath.has_value());
+
+        int iErr = git_remote_push(pRemote, &refspecs, &pushOpts);
+        if (iErr < 0) {
+          const git_error* pErr = git_error_last();
+          spLog->warn("GitOpsMirror: push to '{}' failed: {}", _sRemoteUrl,
+                       pErr ? pErr->message : "unknown");
+        } else {
+          spLog->info("GitOpsMirror: pushed to origin successfully");
+        }
+        git_remote_free(pRemote);
+      }
     }
-    git_remote_free(pRemote);
   }
 }
 

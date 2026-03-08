@@ -74,9 +74,15 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
             bForcePasswordChange = oUser->bForcePasswordChange;
           }
 
+          std::string sEmail;
+          if (oUser) {
+            sEmail = oUser->sEmail;
+          }
+
           return jsonResponse(200, {
               {"user_id", rcCtx.iUserId},
               {"username", rcCtx.sUsername},
+              {"email", sEmail},
               {"role", rcCtx.sRole},
               {"auth_method", rcCtx.sAuthMethod},
               {"force_password_change", bForcePasswordChange},

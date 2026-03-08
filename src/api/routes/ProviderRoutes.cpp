@@ -112,6 +112,12 @@ void ProviderRoutes::registerRoutes(crow::SimpleApp& app) {
 
           RequestValidator::validateProviderName(sName);
           RequestValidator::validateProviderType(sType);
+
+          // Apply well-known default endpoints for cloud providers
+          if (sEndpoint.empty()) {
+            if (sType == "cloudflare") sEndpoint = "https://api.cloudflare.com";
+            else if (sType == "digitalocean") sEndpoint = "https://api.digitalocean.com";
+          }
           RequestValidator::validateRequired(sEndpoint, "api_endpoint");
           RequestValidator::validateRequired(sToken, "token");
 

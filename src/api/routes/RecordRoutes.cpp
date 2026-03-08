@@ -438,8 +438,27 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
               if (jUpd.contains("value_template"))
                 entry.oValueTemplate = jUpd["value_template"].get<std::string>();
               if (jUpd.contains("priority")) entry.oPriority = jUpd["priority"].get<int>();
+              if (jUpd.contains("provider_meta"))
+                entry.oProviderMeta = jUpd["provider_meta"];
+
+              // Capture old state for audit trail
+              auto oOldRec = _rrRepo.findById(entry.iId);
+              nlohmann::json jAuditEntry = jUpd;
+              if (oOldRec) {
+                jAuditEntry["record_name"] = oOldRec->sName;
+                jAuditEntry["record_type"] = oOldRec->sType;
+                nlohmann::json jOld;
+                if (entry.oName) jOld["name"] = oOldRec->sName;
+                if (entry.oType) jOld["type"] = oOldRec->sType;
+                if (entry.oTtl) jOld["ttl"] = oOldRec->iTtl;
+                if (entry.oValueTemplate) jOld["value_template"] = oOldRec->sValueTemplate;
+                if (entry.oPriority) jOld["priority"] = oOldRec->iPriority;
+                if (entry.oProviderMeta) jOld["provider_meta"] = oOldRec->jProviderMeta;
+                jAuditEntry["old"] = jOld;
+              }
+              jAuditUpdates.push_back(jAuditEntry);
+
               vUpdates.push_back(std::move(entry));
-              jAuditUpdates.push_back(jUpd);
             }
           }
 
@@ -451,7 +470,19 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
             for (const auto& jId : jBody["deletes"]) {
               int64_t iId = jId.get<int64_t>();
               vDeleteIds.push_back(iId);
-              jAuditDeletes.push_back(iId);
+              // Capture full record info for audit trail
+              auto oRec = _rrRepo.findById(iId);
+              if (oRec) {
+                jAuditDeletes.push_back({
+                    {"id", iId},
+                    {"name", oRec->sName},
+                    {"type", oRec->sType},
+                    {"ttl", oRec->iTtl},
+                    {"value_template", oRec->sValueTemplate},
+                });
+              } else {
+                jAuditDeletes.push_back(iId);
+              }
             }
           }
 

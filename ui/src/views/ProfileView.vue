@@ -31,7 +31,7 @@ const createdKeyValue = ref<string | null>(null)
 onMounted(async () => {
   try {
     const user = await me()
-    email.value = (user as any).email ?? ''
+    email.value = user.email ?? ''
   } catch { /* ignore */ }
   await fetchApiKeys()
 })

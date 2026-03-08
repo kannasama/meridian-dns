@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
@@ -11,11 +11,17 @@ import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import PageHeader from '../components/shared/PageHeader.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
+import Fieldset from 'primevue/fieldset'
 import { useCrud } from '../composables/useCrud'
 import { useConfirmAction } from '../composables/useConfirm'
 import { useRole } from '../composables/useRole'
 import * as api from '../api/providers'
 import type { Provider, ProviderCreate, ProviderUpdate } from '../types'
+
+const defaultEndpoints: Record<string, string> = {
+  cloudflare: 'https://api.cloudflare.com',
+  digitalocean: 'https://api.digitalocean.com',
+}
 
 const { isAdmin } = useRole()
 const { confirmDelete } = useConfirmAction()
@@ -50,6 +56,14 @@ const providerTypes = [
   { label: 'Cloudflare', value: 'cloudflare' },
   { label: 'DigitalOcean', value: 'digitalocean' },
 ]
+
+const hasDefaultEndpoint = computed(() => form.value.type in defaultEndpoints)
+
+// Auto-populate endpoint when provider type changes (only for new providers)
+watch(() => form.value.type, (newType) => {
+  if (editingId.value !== null) return
+  form.value.api_endpoint = defaultEndpoints[newType] ?? ''
+})
 
 function openCreate() {
   editingId.value = null
@@ -214,11 +228,18 @@ onMounted(fetchProviders)
             class="w-full"
           />
         </div>
-        <div class="field">
+        <div v-if="!hasDefaultEndpoint" class="field">
           <label for="prov-endpoint">API Endpoint</label>
           <InputText id="prov-endpoint" v-model="form.api_endpoint" class="w-full" />
           <small class="text-surface-400">Full URL without trailing slash, e.g. https://dns.example.com</small>
         </div>
+        <Fieldset v-else legend="Advanced" :toggleable="true" :collapsed="true" class="endpoint-fieldset">
+          <div class="field">
+            <label for="prov-endpoint">API Endpoint</label>
+            <InputText id="prov-endpoint" v-model="form.api_endpoint" class="w-full" />
+            <small class="text-surface-400">Default: {{ defaultEndpoints[form.type] }}</small>
+          </div>
+        </Fieldset>
         <div class="field">
           <label for="prov-token">
             {{ editingId ? 'Token (leave blank to keep current)' : 'Token' }}
@@ -287,5 +308,9 @@ onMounted(fetchProviders)
 
 .w-25rem {
   width: 25rem;
+}
+
+.endpoint-fieldset {
+  margin: 0;
 }
 </style>

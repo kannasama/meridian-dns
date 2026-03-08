@@ -11,7 +11,7 @@ import * as providerApi from '../api/providers'
 import * as zoneApi from '../api/zones'
 import * as viewApi from '../api/views'
 import * as healthApi from '../api/health'
-import { syncCheckZone, syncCheckAll } from '../api/zones'
+import { syncCheckZone, syncCheckAll, type SyncCheckAllResult } from '../api/zones'
 import type { Zone, View, ProviderHealth } from '../types'
 
 const router = useRouter()
@@ -26,6 +26,8 @@ const providerHealth = ref<ProviderHealth[]>([])
 const healthLoading = ref(false)
 const refreshingZones = ref<Set<number>>(new Set())
 const refreshingAll = ref(false)
+// Offset between server clock and browser clock (server_time - Date.now()/1000)
+const serverTimeOffset = ref(0)
 
 const viewMap = computed(() => {
   const map = new Map<number, string>()
@@ -84,9 +86,11 @@ function syncStatusSeverity(status?: string) {
 
 function relativeTime(ts: string | number | null | undefined): string {
   if (ts == null) return 'Never'
-  const ms = typeof ts === 'number' ? ts * 1000 : new Date(ts).getTime()
-  const diff = Date.now() - ms
-  const mins = Math.floor(diff / 60000)
+  const sec = typeof ts === 'number' ? ts : new Date(ts).getTime() / 1000
+  // Use server-adjusted "now" to avoid clock skew between browser and server
+  const nowSec = Date.now() / 1000 + serverTimeOffset.value
+  const diff = nowSec - sec
+  const mins = Math.floor(diff / 60)
   if (mins < 1) return 'Just now'
   if (mins < 60) return `${mins}m ago`
   const hours = Math.floor(mins / 60)
@@ -100,6 +104,9 @@ async function refreshZone(zone: Zone) {
     const result = await syncCheckZone(zone.id)
     zone.sync_status = result.sync_status
     zone.sync_checked_at = result.sync_checked_at
+    if (result.server_time) {
+      serverTimeOffset.value = result.server_time - Date.now() / 1000
+    }
   } catch { /* ignore */ }
   refreshingZones.value.delete(zone.id)
 }
@@ -107,8 +114,11 @@ async function refreshZone(zone: Zone) {
 async function refreshAllZones() {
   refreshingAll.value = true
   try {
-    const results = await syncCheckAll()
-    for (const r of results) {
+    const resp = await syncCheckAll()
+    if (resp.server_time) {
+      serverTimeOffset.value = resp.server_time - Date.now() / 1000
+    }
+    for (const r of resp.results) {
       const z = zones.value.find(z => z.id === r.zone_id)
       if (z) {
         z.sync_status = r.sync_status

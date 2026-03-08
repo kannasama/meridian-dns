@@ -43,6 +43,10 @@ const autoTtl = ref(true)
 const selectedRecords = ref<DnsRecord[]>([])
 const bulkTtlDialogVisible = ref(false)
 const bulkTtlValue = ref(300)
+const bulkAutoTtlDialogVisible = ref(false)
+const bulkAutoTtlValue = ref(true)
+const bulkProxyDialogVisible = ref(false)
+const bulkProxyValue = ref(false)
 
 const {
   variables, varFilter, varPanelRef, filteredVars,
@@ -277,6 +281,71 @@ async function handleBulkSetTtl() {
   }
 }
 
+async function handleBulkSetAutoTtl() {
+  const ids = selectedRecords.value
+    .filter((r) => !r.pending_delete)
+    .map((r) => r.id)
+  if (ids.length === 0) return
+  try {
+    await recordApi.batchRecords(zoneId, {
+      updates: ids.map((id) => {
+        const rec = records.value.find((r) => r.id === id)
+        const meta = { ...(rec?.provider_meta as Record<string, unknown> ?? {}), auto_ttl: bulkAutoTtlValue.value }
+        return { id, provider_meta: meta }
+      }),
+    })
+    for (const id of ids) {
+      const idx = records.value.findIndex((r) => r.id === id)
+      if (idx !== -1) {
+        const rec = records.value[idx]!
+        rec.provider_meta = { ...(rec.provider_meta as Record<string, unknown> ?? {}), auto_ttl: bulkAutoTtlValue.value }
+      }
+    }
+    selectedRecords.value = []
+    bulkAutoTtlDialogVisible.value = false
+    notify.success(`Auto-TTL ${bulkAutoTtlValue.value ? 'enabled' : 'disabled'} for ${ids.length} record(s)`)
+  } catch (err) {
+    const msg = err instanceof ApiRequestError ? err.body.message : 'Bulk Auto-TTL update failed'
+    notify.error('Error', msg)
+  }
+}
+
+async function handleBulkSetProxy() {
+  const proxyableIds = selectedRecords.value
+    .filter((r) => !r.pending_delete && ['A', 'AAAA', 'CNAME'].includes(r.type))
+    .map((r) => r.id)
+  if (proxyableIds.length === 0) return
+  try {
+    await recordApi.batchRecords(zoneId, {
+      updates: proxyableIds.map((id) => {
+        const rec = records.value.find((r) => r.id === id)
+        const meta: Record<string, unknown> = { ...(rec?.provider_meta as Record<string, unknown> ?? {}), proxied: bulkProxyValue.value }
+        if (bulkProxyValue.value) meta.auto_ttl = true
+        return { id, provider_meta: meta }
+      }),
+    })
+    for (const id of proxyableIds) {
+      const idx = records.value.findIndex((r) => r.id === id)
+      if (idx !== -1) {
+        const rec = records.value[idx]!
+        const meta: Record<string, unknown> = { ...(rec.provider_meta as Record<string, unknown> ?? {}), proxied: bulkProxyValue.value }
+        if (bulkProxyValue.value) meta.auto_ttl = true
+        rec.provider_meta = meta
+      }
+    }
+    selectedRecords.value = []
+    bulkProxyDialogVisible.value = false
+    notify.success(`Proxy ${bulkProxyValue.value ? 'enabled' : 'disabled'} for ${proxyableIds.length} record(s)`)
+  } catch (err) {
+    const msg = err instanceof ApiRequestError ? err.body.message : 'Bulk proxy update failed'
+    notify.error('Error', msg)
+  }
+}
+
+const bulkHasProxyableRecords = computed(() =>
+  selectedRecords.value.some((r) => !r.pending_delete && ['A', 'AAAA', 'CNAME'].includes(r.type)),
+)
+
 function goToDeploy() {
   router.push({ name: 'deployments', query: { zones: String(zoneId) } })
 }
@@ -366,6 +435,24 @@ onMounted(fetchData)
             size="small"
             class="mr-2"
             @click="bulkTtlDialogVisible = true"
+          />
+          <Button
+            v-if="hasCloudflareProvider"
+            label="Auto-TTL"
+            icon="pi pi-bolt"
+            severity="secondary"
+            size="small"
+            class="mr-2"
+            @click="bulkAutoTtlDialogVisible = true"
+          />
+          <Button
+            v-if="hasCloudflareProvider && bulkHasProxyableRecords"
+            label="Proxy"
+            icon="pi pi-shield"
+            severity="secondary"
+            size="small"
+            class="mr-2"
+            @click="bulkProxyDialogVisible = true"
           />
           <Button
             label="Delete Selected"
@@ -592,6 +679,42 @@ onMounted(fetchData)
           <InputNumber id="bulk-ttl" v-model="bulkTtlValue" :min="1" :max="604800" class="w-full" />
         </div>
         <Button label="Apply" icon="pi pi-check" class="w-full" @click="handleBulkSetTtl" />
+      </div>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="bulkAutoTtlDialogVisible"
+      header="Cloudflare Auto-TTL"
+      modal
+      class="w-20rem"
+    >
+      <div class="dialog-form">
+        <div class="field">
+          <div class="proxy-row">
+            <label for="bulk-auto-ttl">Enable Auto-TTL</label>
+            <ToggleSwitch id="bulk-auto-ttl" v-model="bulkAutoTtlValue" />
+          </div>
+          <small class="text-muted">Cloudflare will manage TTL automatically</small>
+        </div>
+        <Button label="Apply" icon="pi pi-check" class="w-full" @click="handleBulkSetAutoTtl" />
+      </div>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="bulkProxyDialogVisible"
+      header="Cloudflare Proxy"
+      modal
+      class="w-20rem"
+    >
+      <div class="dialog-form">
+        <div class="field">
+          <div class="proxy-row">
+            <label for="bulk-proxy">Enable Proxy</label>
+            <ToggleSwitch id="bulk-proxy" v-model="bulkProxyValue" />
+          </div>
+          <small class="text-muted">Route traffic through Cloudflare's CDN/WAF (A, AAAA, CNAME only)</small>
+        </div>
+        <Button label="Apply" icon="pi pi-check" class="w-full" @click="handleBulkSetProxy" />
       </div>
     </Dialog>
   </div>

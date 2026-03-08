@@ -81,6 +81,7 @@ class RecordRepository {
     std::optional<int> oTtl;
     std::optional<std::string> oValueTemplate;
     std::optional<int> oPriority;
+    std::optional<nlohmann::json> oProviderMeta;
   };
   void batchUpdate(int64_t iZoneId, const std::vector<BatchUpdateEntry>& vUpdates);
 

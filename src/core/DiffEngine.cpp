@@ -318,27 +318,54 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
       }
     }
 
-    auto vDiffs = computeDiff(vProviderDesired, vLive);
+    // Pre-match pending-delete records against live records and remove matched
+    // live records so they don't appear as drift in computeDiff().
+    // Match by name+type first; use value as tiebreaker when multiple records
+    // share the same name+type.
+    std::vector<common::RecordDiff> vDeleteDiffs;
+    std::set<std::string> sDeleteConsumedIds;  // provider record IDs consumed by deletes
 
-    // Generate Delete diffs for pending-delete records that exist on provider
     for (const auto& drPending : vPendingDelete) {
+      const common::DnsRecord* pBestMatch = nullptr;
       for (const auto& drLive : vLive) {
-        if (drLive.sName == drPending.sName && drLive.sType == drPending.sType
-            && drLive.sValue == drPending.sValue) {
-          common::RecordDiff rd;
-          rd.action = common::DiffAction::Delete;
-          rd.sName = drLive.sName;
-          rd.sType = drLive.sType;
-          rd.sProviderValue = drLive.sValue;
-          rd.sProviderRecordId = drLive.sProviderRecordId;
-          rd.uTtl = drLive.uTtl;
-          rd.iPriority = drLive.iPriority;
-          rd.jProviderMeta = drLive.jProviderMeta;
-          vDiffs.push_back(std::move(rd));
+        if (drLive.sName != drPending.sName || drLive.sType != drPending.sType) continue;
+        if (sDeleteConsumedIds.count(drLive.sProviderRecordId)) continue;
+        if (drLive.sValue == drPending.sValue) {
+          pBestMatch = &drLive;  // exact match — prefer this
           break;
         }
+        if (!pBestMatch) {
+          pBestMatch = &drLive;  // name+type match as fallback
+        }
+      }
+      if (pBestMatch) {
+        sDeleteConsumedIds.insert(pBestMatch->sProviderRecordId);
+        common::RecordDiff rd;
+        rd.action = common::DiffAction::Delete;
+        rd.sName = pBestMatch->sName;
+        rd.sType = pBestMatch->sType;
+        rd.sProviderValue = pBestMatch->sValue;
+        rd.sProviderRecordId = pBestMatch->sProviderRecordId;
+        rd.uTtl = pBestMatch->uTtl;
+        rd.iPriority = pBestMatch->iPriority;
+        rd.jProviderMeta = pBestMatch->jProviderMeta;
+        vDeleteDiffs.push_back(std::move(rd));
       }
     }
+
+    // Filter out live records consumed by pending deletes before computing diff
+    std::vector<common::DnsRecord> vFilteredLive;
+    vFilteredLive.reserve(vLive.size());
+    for (const auto& drLive : vLive) {
+      if (!sDeleteConsumedIds.count(drLive.sProviderRecordId)) {
+        vFilteredLive.push_back(drLive);
+      }
+    }
+
+    auto vDiffs = computeDiff(vProviderDesired, vFilteredLive);
+
+    // Append the Delete diffs
+    vDiffs.insert(vDiffs.end(), vDeleteDiffs.begin(), vDeleteDiffs.end());
 
     common::ProviderPreviewResult ppr;
     ppr.iProviderId = iProviderId;

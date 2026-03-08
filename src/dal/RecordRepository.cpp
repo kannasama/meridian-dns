@@ -237,7 +237,7 @@ void RecordRepository::batchUpdate(int64_t iZoneId,
   for (const auto& entry : vUpdates) {
     // Fetch current record to merge partial updates
     auto result = txn.exec(
-        "SELECT name, type, ttl, value_template, priority FROM records "
+        "SELECT name, type, ttl, value_template, priority, provider_meta FROM records "
         "WHERE id = $1 AND zone_id = $2",
         pqxx::params{entry.iId, iZoneId});
 
@@ -253,10 +253,18 @@ void RecordRepository::batchUpdate(int64_t iZoneId,
     std::string sValueTemplate = entry.oValueTemplate.value_or(result[0][3].as<std::string>());
     int iPriority = entry.oPriority.value_or(result[0][4].as<int>());
 
+    std::optional<std::string> oProviderMetaStr;
+    if (entry.oProviderMeta.has_value()) {
+      oProviderMetaStr = entry.oProviderMeta->dump();
+    } else if (!result[0][5].is_null()) {
+      oProviderMetaStr = result[0][5].as<std::string>();
+    }
+
     txn.exec(
         "UPDATE records SET name = $2, type = $3, ttl = $4, value_template = $5, "
-        "priority = $6, updated_at = NOW() WHERE id = $1",
-        pqxx::params{entry.iId, sName, sType, iTtl, sValueTemplate, iPriority});
+        "priority = $6, provider_meta = $7::jsonb, updated_at = NOW() WHERE id = $1",
+        pqxx::params{entry.iId, sName, sType, iTtl, sValueTemplate, iPriority,
+                     oProviderMetaStr});
   }
   txn.commit();
 }

@@ -77,7 +77,9 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
             }
             jResults.push_back(jEntry);
           }
-          return jsonResponse(200, jResults);
+          auto iServerNow = std::chrono::duration_cast<std::chrono::seconds>(
+              std::chrono::system_clock::now().time_since_epoch()).count();
+          return jsonResponse(200, {{"results", jResults}, {"server_time", iServerNow}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
         }
@@ -110,6 +112,8 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           } else {
             jResult["sync_checked_at"] = nullptr;
           }
+          jResult["server_time"] = std::chrono::duration_cast<std::chrono::seconds>(
+              std::chrono::system_clock::now().time_since_epoch()).count();
           return jsonResponse(200, jResult);
         } catch (const common::AppError& e) {
           return errorResponse(e);

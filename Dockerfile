@@ -30,6 +30,7 @@ FROM fedora:43 AS runtime
 
 RUN dnf install -y --setopt=install_weak_deps=False \
   libpq libpqxx openssl-libs libgit2 spdlog fmt \
+  git ca-certificates openssh-clients \
   && dnf clean all
 
 RUN useradd --system --no-create-home meridian-dns
