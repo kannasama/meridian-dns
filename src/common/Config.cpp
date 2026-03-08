@@ -118,6 +118,10 @@ Config Config::load() {
   if (!sGitKey.empty()) {
     cfg.oGitSshKeyPath = sGitKey;
   }
+  const std::string sGitKnownHosts = getEnv("DNS_GIT_KNOWN_HOSTS_FILE");
+  if (!sGitKnownHosts.empty()) {
+    cfg.oGitKnownHostsFile = sGitKnownHosts;
+  }
 
   // Logging
   const std::string sLogLevel = getEnv("DNS_LOG_LEVEL");

@@ -34,6 +34,7 @@ struct Config {
   std::optional<std::string> oGitRemoteUrl;
   std::string sGitLocalPath = "/var/meridian-dns/repo";
   std::optional<std::string> oGitSshKeyPath;
+  std::optional<std::string> oGitKnownHostsFile;
 
   // ── Logging ───────────────────────────────────────────────────────────
   std::string sLogLevel = "info";

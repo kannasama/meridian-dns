@@ -281,7 +281,8 @@ int main(int argc, char* argv[]) {
     if (cfgApp.oGitRemoteUrl.has_value() && !cfgApp.oGitRemoteUrl->empty()) {
       upGitMirror = std::make_unique<dns::gitops::GitOpsMirror>(
           *zrRepo, *vrRepo, *rrRepo, *veEngine);
-      upGitMirror->initialize(*cfgApp.oGitRemoteUrl, cfgApp.sGitLocalPath);
+      upGitMirror->initialize(*cfgApp.oGitRemoteUrl, cfgApp.sGitLocalPath,
+                             cfgApp.oGitSshKeyPath, cfgApp.oGitKnownHostsFile);
       upGitMirror->pull();
       spLog->info("Step 6: GitOpsMirror initialized (remote={}, local={})",
                   *cfgApp.oGitRemoteUrl, cfgApp.sGitLocalPath);

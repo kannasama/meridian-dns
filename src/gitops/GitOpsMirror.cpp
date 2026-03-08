@@ -31,10 +31,104 @@ GitOpsMirror::~GitOpsMirror() {
   git_libgit2_shutdown();
 }
 
-void GitOpsMirror::initialize(const std::string& sRemoteUrl, const std::string& sLocalPath) {
+// ── libgit2 callbacks ──────────────────────────────────────────────────────
+
+int GitOpsMirror::credentialsCb(git_credential** ppOut, const char* /*pUrl*/,
+                                const char* pUsernameFromUrl, unsigned int iAllowedTypes,
+                                void* pPayload) {
+  auto* pSelf = static_cast<const GitOpsMirror*>(pPayload);
+
+  if ((iAllowedTypes & GIT_CREDENTIAL_SSH_KEY) && pSelf->_oSshKeyPath.has_value()) {
+    const char* pUsername = (pUsernameFromUrl && pUsernameFromUrl[0])
+                                ? pUsernameFromUrl
+                                : "git";
+    return git_credential_ssh_key_new(ppOut, pUsername,
+                                      nullptr,  // public key path (derived from private)
+                                      pSelf->_oSshKeyPath->c_str(),
+                                      nullptr);  // passphrase
+  }
+
+  return GIT_PASSTHROUGH;
+}
+
+int GitOpsMirror::certificateCheckCb(git_cert* /*pCert*/, int /*bValid*/,
+                                     const char* pHost, void* pPayload) {
+  auto* pSelf = static_cast<const GitOpsMirror*>(pPayload);
+
+  if (!pSelf->_oKnownHostsFile.has_value()) {
+    // No known_hosts file configured — accept all hosts (matches previous behavior).
+    // When a known_hosts file is provided, this should be tightened.
+    return 0;
+  }
+
+  // Validate host against known_hosts file using libgit2's built-in check.
+  // git_libgit2_opts can set the known_hosts path globally, but that's process-wide.
+  // Instead, we do a manual line-based check for the hostname.
+  std::ifstream ifs(pSelf->_oKnownHostsFile.value());
+  if (!ifs.is_open()) {
+    auto spLog = common::Logger::get();
+    spLog->error("GitOpsMirror: cannot open known_hosts file '{}'",
+                 pSelf->_oKnownHostsFile.value());
+    return GIT_ECERTIFICATE;
+  }
+
+  std::string sHost(pHost ? pHost : "");
+  std::string sLine;
+  while (std::getline(ifs, sLine)) {
+    if (sLine.empty() || sLine[0] == '#') continue;
+    // known_hosts format: hostname[,hostname...] key-type base64-key [comment]
+    // Check if the line starts with our hostname
+    auto iSpace = sLine.find(' ');
+    if (iSpace == std::string::npos) continue;
+    std::string sHosts = sLine.substr(0, iSpace);
+    // Check comma-separated host list
+    std::istringstream iss(sHosts);
+    std::string sEntry;
+    while (std::getline(iss, sEntry, ',')) {
+      // Strip brackets and port (e.g., [hostname]:port)
+      if (!sEntry.empty() && sEntry[0] == '[') {
+        auto iBracket = sEntry.find(']');
+        if (iBracket != std::string::npos) {
+          sEntry = sEntry.substr(1, iBracket - 1);
+        }
+      }
+      if (sEntry == sHost) {
+        return 0;  // Host found — accept
+      }
+    }
+  }
+
+  auto spLog = common::Logger::get();
+  spLog->error("GitOpsMirror: host '{}' not found in known_hosts file '{}'",
+               sHost, pSelf->_oKnownHostsFile.value());
+  return GIT_ECERTIFICATE;
+}
+
+// ── Options helpers ─────────────────────────────────────────────────────────
+
+namespace {
+
+void applyRemoteCallbacks(git_remote_callbacks& cb, GitOpsMirror* pMirror,
+                          bool bHasSshKey) {
+  if (bHasSshKey) {
+    cb.credentials = &GitOpsMirror::credentialsCb;
+  }
+  cb.certificate_check = &GitOpsMirror::certificateCheckCb;
+  cb.payload = pMirror;
+}
+
+}  // namespace
+
+// ── Core operations ─────────────────────────────────────────────────────────
+
+void GitOpsMirror::initialize(const std::string& sRemoteUrl, const std::string& sLocalPath,
+                              const std::optional<std::string>& oSshKeyPath,
+                              const std::optional<std::string>& oKnownHostsFile) {
   auto spLog = common::Logger::get();
   _sRemoteUrl = sRemoteUrl;
   _sLocalPath = sLocalPath;
+  _oSshKeyPath = oSshKeyPath;
+  _oKnownHostsFile = oKnownHostsFile;
 
   namespace fs = std::filesystem;
   if (fs::exists(sLocalPath + "/.git") || fs::exists(sLocalPath + "/HEAD")) {
@@ -52,7 +146,13 @@ void GitOpsMirror::initialize(const std::string& sRemoteUrl, const std::string& 
   } else {
     // Clone from remote
     fs::create_directories(sLocalPath);
-    int iErr = git_clone(&_pRepo, sRemoteUrl.c_str(), sLocalPath.c_str(), nullptr);
+
+    git_clone_options cloneOpts;
+    git_clone_options_init(&cloneOpts, GIT_CLONE_OPTIONS_VERSION);
+    applyRemoteCallbacks(cloneOpts.fetch_opts.callbacks, const_cast<GitOpsMirror*>(this),
+                         _oSshKeyPath.has_value());
+
+    int iErr = git_clone(&_pRepo, sRemoteUrl.c_str(), sLocalPath.c_str(), &cloneOpts);
     if (iErr < 0) {
       const git_error* pErr = git_error_last();
       spLog->error("GitOpsMirror: failed to clone '{}' to '{}': {}", sRemoteUrl, sLocalPath,
@@ -80,7 +180,12 @@ void GitOpsMirror::pull() {
     return;
   }
 
-  iErr = git_remote_fetch(pRemote, nullptr, nullptr, nullptr);
+  git_fetch_options fetchOpts;
+  git_fetch_options_init(&fetchOpts, GIT_FETCH_OPTIONS_VERSION);
+  applyRemoteCallbacks(fetchOpts.callbacks, const_cast<GitOpsMirror*>(this),
+                       _oSshKeyPath.has_value());
+
+  iErr = git_remote_fetch(pRemote, nullptr, &fetchOpts, nullptr);
   git_remote_free(pRemote);
   if (iErr < 0) {
     const git_error* pErr = git_error_last();
@@ -208,7 +313,13 @@ void GitOpsMirror::gitAddCommitPush(const std::string& sMessage) {
   if (git_remote_lookup(&pRemote, _pRepo, "origin") == 0) {
     const char* vRefspecs[] = {"refs/heads/main:refs/heads/main"};
     git_strarray refspecs = {const_cast<char**>(vRefspecs), 1};
-    int iErr = git_remote_push(pRemote, &refspecs, nullptr);
+
+    git_push_options pushOpts;
+    git_push_options_init(&pushOpts, GIT_PUSH_OPTIONS_VERSION);
+    applyRemoteCallbacks(pushOpts.callbacks, const_cast<GitOpsMirror*>(this),
+                         _oSshKeyPath.has_value());
+
+    int iErr = git_remote_push(pRemote, &refspecs, &pushOpts);
     if (iErr < 0) {
       const git_error* pErr = git_error_last();
       spLog->warn("GitOpsMirror: push failed: {}", pErr ? pErr->message : "unknown");
