@@ -401,24 +401,81 @@ feel solid and predictable. No whimsy, no unnecessary decoration.
 
 - **Visual tone:** Professional infrastructure tool. Dense but not cluttered. Information-rich
   layouts with clear hierarchy.
-- **Reference:** PrimeVue Sakai template as practical starting point — extend with stronger
-  identity and tighter visual consistency.
-- **Theme:** Dark mode default with light mode support. User-customizable accent colors.
-- **Primary accent:** Indigo/purple palette — distinctive, modern, stands out from typical
-  blue-heavy infra tools.
+- **Reference:** Dockhand (Docker management UI) — deep navy surfaces, card-based sections with
+  icon headers, curated named theme presets, polished dark-first aesthetic. Extend with Meridian
+  DNS identity.
+- **Theme:** Named theme presets define surface, border, and text colors. Accent/primary color
+  remains independently customizable via the existing color picker. Dark mode default.
 - **Typography:** System font stack for performance. Monospace for DNS records, IPs, zone names.
+  User-configurable font family, font size, and grid font size via profile/appearance settings.
 - **Anti-patterns:** Avoid generic "admin template" feel. No gratuitous gradients, no rounded-
   everything, no excessive whitespace that wastes screen real estate for data-heavy views.
 
-### Color System (PrimeVue tokens)
+### Theme System
 
-- **Primary:** Indigo (PrimeVue `indigo` preset) — buttons, active nav, links, focus rings
-- **Surface (dark):** Neutral grays (`surface-900` background, `surface-800` cards, `surface-700`
-  borders)
-- **Surface (light):** White/light grays for light theme variant
-- **Semantic:** Green for success/adds, amber for warnings/modifications, red for errors/deletes,
-  blue for informational
-- **Accent customization:** Expose PrimeVue's theme switching to let users pick accent color
+**Architecture:** Named theme presets control surface, border, and text colors, plus a default
+accent color that pairs well with the palette. The user can override the accent independently
+via the existing 16-color picker. Users select a separate preset for light mode and dark mode.
+
+**Dark theme presets (14):**
+
+| Name | Default Accent | Surface Base | Reference |
+|------|---------------|-------------|-----------|
+| Default | Indigo | Zinc/neutral gray | Current Meridian default |
+| Catppuccin Mocha | Mauve/lavender | Deep charcoal (#1e1e2e) | catppuccin.com |
+| Dracula | Purple | Dark navy (#282a36) | draculatheme.com |
+| Rose Pine | Rose/pink | Deep navy (#191724) | rosepinetheme.com |
+| Rose Pine Moon | Rose/pink | Muted navy (#232136) | rosepinetheme.com |
+| Nord | Frost blue | Polar night (#2e3440) | nordtheme.com |
+| Tokyo Night | Blue/purple | Dark slate (#1a1b26) | github.com/enkia |
+| Gruvbox Dark | Orange | Dark warm (#282828) | github.com/morhetz |
+| Solarized Dark | Blue | Dark teal (#002b36) | ethanschoonover.com |
+| Kanagawa | Blue | Dark ink (#1f1f28) | github.com/rebelot |
+| Monokai Pro | Yellow/amber | Dark charcoal (#2d2a2e) | monokai.pro |
+| Material Dark | Cyan | Dark gray (#212121) | material-theme.com |
+| Ayu Dark | Amber | Deep black (#0a0e14) | github.com/ayu-theme |
+| GitHub Dark | Blue | Dark gray (#0d1117) | github.com |
+
+**Light theme presets (9):**
+
+| Name | Default Accent | Surface Base | Reference |
+|------|---------------|-------------|-----------|
+| Default | Indigo | White/slate | Current Meridian light mode |
+| Catppuccin Latte | Mauve/lavender | Warm white (#eff1f5) | catppuccin.com |
+| Rose Pine Dawn | Rose/pink | Warm cream (#faf4ed) | rosepinetheme.com |
+| Nord Light | Blue | Snow (#eceff4) | nordtheme.com |
+| Solarized Light | Blue | Light cream (#fdf6e3) | ethanschoonover.com |
+| Alucard (Dracula) | Purple | Light gray (#f8f8f2) | draculatheme.com |
+| Material Light | Cyan | White (#fafafa) | material-theme.com |
+| Ayu Light | Orange | Warm white (#fafafa) | github.com/ayu-theme |
+| GitHub Light | Blue | White (#ffffff) | github.com |
+
+**Implementation notes:**
+- Theme presets are defined in `ui/src/theme/presets/` — one file per theme with surface, border,
+  text color definitions, and a default accent color
+- Theme store (`ui/src/stores/theme.ts`) manages `lightTheme`, `darkTheme`, and `accent` —
+  selecting a new preset applies its default accent unless the user has explicitly overridden it
+- Theme selection UI lives in profile/appearance settings (card-based section layout)
+- Accent color picker (existing 16-color grid) remains in the top bar or appearance settings
+- PrimeVue's `updatePreset()` API applies the selected theme surfaces + accent at runtime
+
+### Layout Patterns
+
+- **Card-based sections:** Settings and profile pages use grouped cards with icon headers
+  (like Dockhand's settings/profile layout). Each card represents a logical section (e.g.,
+  "Account Information", "Security", "Appearance").
+- **Font customization:** Profile/appearance section includes Font family, Font size, and
+  Grid font size dropdowns. Stored in localStorage, applied via CSS custom properties.
+- **Data pages:** Zones, providers, records, etc. retain DataTable-centric layouts — card
+  sections are for settings/profile, not data-heavy CRUD views.
+
+### Semantic Colors
+
+- **Success/adds:** Green
+- **Warnings/modifications:** Amber
+- **Errors/deletes:** Red
+- **Informational:** Blue
+- These semantic colors remain consistent across all theme presets.
 
 ### Design Principles
 
@@ -432,6 +489,8 @@ feel solid and predictable. No whimsy, no unnecessary decoration.
    must be visually clear what will change, with unambiguous color coding and grouping.
 5. **Accessible by default.** Good contrast ratios, keyboard navigation, meaningful focus states,
    reduced-motion support. Best-effort WCAG AA compliance without formal audit.
+6. **Cohesive theming.** Every theme preset must feel intentional end-to-end — surfaces, borders,
+   text, and accent work as a unified palette. No mismatched token overrides.
 
 ### Frontend Code Standards
 
