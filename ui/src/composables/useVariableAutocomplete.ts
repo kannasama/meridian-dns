@@ -1,8 +1,8 @@
-import { ref, computed } from 'vue'
+import { ref, computed, type Ref, isRef } from 'vue'
 import { listVariables } from '../api/variables'
 import type { Variable } from '../types'
 
-export function useVariableAutocomplete(zoneId: number) {
+export function useVariableAutocomplete(zoneId: number | Ref<number>) {
   const variables = ref<Variable[]>([])
   const varFilter = ref('')
   const varPanelRef = ref()
@@ -17,7 +17,8 @@ export function useVariableAutocomplete(zoneId: number) {
 
   async function loadVariables() {
     try {
-      variables.value = await listVariables(undefined, zoneId)
+      const id = isRef(zoneId) ? zoneId.value : zoneId
+      variables.value = await listVariables(undefined, id)
       const globals = await listVariables('global')
       const ids = new Set(variables.value.map(v => v.id))
       for (const g of globals) {
