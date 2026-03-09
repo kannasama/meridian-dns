@@ -165,7 +165,7 @@ async function refreshAllZones() {
         </div>
       </div>
 
-      <h3 class="section-title">Provider Health</h3>
+      <h3 class="section-title"><i class="pi pi-server section-icon" /> Provider Health</h3>
       <DataTable :value="providerHealth" size="small" :loading="healthLoading" stripedRows>
         <Column field="name" header="Provider">
           <template #body="{ data }">
@@ -187,7 +187,7 @@ async function refreshAllZones() {
       </DataTable>
 
       <div class="flex align-items-center justify-content-between mb-3">
-        <h3 class="section-title" style="margin: 0">Zones</h3>
+        <h3 class="section-title" style="margin: 0"><i class="pi pi-globe section-icon" /> Zones</h3>
         <Button
           icon="pi pi-refresh"
           label="Refresh All"
@@ -249,7 +249,7 @@ async function refreshAllZones() {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: 1rem;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
@@ -257,7 +257,7 @@ async function refreshAllZones() {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1rem;
   background: var(--p-surface-900);
   border: 1px solid var(--p-surface-700);
   border-radius: 0.5rem;
@@ -308,6 +308,10 @@ async function refreshAllZones() {
 
 :root:not(.app-dark) .section-title {
   color: var(--p-surface-700);
+}
+
+.section-icon {
+  margin-right: 0.5rem;
 }
 
 .cursor-pointer :deep(tr) {
