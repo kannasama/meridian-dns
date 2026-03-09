@@ -6,15 +6,55 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
+import Select from 'primevue/select'
 import PageHeader from '../components/shared/PageHeader.vue'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationStore } from '../stores/notification'
+import { useThemeStore, type AccentColor } from '../stores/theme'
 import { useConfirmAction } from '../composables/useConfirm'
 import { me, updateProfile, changePassword } from '../api/auth'
 import { listApiKeys, createApiKey, revokeApiKey } from '../api/apikeys'
+import { darkPresets, lightPresets } from '../theme/presets'
 import type { ApiKeyEntry } from '../types'
 
 const auth = useAuthStore()
+const theme = useThemeStore()
+
+const fontFamilyOptions = [
+  { label: 'System Default', value: 'system' },
+  { label: 'Inter', value: 'inter' },
+  { label: 'Roboto', value: 'Roboto' },
+  { label: 'Source Sans 3', value: 'Source Sans 3' },
+]
+
+const fontSizeOptions = ['12', '13', '14', '15', '16'].map(s => ({ label: `${s}px`, value: s }))
+const gridFontSizeOptions = ['11', '12', '13', '14', '15'].map(s => ({ label: `${s}px`, value: s }))
+
+const darkPresetOptions = darkPresets.map(p => ({ label: p.label, value: p.name }))
+const lightPresetOptions = lightPresets.map(p => ({ label: p.label, value: p.name }))
+
+const colorRows: { name: AccentColor; bg: string }[][] = [
+  [
+    { name: 'noir', bg: '#71717a' },
+    { name: 'emerald', bg: '#10b981' },
+    { name: 'green', bg: '#22c55e' },
+    { name: 'lime', bg: '#84cc16' },
+    { name: 'orange', bg: '#f97316' },
+    { name: 'amber', bg: '#f59e0b' },
+    { name: 'yellow', bg: '#eab308' },
+    { name: 'cyan', bg: '#06b6d4' },
+  ],
+  [
+    { name: 'sky', bg: '#0ea5e9' },
+    { name: 'blue', bg: '#3b82f6' },
+    { name: 'indigo', bg: '#6366f1' },
+    { name: 'violet', bg: '#8b5cf6' },
+    { name: 'purple', bg: '#a855f7' },
+    { name: 'fuchsia', bg: '#d946ef' },
+    { name: 'pink', bg: '#ec4899' },
+    { name: 'rose', bg: '#f43f5e' },
+  ],
+]
 const notify = useNotificationStore()
 const { confirmDelete } = useConfirmAction()
 
@@ -114,7 +154,7 @@ function copyKey() {
 
     <div class="profile-sections">
       <section class="profile-section">
-        <h3 class="section-title">Profile</h3>
+        <h3 class="section-title"><i class="pi pi-user section-icon" /> Profile</h3>
         <form @submit.prevent="handleProfileSave" class="section-form">
           <div class="field">
             <label>Username</label>
@@ -133,7 +173,7 @@ function copyKey() {
       </section>
 
       <section class="profile-section">
-        <h3 class="section-title">Change Password</h3>
+        <h3 class="section-title"><i class="pi pi-lock section-icon" /> Change Password</h3>
         <form @submit.prevent="handlePasswordChange" class="section-form">
           <div class="field">
             <label>Current Password</label>
@@ -152,8 +192,92 @@ function copyKey() {
       </section>
 
       <section class="profile-section">
+        <h3 class="section-title"><i class="pi pi-palette section-icon" /> Appearance</h3>
+
+        <div class="appearance-grid">
+          <div class="field">
+            <label>Dark Theme</label>
+            <Select
+              :modelValue="theme.darkTheme"
+              @update:modelValue="theme.setDarkTheme($event)"
+              :options="darkPresetOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+          </div>
+          <div class="field">
+            <label>Light Theme</label>
+            <Select
+              :modelValue="theme.lightTheme"
+              @update:modelValue="theme.setLightTheme($event)"
+              :options="lightPresetOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+          </div>
+        </div>
+
+        <div class="field mt-1">
+          <label>Accent Color</label>
+          <div class="color-grid">
+            <div v-for="(row, ri) in colorRows" :key="ri" class="color-row">
+              <button
+                v-for="c in row"
+                :key="c.name"
+                class="color-swatch"
+                :class="{ active: theme.accent === c.name }"
+                :style="{ backgroundColor: c.bg }"
+                :title="c.name"
+                @click="theme.setAccent(c.name)"
+              >
+                <i v-if="theme.accent === c.name" class="pi pi-check swatch-check" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="appearance-grid mt-1">
+          <div class="field">
+            <label>Font Family</label>
+            <Select
+              :modelValue="theme.fontFamily"
+              @update:modelValue="theme.setFontFamily($event)"
+              :options="fontFamilyOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+          </div>
+          <div class="field">
+            <label>Font Size</label>
+            <Select
+              :modelValue="theme.fontSize"
+              @update:modelValue="theme.setFontSize($event)"
+              :options="fontSizeOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+          </div>
+          <div class="field">
+            <label>Table Font Size</label>
+            <Select
+              :modelValue="theme.gridFontSize"
+              @update:modelValue="theme.setGridFontSize($event)"
+              :options="gridFontSizeOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section class="profile-section">
         <div class="flex align-items-center justify-content-between mb-3">
-          <h3 class="section-title" style="margin: 0">API Keys</h3>
+          <h3 class="section-title" style="margin: 0"><i class="pi pi-key section-icon" /> API Keys</h3>
           <Button label="Create Key" icon="pi pi-plus" size="small" @click="openCreateKey" />
         </div>
         <DataTable :value="apiKeys" size="small" stripedRows>
@@ -223,4 +347,24 @@ function copyKey() {
 .key-display { background: var(--p-surface-800); border-radius: 0.375rem; padding: 1rem; }
 :root:not(.app-dark) .key-display { background: var(--p-surface-100); }
 .key-value { display: flex; align-items: center; gap: 0.5rem; word-break: break-all; }
+.section-icon { margin-right: 0.5rem; font-size: 1rem; }
+.appearance-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 1rem; }
+.mt-1 { margin-top: 1rem; }
+.color-grid { display: flex; flex-direction: column; gap: 0.5rem; }
+.color-row { display: flex; gap: 0.5rem; }
+.color-swatch {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.15s;
+}
+.color-swatch:hover { transform: scale(1.2); }
+.color-swatch.active { border-color: var(--p-surface-0); box-shadow: 0 0 0 1px var(--p-surface-500); }
+.swatch-check { font-size: 0.625rem; color: white; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
 </style>
