@@ -33,7 +33,8 @@ const { isOperator } = useRole()
 const { confirmDelete } = useConfirmAction()
 const notify = useNotificationStore()
 
-const zoneId = Number(route.params.id)
+const zoneId = computed(() => Number(route.params.id))
+const allZones = ref<Zone[]>([])
 const zone = ref<Zone | null>(null)
 const records = ref<DnsRecord[]>([])
 const loading = ref(true)
@@ -109,7 +110,7 @@ const showAutoTtlToggle = computed(() => hasCloudflareProvider.value)
 async function fetchData() {
   loading.value = true
   try {
-    const [z, r] = await Promise.all([zoneApi.getZone(zoneId), recordApi.listRecords(zoneId)])
+    const [z, r] = await Promise.all([zoneApi.getZone(zoneId.value), recordApi.listRecords(zoneId.value)])
     zone.value = z
     records.value = r
 
@@ -131,6 +132,7 @@ async function fetchData() {
   } finally {
     loading.value = false
   }
+  zoneApi.listZones().then(z => { allZones.value = z }).catch(() => {})
 }
 
 function expandTemplate(sTemplate: string): string | null {
@@ -181,7 +183,7 @@ async function handleSubmitRecord() {
       payload.provider_meta = meta
     }
     if (editingRecordId.value !== null) {
-      await recordApi.updateRecord(zoneId, editingRecordId.value, payload)
+      await recordApi.updateRecord(zoneId.value, editingRecordId.value, payload)
       const idx = records.value.findIndex((r) => r.id === editingRecordId.value)
       if (idx !== -1) {
         const existing = records.value[idx]!
@@ -197,10 +199,10 @@ async function handleSubmitRecord() {
       }
       notify.success('Record updated')
     } else {
-      const result = await recordApi.createRecord(zoneId, payload)
+      const result = await recordApi.createRecord(zoneId.value, payload)
       records.value.push({
         id: result.id,
-        zone_id: zoneId,
+        zone_id: zoneId.value,
         name: payload.name,
         type: payload.type,
         ttl: payload.ttl ?? 300,
@@ -224,7 +226,7 @@ async function handleSubmitRecord() {
 function handleDeleteRecord(rec: DnsRecord) {
   confirmDelete(`Delete record "${rec.name}" (${rec.type})?`, async () => {
     try {
-      await recordApi.deleteRecord(zoneId, rec.id)
+      await recordApi.deleteRecord(zoneId.value, rec.id)
       const idx = records.value.findIndex((r) => r.id === rec.id)
       if (idx !== -1) {
         records.value[idx]!.pending_delete = true
@@ -239,7 +241,7 @@ function handleDeleteRecord(rec: DnsRecord) {
 
 async function handleRestoreRecord(rec: DnsRecord) {
   try {
-    await recordApi.restoreRecord(zoneId, rec.id)
+    await recordApi.restoreRecord(zoneId.value, rec.id)
     const idx = records.value.findIndex((r) => r.id === rec.id)
     if (idx !== -1) {
       records.value[idx]!.pending_delete = false
@@ -261,7 +263,7 @@ async function handleBulkDelete() {
     .map((r) => r.id)
   if (ids.length === 0) return
   try {
-    await recordApi.batchRecords(zoneId, { deletes: ids })
+    await recordApi.batchRecords(zoneId.value, { deletes: ids })
     for (const id of ids) {
       const idx = records.value.findIndex((r) => r.id === id)
       if (idx !== -1) {
@@ -282,7 +284,7 @@ async function handleBulkSetTtl() {
     .map((r) => r.id)
   if (ids.length === 0) return
   try {
-    await recordApi.batchRecords(zoneId, {
+    await recordApi.batchRecords(zoneId.value, {
       updates: ids.map((id) => ({ id, ttl: bulkTtlValue.value })),
     })
     for (const id of ids) {
@@ -306,7 +308,7 @@ async function handleBulkSetAutoTtl() {
     .map((r) => r.id)
   if (ids.length === 0) return
   try {
-    await recordApi.batchRecords(zoneId, {
+    await recordApi.batchRecords(zoneId.value, {
       updates: ids.map((id) => {
         const rec = records.value.find((r) => r.id === id)
         const meta = { ...(rec?.provider_meta as Record<string, unknown> ?? {}), auto_ttl: bulkAutoTtlValue.value }
@@ -335,7 +337,7 @@ async function handleBulkSetProxy() {
     .map((r) => r.id)
   if (proxyableIds.length === 0) return
   try {
-    await recordApi.batchRecords(zoneId, {
+    await recordApi.batchRecords(zoneId.value, {
       updates: proxyableIds.map((id) => {
         const rec = records.value.find((r) => r.id === id)
         const meta: Record<string, unknown> = { ...(rec?.provider_meta as Record<string, unknown> ?? {}), proxied: bulkProxyValue.value }
@@ -366,7 +368,7 @@ const bulkHasProxyableRecords = computed(() =>
 )
 
 function goToDeploy() {
-  router.push({ name: 'deployments', query: { zones: String(zoneId) } })
+  router.push({ name: 'deployments', query: { zones: String(zoneId.value) } })
 }
 
 const showPriority = computed(() => form.value.type === 'MX' || form.value.type === 'SRV')
@@ -393,6 +395,10 @@ watch(proxied, (bProxied) => {
   }
 })
 
+watch(zoneId, () => {
+  fetchData()
+})
+
 onMounted(fetchData)
 </script>
 
@@ -405,6 +411,17 @@ onMounted(fetchData)
 
     <template v-else-if="zone">
       <PageHeader :title="zone.name" subtitle="Zone records">
+        <Select
+          :modelValue="zoneId"
+          @update:modelValue="(id: number) => router.push({ name: 'zone-detail', params: { id } })"
+          :options="allZones"
+          optionLabel="name"
+          optionValue="id"
+          placeholder="Switch zone..."
+          class="zone-switcher mr-2"
+          filter
+          filterPlaceholder="Search zones..."
+        />
         <Button
           v-if="isOperator"
           label="Deploy"
@@ -750,6 +767,10 @@ onMounted(fetchData)
 </template>
 
 <style scoped>
+.zone-switcher {
+  width: 14rem;
+}
+
 .mb-2 {
   margin-bottom: 0.5rem;
 }
