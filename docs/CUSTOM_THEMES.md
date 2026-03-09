@@ -11,7 +11,7 @@ built-in presets in the Appearance settings and behave identically.
 Custom theme files are stored in:
 
 ```
-/var/lib/meridian-dns/custom_themes/
+/var/meridian-dns/custom_themes/
 ```
 
 This is a fixed path — no configuration variable is needed. Place `.json` theme files in this
@@ -27,7 +27,7 @@ In Docker Compose, mount a host directory to this path:
 services:
   app:
     volumes:
-      - ./themes:/var/lib/meridian-dns/custom_themes:ro
+      - ./themes:/var/meridian-dns/custom_themes:ro
 ```
 
 ---
@@ -284,5 +284,5 @@ precedence and the custom theme is ignored. Built-in preset names:
 | Theme doesn't appear in dropdown | Invalid JSON or missing required field | Validate the file with `jq . theme.json` and check all 5 fields are present |
 | Theme appears but surfaces look wrong | Incorrect key names in `surface` object | Keys must be strings: `"0"`, `"50"`, `"100"`, ..., `"950"` (13 entries) |
 | Accent color doesn't apply | Invalid `defaultAccent` value | Must be one of the 16 Tailwind palette names listed above |
-| No themes returned from API | Directory doesn't exist or contains no `.json` files | Verify `/var/lib/meridian-dns/custom_themes/` exists and contains valid `.json` files |
+| No themes returned from API | Directory doesn't exist or contains no `.json` files | Verify `/var/meridian-dns/custom_themes/` exists and contains valid `.json` files |
 | Theme conflicts with built-in | Same `name` as a built-in preset | Rename the custom theme's `name` field |

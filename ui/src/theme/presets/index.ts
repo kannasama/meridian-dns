@@ -1,3 +1,4 @@
+import { reactive } from 'vue'
 import type { ThemePreset } from './types'
 
 // Dark presets
@@ -27,7 +28,7 @@ import materialLight from './light/material-light'
 import ayuLight from './light/ayu-light'
 import githubLight from './light/github-light'
 
-export const darkPresets: ThemePreset[] = [
+export const darkPresets: ThemePreset[] = reactive([
   darkDefault,
   catppuccinMocha,
   dracula,
@@ -42,9 +43,9 @@ export const darkPresets: ThemePreset[] = [
   materialDark,
   ayuDark,
   githubDark,
-]
+])
 
-export const lightPresets: ThemePreset[] = [
+export const lightPresets: ThemePreset[] = reactive([
   lightDefault,
   catppuccinLatte,
   rosePineDawn,
@@ -54,7 +55,7 @@ export const lightPresets: ThemePreset[] = [
   materialLight,
   ayuLight,
   githubLight,
-]
+])
 
 export function getDarkPreset(name: string): ThemePreset {
   return darkPresets.find(p => p.name === name) ?? darkDefault

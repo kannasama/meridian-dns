@@ -6,7 +6,7 @@
 namespace dns::api::routes {
 
 /// Handler for GET /api/v1/themes (no auth required)
-/// Reads custom theme preset JSON files from /var/lib/meridian-dns/custom_themes/.
+/// Reads custom theme preset JSON files from /var/meridian-dns/custom_themes/.
 class ThemeRoutes {
  public:
   ThemeRoutes();
@@ -16,7 +16,7 @@ class ThemeRoutes {
   void registerRoutes(crow::SimpleApp& app);
 
  private:
-  static constexpr const char* kCustomThemesDir = "/var/lib/meridian-dns/custom_themes";
+  static constexpr const char* kCustomThemesDir = "/var/meridian-dns/custom_themes";
 };
 
 }  // namespace dns::api::routes

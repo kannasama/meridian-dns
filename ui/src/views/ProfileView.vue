@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
@@ -30,8 +30,8 @@ const fontFamilyOptions = [
 const fontSizeOptions = ['12', '13', '14', '15', '16'].map(s => ({ label: `${s}px`, value: s }))
 const gridFontSizeOptions = ['11', '12', '13', '14', '15'].map(s => ({ label: `${s}px`, value: s }))
 
-const darkPresetOptions = darkPresets.map(p => ({ label: p.label, value: p.name }))
-const lightPresetOptions = lightPresets.map(p => ({ label: p.label, value: p.name }))
+const darkPresetOptions = computed(() => darkPresets.map(p => ({ label: p.label, value: p.name })))
+const lightPresetOptions = computed(() => lightPresets.map(p => ({ label: p.label, value: p.name })))
 
 const colorRows: { name: AccentColor; bg: string }[][] = [
   [
@@ -152,130 +152,137 @@ function copyKey() {
   <div>
     <PageHeader title="Profile" subtitle="Manage your account" />
 
-    <div class="profile-sections">
-      <section class="profile-section">
-        <h3 class="section-title"><i class="pi pi-user section-icon" /> Profile</h3>
-        <form @submit.prevent="handleProfileSave" class="section-form">
-          <div class="field">
-            <label>Username</label>
-            <InputText :modelValue="auth.user?.username" disabled class="w-full" />
-          </div>
-          <div class="field">
-            <label>Email</label>
-            <InputText v-model="email" class="w-full" />
-          </div>
-          <div class="field">
-            <label>Role</label>
-            <InputText :modelValue="auth.role" disabled class="w-full" />
-          </div>
-          <Button type="submit" label="Save Profile" class="align-self-start" />
-        </form>
-      </section>
+    <div class="profile-layout">
+      <!-- Left column: Account & Password -->
+      <div class="profile-column-left">
+        <section class="profile-section">
+          <h3 class="section-title"><i class="pi pi-user section-icon" /> Profile</h3>
+          <form @submit.prevent="handleProfileSave" class="section-form">
+            <div class="field">
+              <label>Username</label>
+              <InputText :modelValue="auth.user?.username" disabled class="w-full" />
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <InputText v-model="email" class="w-full" />
+            </div>
+            <div class="field">
+              <label>Role</label>
+              <InputText :modelValue="auth.role" disabled class="w-full" />
+            </div>
+            <Button type="submit" label="Save Profile" class="align-self-start" />
+          </form>
+        </section>
 
-      <section class="profile-section">
-        <h3 class="section-title"><i class="pi pi-lock section-icon" /> Change Password</h3>
-        <form @submit.prevent="handlePasswordChange" class="section-form">
-          <div class="field">
-            <label>Current Password</label>
-            <Password v-model="currentPassword" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-          </div>
-          <div class="field">
-            <label>New Password</label>
-            <Password v-model="newPassword" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-          </div>
-          <div class="field">
-            <label>Confirm New Password</label>
-            <Password v-model="confirmNewPassword" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-          </div>
-          <Button type="submit" label="Change Password" class="align-self-start" />
-        </form>
-      </section>
+        <section class="profile-section">
+          <h3 class="section-title"><i class="pi pi-lock section-icon" /> Change Password</h3>
+          <form @submit.prevent="handlePasswordChange" class="section-form">
+            <div class="field">
+              <label>Current Password</label>
+              <Password v-model="currentPassword" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+            </div>
+            <div class="field">
+              <label>New Password</label>
+              <Password v-model="newPassword" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+            </div>
+            <div class="field">
+              <label>Confirm New Password</label>
+              <Password v-model="confirmNewPassword" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+            </div>
+            <Button type="submit" label="Change Password" class="align-self-start" />
+          </form>
+        </section>
+      </div>
 
-      <section class="profile-section">
-        <h3 class="section-title"><i class="pi pi-palette section-icon" /> Appearance</h3>
+      <!-- Right column: Appearance -->
+      <div class="profile-column-right">
+        <section class="profile-section">
+          <h3 class="section-title"><i class="pi pi-palette section-icon" /> Appearance</h3>
 
-        <div class="appearance-grid">
-          <div class="field">
-            <label>Dark Theme</label>
-            <Select
-              :modelValue="theme.darkTheme"
-              @update:modelValue="theme.setDarkTheme($event)"
-              :options="darkPresetOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full"
-            />
-          </div>
-          <div class="field">
-            <label>Light Theme</label>
-            <Select
-              :modelValue="theme.lightTheme"
-              @update:modelValue="theme.setLightTheme($event)"
-              :options="lightPresetOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full"
-            />
-          </div>
-        </div>
-
-        <div class="field mt-1">
-          <label>Accent Color</label>
-          <div class="color-grid">
-            <div v-for="(row, ri) in colorRows" :key="ri" class="color-row">
-              <button
-                v-for="c in row"
-                :key="c.name"
-                class="color-swatch"
-                :class="{ active: theme.accent === c.name }"
-                :style="{ backgroundColor: c.bg }"
-                :title="c.name"
-                @click="theme.setAccent(c.name)"
-              >
-                <i v-if="theme.accent === c.name" class="pi pi-check swatch-check" />
-              </button>
+          <div class="appearance-grid">
+            <div class="field">
+              <label>Dark Theme</label>
+              <Select
+                :modelValue="theme.darkTheme"
+                @update:modelValue="theme.setDarkTheme($event)"
+                :options="darkPresetOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full"
+              />
+            </div>
+            <div class="field">
+              <label>Light Theme</label>
+              <Select
+                :modelValue="theme.lightTheme"
+                @update:modelValue="theme.setLightTheme($event)"
+                :options="lightPresetOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full"
+              />
             </div>
           </div>
-        </div>
 
-        <div class="appearance-grid mt-1">
-          <div class="field">
-            <label>Font Family</label>
-            <Select
-              :modelValue="theme.fontFamily"
-              @update:modelValue="theme.setFontFamily($event)"
-              :options="fontFamilyOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full"
-            />
+          <div class="field mt-1">
+            <label>Accent Color</label>
+            <div class="color-grid">
+              <div v-for="(row, ri) in colorRows" :key="ri" class="color-row">
+                <button
+                  v-for="c in row"
+                  :key="c.name"
+                  class="color-swatch"
+                  :class="{ active: theme.accent === c.name }"
+                  :style="{ backgroundColor: c.bg }"
+                  :title="c.name"
+                  @click="theme.setAccent(c.name)"
+                >
+                  <i v-if="theme.accent === c.name" class="pi pi-check swatch-check" />
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <label>Font Size</label>
-            <Select
-              :modelValue="theme.fontSize"
-              @update:modelValue="theme.setFontSize($event)"
-              :options="fontSizeOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full"
-            />
-          </div>
-          <div class="field">
-            <label>Table Font Size</label>
-            <Select
-              :modelValue="theme.gridFontSize"
-              @update:modelValue="theme.setGridFontSize($event)"
-              :options="gridFontSizeOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full"
-            />
-          </div>
-        </div>
-      </section>
 
-      <section class="profile-section">
+          <div class="appearance-grid mt-1">
+            <div class="field">
+              <label>Font Family</label>
+              <Select
+                :modelValue="theme.fontFamily"
+                @update:modelValue="theme.setFontFamily($event)"
+                :options="fontFamilyOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full"
+              />
+            </div>
+            <div class="field">
+              <label>Font Size</label>
+              <Select
+                :modelValue="theme.fontSize"
+                @update:modelValue="theme.setFontSize($event)"
+                :options="fontSizeOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full"
+              />
+            </div>
+            <div class="field">
+              <label>Table Font Size</label>
+              <Select
+                :modelValue="theme.gridFontSize"
+                @update:modelValue="theme.setGridFontSize($event)"
+                :options="gridFontSizeOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full"
+              />
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Full-width: API Keys -->
+      <section class="profile-section profile-full-width">
         <div class="flex align-items-center justify-content-between mb-3">
           <h3 class="section-title" style="margin: 0"><i class="pi pi-key section-icon" /> API Keys</h3>
           <Button label="Create Key" icon="pi pi-plus" size="small" @click="openCreateKey" />
@@ -326,7 +333,34 @@ function copyKey() {
 </template>
 
 <style scoped>
-.profile-sections { display: flex; flex-direction: column; gap: 2rem; max-width: 36rem; }
+/* Two-column grid layout: left (account) + right (appearance), API keys full-width below */
+.profile-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  max-width: 72rem;
+}
+.profile-column-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.profile-column-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.profile-full-width {
+  grid-column: 1 / -1;
+}
+
+/* Fall back to single column on narrow viewports */
+@media (max-width: 860px) {
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .profile-section { background: var(--p-surface-900); border: 1px solid var(--p-surface-700); border-radius: 0.5rem; padding: 1.25rem; }
 :root:not(.app-dark) .profile-section { background: var(--p-surface-50); border-color: var(--p-surface-200); }
 .section-title { font-size: 1rem; font-weight: 600; margin: 0 0 1rem; color: var(--p-surface-200); }
