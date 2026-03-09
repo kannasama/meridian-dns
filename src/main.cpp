@@ -14,6 +14,7 @@
 #include "api/routes/AuthRoutes.hpp"
 #include "api/routes/GroupRoutes.hpp"
 #include "api/routes/HealthRoutes.hpp"
+#include "api/routes/ThemeRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
 #include "api/routes/SetupRoutes.hpp"
@@ -398,6 +399,7 @@ int main(int argc, char* argv[]) {
         *rrRepo, *zrRepo, *arRepo, *amMiddleware, *deEngine, *depEngine);
     auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
     auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
+    auto themeRoutes = std::make_unique<dns::api::routes::ThemeRoutes>(cfgApp.sCustomThemesDir);
     auto deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(
         *drRepo, *rrRepo, *amMiddleware, *reEngine);
     auto auditRoutes = std::make_unique<dns::api::routes::AuditRoutes>(
@@ -417,6 +419,7 @@ int main(int argc, char* argv[]) {
     userRoutes->registerRoutes(crowApp);
     groupRoutes->registerRoutes(crowApp);
     apiKeyRoutes->registerRoutes(crowApp);
+    themeRoutes->registerRoutes(crowApp);
 
     // Serve static UI files (SPA fallback) — must be registered after API routes
     auto sfhHandler = std::make_unique<dns::api::StaticFileHandler>(cfgApp.sUiDir);
