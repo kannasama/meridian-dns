@@ -21,6 +21,7 @@
 #include "dal/DeploymentRepository.hpp"
 #include "dal/ProviderRepository.hpp"
 #include "dal/RecordRepository.hpp"
+#include "dal/RoleRepository.hpp"
 #include "dal/SessionRepository.hpp"
 #include "dal/UserRepository.hpp"
 #include "dal/VariableRepository.hpp"
@@ -75,6 +76,7 @@ class CrudRoutesTest : public ::testing::Test {
     _varRepo = std::make_unique<dns::dal::VariableRepository>(*_cpPool);
     _drRepo = std::make_unique<dns::dal::DeploymentRepository>(*_cpPool);
     _arRepo = std::make_unique<dns::dal::AuditRepository>(*_cpPool);
+    _roleRepo = std::make_unique<dns::dal::RoleRepository>(*_cpPool);
 
     // Engines
     _veEngine = std::make_unique<dns::core::VariableEngine>(*_varRepo);
@@ -87,7 +89,7 @@ class CrudRoutesTest : public ::testing::Test {
 
     // Auth layer
     _amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
-        *_jsSigner, *_srRepo, *_akrRepo, *_urRepo, 3600, 300);
+        *_jsSigner, *_srRepo, *_akrRepo, *_urRepo, *_roleRepo, 3600, 300);
     _asService = std::make_unique<dns::security::AuthService>(
         *_urRepo, *_srRepo, *_jsSigner, 3600, 86400);
 
@@ -198,6 +200,7 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::dal::VariableRepository> _varRepo;
   std::unique_ptr<dns::dal::DeploymentRepository> _drRepo;
   std::unique_ptr<dns::dal::AuditRepository> _arRepo;
+  std::unique_ptr<dns::dal::RoleRepository> _roleRepo;
   std::unique_ptr<dns::core::VariableEngine> _veEngine;
   std::unique_ptr<dns::core::DiffEngine> _deEngine;
   std::unique_ptr<dns::core::DeploymentEngine> _depEngine;

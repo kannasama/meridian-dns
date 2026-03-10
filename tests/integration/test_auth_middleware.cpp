@@ -4,6 +4,7 @@
 #include "common/Logger.hpp"
 #include "dal/ApiKeyRepository.hpp"
 #include "dal/ConnectionPool.hpp"
+#include "dal/RoleRepository.hpp"
 #include "dal/SessionRepository.hpp"
 #include "dal/UserRepository.hpp"
 #include "security/AuthService.hpp"
@@ -20,6 +21,7 @@ using dns::common::AuthenticationError;
 using dns::dal::ApiKeyRepository;
 using dns::dal::ConnectionPool;
 using dns::dal::SessionRepository;
+using dns::dal::RoleRepository;
 using dns::dal::UserRepository;
 using dns::security::AuthService;
 using dns::security::CryptoService;
@@ -46,9 +48,10 @@ class AuthMiddlewareTest : public ::testing::Test {
     _urRepo = std::make_unique<UserRepository>(*_cpPool);
     _srRepo = std::make_unique<SessionRepository>(*_cpPool);
     _akrRepo = std::make_unique<ApiKeyRepository>(*_cpPool);
+    _rrRepo = std::make_unique<RoleRepository>(*_cpPool);
     _jsSigner = std::make_unique<HmacJwtSigner>("test-jwt-secret");
     _asService = std::make_unique<AuthService>(*_urRepo, *_srRepo, *_jsSigner, 3600, 86400);
-    _amMiddleware = std::make_unique<AuthMiddleware>(*_jsSigner, *_srRepo, *_akrRepo, *_urRepo, 3600, 300);
+    _amMiddleware = std::make_unique<AuthMiddleware>(*_jsSigner, *_srRepo, *_akrRepo, *_urRepo, *_rrRepo, 3600, 300);
 
     // Clean test data and create test user
     auto cg = _cpPool->checkout();
@@ -79,6 +82,7 @@ class AuthMiddlewareTest : public ::testing::Test {
   std::unique_ptr<UserRepository> _urRepo;
   std::unique_ptr<SessionRepository> _srRepo;
   std::unique_ptr<ApiKeyRepository> _akrRepo;
+  std::unique_ptr<RoleRepository> _rrRepo;
   std::unique_ptr<HmacJwtSigner> _jsSigner;
   std::unique_ptr<AuthService> _asService;
   std::unique_ptr<AuthMiddleware> _amMiddleware;

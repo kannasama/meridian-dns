@@ -2,6 +2,7 @@
 
 #include "common/Errors.hpp"
 #include "dal/ApiKeyRepository.hpp"
+#include "dal/RoleRepository.hpp"
 #include "dal/SessionRepository.hpp"
 #include "dal/UserRepository.hpp"
 #include "security/CryptoService.hpp"
@@ -15,12 +16,14 @@ AuthMiddleware::AuthMiddleware(const dns::security::IJwtSigner& jsSigner,
                                dns::dal::SessionRepository& srRepo,
                                dns::dal::ApiKeyRepository& akrRepo,
                                dns::dal::UserRepository& urRepo,
+                               dns::dal::RoleRepository& rrRepo,
                                int iJwtTtlSeconds,
                                int iApiKeyCleanupGraceSeconds)
     : _jsSigner(jsSigner),
       _srRepo(srRepo),
       _akrRepo(akrRepo),
       _urRepo(urRepo),
+      _rrRepo(rrRepo),
       _iJwtTtlSeconds(iJwtTtlSeconds),
       _iApiKeyCleanupGraceSeconds(iApiKeyCleanupGraceSeconds) {}
 
@@ -73,6 +76,14 @@ common::RequestContext AuthMiddleware::validateJwt(const std::string& sBearerTok
   rcCtx.sRole = jPayload["role"].get<std::string>();
   rcCtx.sAuthMethod = jPayload["auth_method"].get<std::string>();
 
+  // Resolve permissions from DB (not cached in JWT)
+  rcCtx.vPermissions = _rrRepo.resolveUserPermissions(rcCtx.iUserId);
+  // Update role name from DB (may have changed since JWT was issued)
+  std::string sCurrentRole = _rrRepo.getHighestRoleName(rcCtx.iUserId);
+  if (!sCurrentRole.empty()) {
+    rcCtx.sRole = sCurrentRole;
+  }
+
   return rcCtx;
 }
 
@@ -105,16 +116,13 @@ common::RequestContext AuthMiddleware::validateApiKey(const std::string& sRawKey
                                        "API key owner not found or inactive");
   }
 
-  // Resolve role
-  std::string sRole = _urRepo.getHighestRole(oUser->iId);
-  if (sRole.empty()) {
-    sRole = "viewer";
-  }
-
+  // Resolve permissions and role from DB
   common::RequestContext rcCtx;
   rcCtx.iUserId = oUser->iId;
   rcCtx.sUsername = oUser->sUsername;
-  rcCtx.sRole = sRole;
+  rcCtx.vPermissions = _rrRepo.resolveUserPermissions(oUser->iId);
+  rcCtx.sRole = _rrRepo.getHighestRoleName(oUser->iId);
+  if (rcCtx.sRole.empty()) rcCtx.sRole = "Viewer";
   rcCtx.sAuthMethod = "api_key";
 
   return rcCtx;

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -83,8 +84,9 @@ struct DriftAction {
 struct RequestContext {
   int64_t iUserId = 0;
   std::string sUsername;
-  std::string sRole;
+  std::string sRole;          // Display-only: highest-privilege role name
   std::string sAuthMethod;
+  std::unordered_set<std::string> vPermissions;  // Effective permissions for this request
 };
 
 }  // namespace dns::common

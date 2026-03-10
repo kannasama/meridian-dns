@@ -8,6 +8,7 @@ namespace dns::dal {
 class UserRepository;
 class SessionRepository;
 class ApiKeyRepository;
+class RoleRepository;
 }  // namespace dns::dal
 
 namespace dns::security {
@@ -24,6 +25,7 @@ class AuthMiddleware {
                  dns::dal::SessionRepository& srRepo,
                  dns::dal::ApiKeyRepository& akrRepo,
                  dns::dal::UserRepository& urRepo,
+                 dns::dal::RoleRepository& rrRepo,
                  int iJwtTtlSeconds,
                  int iApiKeyCleanupGraceSeconds);
   ~AuthMiddleware();
@@ -45,6 +47,7 @@ class AuthMiddleware {
   dns::dal::SessionRepository& _srRepo;
   dns::dal::ApiKeyRepository& _akrRepo;
   dns::dal::UserRepository& _urRepo;
+  dns::dal::RoleRepository& _rrRepo;
   int _iJwtTtlSeconds;
   int _iApiKeyCleanupGraceSeconds;
 };

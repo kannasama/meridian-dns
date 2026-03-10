@@ -40,6 +40,7 @@
 #include "dal/DeploymentRepository.hpp"
 #include "dal/GroupRepository.hpp"
 #include "dal/MigrationRunner.hpp"
+#include "dal/RoleRepository.hpp"
 #include "dal/ProviderRepository.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/SessionRepository.hpp"
@@ -277,6 +278,7 @@ int main(int argc, char* argv[]) {
     auto drRepo = std::make_unique<dns::dal::DeploymentRepository>(*cpPool);
     auto arRepo = std::make_unique<dns::dal::AuditRepository>(*cpPool);
     auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
+    auto roleRepo = std::make_unique<dns::dal::RoleRepository>(*cpPool);
     auto settingsRepo = std::make_unique<dns::dal::SettingsRepository>(*cpPool);
 
     auto msScheduler = std::make_unique<dns::core::MaintenanceScheduler>();
@@ -396,7 +398,7 @@ int main(int argc, char* argv[]) {
 
     // ── Step 10: Construct auth layer + route handlers ────────────────────
     auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
-        *upSigner, *srRepo, *akrRepo, *urRepo,
+        *upSigner, *srRepo, *akrRepo, *urRepo, *roleRepo,
         cfgApp.iJwtTtlSeconds, cfgApp.iApiKeyCleanupGraceSeconds);
 
     auto asService = std::make_unique<dns::security::AuthService>(
