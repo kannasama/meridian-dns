@@ -79,11 +79,17 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
             sEmail = oUser->sEmail;
           }
 
+          nlohmann::json jPerms = nlohmann::json::array();
+          for (const auto& sPerm : rcCtx.vPermissions) {
+            jPerms.push_back(sPerm);
+          }
+
           return jsonResponse(200, {
               {"user_id", rcCtx.iUserId},
               {"username", rcCtx.sUsername},
               {"email", sEmail},
               {"role", rcCtx.sRole},
+              {"permissions", jPerms},
               {"auth_method", rcCtx.sAuthMethod},
               {"force_password_change", bForcePasswordChange},
           });
