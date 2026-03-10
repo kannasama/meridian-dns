@@ -22,6 +22,10 @@ class MaintenanceScheduler {
   void start();
   void stop();
 
+  /// Update the interval for an existing scheduled task.
+  /// Takes effect on the next cycle (does not interrupt a currently sleeping task).
+  void reschedule(const std::string& sName, std::chrono::seconds interval);
+
  private:
   struct Task {
     std::string sName;

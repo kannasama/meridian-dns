@@ -5,6 +5,8 @@
 #include <optional>
 #include <string>
 
+namespace dns::dal { class SettingsRepository; }
+
 namespace dns::common {
 
 /// Environment variable loader implementing ARCHITECTURE.md §8.
@@ -70,6 +72,13 @@ struct Config {
   /// Calls OPENSSL_cleanse() on raw secret strings after loading.
   /// Throws on missing required vars or invalid constraints.
   static Config load();
+
+  /// Seed default values into system_config from env vars.
+  /// Only inserts if the key does not already exist in DB.
+  static void seedToDb(dns::dal::SettingsRepository& srRepo);
+
+  /// Populate non-env-only Config fields from the database.
+  void loadFromDb(dns::dal::SettingsRepository& srRepo);
 
  private:
   /// Read an env var with optional _FILE fallback for secrets.

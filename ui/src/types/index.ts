@@ -231,3 +231,12 @@ export interface ZoneSyncResult {
   sync_checked_at?: string
   server_time?: number
 }
+
+export interface SystemSetting {
+  key: string
+  value: string
+  description: string
+  default: string
+  restart_required: boolean
+  updated_at: string
+}

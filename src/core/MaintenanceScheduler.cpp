@@ -81,4 +81,21 @@ void MaintenanceScheduler::stop() {
   }
 }
 
+void MaintenanceScheduler::reschedule(const std::string& sName,
+                                      std::chrono::seconds interval) {
+  std::lock_guard<std::mutex> lock(_mtx);
+  for (auto& task : _vTasks) {
+    if (task.sName == sName) {
+      task.durInterval = interval;
+      auto spLog = dns::common::Logger::get();
+      if (spLog) {
+        spLog->info("MaintenanceScheduler: rescheduled '{}' to {}s interval",
+                    sName, interval.count());
+      }
+      break;
+    }
+  }
+  _cv.notify_all();
+}
+
 }  // namespace dns::core

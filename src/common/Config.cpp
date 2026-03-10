@@ -2,6 +2,8 @@
 
 #include "common/Errors.hpp"
 #include "common/Logger.hpp"
+#include "common/SettingsDef.hpp"
+#include "dal/SettingsRepository.hpp"
 
 #include <openssl/crypto.h>
 
@@ -178,6 +180,53 @@ Config Config::load() {
   }
 
   return cfg;
+}
+
+void Config::seedToDb(dns::dal::SettingsRepository& srRepo) {
+  auto spLog = Logger::get();
+
+  for (const auto& def : kSettings) {
+    // Check if env var is set — use it as seed value
+    std::string sSeedValue{def.sDefault};
+    if (!def.sEnvVar.empty()) {
+      const char* pEnv = std::getenv(std::string(def.sEnvVar).c_str());
+      if (pEnv && pEnv[0] != '\0') {
+        sSeedValue = pEnv;
+      }
+    }
+
+    bool bInserted = srRepo.seedIfMissing(
+        std::string(def.sKey), sSeedValue, std::string(def.sDescription));
+    if (bInserted) {
+      spLog->debug("Seeded setting {}: {}", def.sKey, sSeedValue);
+    }
+  }
+}
+
+void Config::loadFromDb(dns::dal::SettingsRepository& srRepo) {
+  iHttpThreads = srRepo.getInt("http.threads", iHttpThreads);
+  iSessionAbsoluteTtlSeconds = srRepo.getInt("session.absolute_ttl_seconds",
+                                              iSessionAbsoluteTtlSeconds);
+  iSessionCleanupIntervalSeconds = srRepo.getInt("session.cleanup_interval_seconds",
+                                                  iSessionCleanupIntervalSeconds);
+  iApiKeyCleanupGraceSeconds = srRepo.getInt("apikey.cleanup_grace_seconds",
+                                              iApiKeyCleanupGraceSeconds);
+  iApiKeyCleanupIntervalSeconds = srRepo.getInt("apikey.cleanup_interval_seconds",
+                                                 iApiKeyCleanupIntervalSeconds);
+  iDeploymentRetentionCount = srRepo.getInt("deployment.retention_count",
+                                             iDeploymentRetentionCount);
+  sUiDir = srRepo.getValue("ui.dir", sUiDir);
+  sMigrationsDir = srRepo.getValue("migrations.dir", sMigrationsDir);
+  iSyncCheckInterval = srRepo.getInt("sync.check_interval_seconds", iSyncCheckInterval);
+
+  std::string sAuditDb = srRepo.getValue("audit.db_url", "");
+  if (!sAuditDb.empty()) {
+    oAuditDbUrl = sAuditDb;
+  }
+  bAuditStdout = srRepo.getBool("audit.stdout", bAuditStdout);
+  iAuditRetentionDays = srRepo.getInt("audit.retention_days", iAuditRetentionDays);
+  iAuditPurgeIntervalSeconds = srRepo.getInt("audit.purge_interval_seconds",
+                                              iAuditPurgeIntervalSeconds);
 }
 
 }  // namespace dns::common

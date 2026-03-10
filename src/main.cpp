@@ -17,6 +17,7 @@
 #include "api/routes/ThemeRoutes.hpp"
 #include "api/routes/ProviderRoutes.hpp"
 #include "api/routes/RecordRoutes.hpp"
+#include "api/routes/SettingsRoutes.hpp"
 #include "api/routes/SetupRoutes.hpp"
 #include "api/routes/UserRoutes.hpp"
 #include "api/routes/VariableRoutes.hpp"
@@ -42,6 +43,7 @@
 #include "dal/ProviderRepository.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/SessionRepository.hpp"
+#include "dal/SettingsRepository.hpp"
 #include "dal/UserRepository.hpp"
 #include "dal/VariableRepository.hpp"
 #include "dal/ViewRepository.hpp"
@@ -208,6 +210,15 @@ int main(int argc, char* argv[]) {
       spLog->info("Step 0: Database migrations complete (schema version: {})", iVersion);
     }
 
+    // ── Step 0b: Seed and load DB settings ──────────────────────────────
+    {
+      dns::dal::ConnectionPool cpSeedPool(cfgApp.sDbUrl, 1);
+      dns::dal::SettingsRepository srSeedRepo(cpSeedPool);
+      dns::common::Config::seedToDb(srSeedRepo);
+      cfgApp.loadFromDb(srSeedRepo);
+      spLog->info("Step 0b: Settings seeded and loaded from database");
+    }
+
     // ── Step 2: Initialize CryptoService ─────────────────────────────────
     auto csService = std::make_unique<dns::security::CryptoService>(cfgApp.sMasterKey);
 
@@ -266,6 +277,7 @@ int main(int argc, char* argv[]) {
     auto drRepo = std::make_unique<dns::dal::DeploymentRepository>(*cpPool);
     auto arRepo = std::make_unique<dns::dal::AuditRepository>(*cpPool);
     auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
+    auto settingsRepo = std::make_unique<dns::dal::SettingsRepository>(*cpPool);
 
     auto msScheduler = std::make_unique<dns::core::MaintenanceScheduler>();
 
@@ -408,6 +420,8 @@ int main(int argc, char* argv[]) {
         *urRepo, *grRepo, *amMiddleware);
     auto groupRoutes = std::make_unique<dns::api::routes::GroupRoutes>(*grRepo, *amMiddleware);
     auto apiKeyRoutes = std::make_unique<dns::api::routes::ApiKeyRoutes>(*akrRepo, *amMiddleware);
+    auto settingsRoutes = std::make_unique<dns::api::routes::SettingsRoutes>(
+        *settingsRepo, *amMiddleware, msScheduler.get());
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
@@ -419,6 +433,7 @@ int main(int argc, char* argv[]) {
     userRoutes->registerRoutes(crowApp);
     groupRoutes->registerRoutes(crowApp);
     apiKeyRoutes->registerRoutes(crowApp);
+    settingsRoutes->registerRoutes(crowApp);
     themeRoutes->registerRoutes(crowApp);
 
     // Serve static UI files (SPA fallback) — must be registered after API routes

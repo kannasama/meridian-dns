@@ -15,6 +15,7 @@ const navItems = [
   { label: 'Audit Log', icon: 'pi pi-history', to: '/audit', adminOnly: false },
   { label: 'Users', icon: 'pi pi-users', to: '/users', adminOnly: true },
   { label: 'Groups', icon: 'pi pi-id-card', to: '/groups', adminOnly: true },
+  { label: 'Settings', icon: 'pi pi-cog', to: '/settings', adminOnly: true },
 ]
 
 function isActive(to: string) {
