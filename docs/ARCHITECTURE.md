@@ -714,8 +714,13 @@ public:
                 std::chrono::seconds interval,
                 std::function<void()> task);
 
-  void start();  // launches the dedicated background std::jthread
-  void stop();   // signals the thread to exit; called during graceful shutdown
+  void start();       // launches the dedicated background std::jthread
+  void stop();        // signals the thread to exit; called during graceful shutdown
+
+  // Update the interval for an existing task at runtime.
+  // Called by SettingsRoutes PUT handler when an interval setting changes.
+  // Takes effect on the next cycle (does not interrupt a currently sleeping task).
+  void reschedule(const std::string& name, std::chrono::seconds interval);
 private:
   struct Task {
     std::string                              name;
@@ -748,6 +753,9 @@ loop:
 | Audit log purge | `AuditRepository::purgeOld(retention_days)` | `DNS_AUDIT_PURGE_INTERVAL_SECONDS` | `86400` (24 h) | Only registered if `DNS_AUDIT_DB_URL` is set |
 | Session flush | `SessionRepository::pruneExpired()` | `DNS_SESSION_CLEANUP_INTERVAL_SECONDS` | `3600` (1 h) | Always registered |
 | API key cleanup | `ApiKeyRepository::pruneScheduled()` | `DNS_API_KEY_CLEANUP_INTERVAL_SECONDS` | `3600` (1 h) | Always registered |
+| Sync check | `DiffEngine::preview()` per zone → `ZoneRepository::updateSyncStatus()` | `DNS_SYNC_CHECK_INTERVAL` | `3600` (1 h) | Only registered if interval > 0 |
+
+**Dynamic Interval Reload:** When interval-related settings are updated via `PUT /api/v1/settings`, the `SettingsRoutes` handler calls `MaintenanceScheduler::reschedule()` to update the task interval without restarting. Affected tasks: `session-flush`, `api-key-cleanup`, `audit-purge`, `sync-check`.
 
 **`AuditRepository::purgeOld()` result:**
 ```cpp
@@ -938,6 +946,46 @@ CREATE TABLE api_keys (
 );
 ```
 
+### 5.2b System Config Table
+
+The `system_config` table is bootstrapped by `MigrationRunner::bootstrap()` (not a numbered migration) with the minimal schema `(key TEXT PRIMARY KEY, value TEXT NOT NULL)`. The v007 migration extends it with metadata columns:
+
+```sql
+-- Bootstrapped by MigrationRunner::bootstrap():
+CREATE TABLE IF NOT EXISTS system_config (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- v007 migration:
+ALTER TABLE system_config ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE system_config ADD COLUMN IF NOT EXISTS updated_at  TIMESTAMPTZ DEFAULT now();
+```
+
+**Purpose:** Stores runtime configuration settings that can be managed via the admin UI (`GET/PUT /api/v1/settings`). Environment variables seed initial values on first run; DB values take precedence after seeding.
+
+**Internal keys:** `setup_completed` is an internal key set by `SetupRoutes` and is not exposed via the settings API.
+
+**DB-configurable settings (defined in `common/SettingsDef.hpp`):**
+
+| Key | Default | Env Var (seed source) | Restart Required | Description |
+|-----|---------|----------------------|------------------|-------------|
+| `http.threads` | `4` | `DNS_HTTP_THREADS` | Yes | Number of HTTP server threads |
+| `session.absolute_ttl_seconds` | `86400` | `DNS_SESSION_ABSOLUTE_TTL_SECONDS` | No | Session absolute TTL in seconds |
+| `session.cleanup_interval_seconds` | `3600` | `DNS_SESSION_CLEANUP_INTERVAL_SECONDS` | No | Session cleanup interval in seconds |
+| `apikey.cleanup_grace_seconds` | `300` | `DNS_API_KEY_CLEANUP_GRACE_SECONDS` | No | API key cleanup grace period in seconds |
+| `apikey.cleanup_interval_seconds` | `3600` | `DNS_API_KEY_CLEANUP_INTERVAL_SECONDS` | No | API key cleanup interval in seconds |
+| `deployment.retention_count` | `10` | `DNS_DEPLOYMENT_RETENTION_COUNT` | No | Deployment snapshots to retain per zone |
+| `ui.dir` | _(empty)_ | `DNS_UI_DIR` | Yes | Path to built UI assets |
+| `migrations.dir` | `/opt/meridian-dns/db` | `DNS_MIGRATIONS_DIR` | Yes | Path to migration version directories |
+| `sync.check_interval_seconds` | `3600` | `DNS_SYNC_CHECK_INTERVAL` | No | Zone sync check interval (0 = disabled) |
+| `audit.db_url` | _(empty)_ | `DNS_AUDIT_DB_URL` | Yes | Separate audit database URL |
+| `audit.stdout` | `false` | `DNS_AUDIT_STDOUT` | No | Also write audit entries to stdout |
+| `audit.retention_days` | `365` | `DNS_AUDIT_RETENTION_DAYS` | No | Audit log retention in days |
+| `audit.purge_interval_seconds` | `86400` | `DNS_AUDIT_PURGE_INTERVAL_SECONDS` | No | Audit purge interval in seconds |
+
+**Seeding behavior:** On startup, `Config::seedToDb()` iterates `kSettings` and calls `SettingsRepository::seedIfMissing()` for each. If the env var is set, its value is used as the seed; otherwise the compiled default is used. Existing DB values are never overwritten. After seeding, `Config::loadFromDb()` populates the `Config` struct from DB, making DB the source of truth.
+
 ### 5.3 Indexes
 
 ```sql
@@ -960,12 +1008,16 @@ CREATE INDEX idx_api_keys_delete_after          ON api_keys(delete_after)
 
 ### 5.4 Migrations
 
-Migration files live in `scripts/db/` and are numbered sequentially:
+Migration files live in `scripts/db/` organized by version directory:
 ```
 scripts/db/
-  001_initial_schema.sql
-  002_add_indexes.sql
-  ...
+  v001/001_initial_schema.sql
+  v002/001_add_indexes.sql
+  v003/001_add_soa_ns_flags.sql
+  v004/001_add_provider_meta.sql
+  v005/...
+  v006/...
+  v007/001_extend_system_config.sql
 ```
 
 ---
@@ -1137,6 +1189,29 @@ Note: `value` in the snapshot is the **fully expanded** value (all variables res
 |--------|------|---------------|-------------|
 | `GET` | `/health` | No | Returns `{"status":"ok"}` or `{"status":"degraded","detail":"..."}` |
 
+### 6.11 Settings
+
+| Method | Path | Role Required | Description |
+|--------|------|---------------|-------------|
+| `GET` | `/settings` | admin | List all DB-configurable settings with metadata (key, value, description, compiled default, restart_required flag, updated_at) |
+| `PUT` | `/settings` | admin | Update one or more settings. Body: `{"key": "value", ...}`. Validates all keys are known; rejects unknown keys with 400. Returns `{"message": "Settings updated", "updated": ["key1", ...]}`. Triggers `MaintenanceScheduler::reschedule()` for interval-related settings. |
+
+**Response format (GET):**
+```json
+[
+  {
+    "key": "deployment.retention_count",
+    "value": "10",
+    "description": "Number of deployment snapshots to retain per zone",
+    "default": "10",
+    "restart_required": false,
+    "updated_at": "2026-03-09T12:00:00Z"
+  }
+]
+```
+
+> **Note:** Only keys defined in `common/SettingsDef.hpp` are returned. Internal keys (e.g., `setup_completed`) are filtered out. Settings marked `restart_required: true` display a warning toast in the UI after update.
+
 ---
 
 ## 7. Data Flow Diagrams
@@ -1279,7 +1354,10 @@ API Key Authentication (TUI / automated clients):
 
 ## 8. Configuration and Environment Variables
 
-All configuration is provided via environment variables. No config files are required at runtime (though a `.env` file may be used in development).
+Configuration follows a two-tier model:
+
+1. **Env-only variables** (5 vars: `DNS_DB_URL`, `DNS_MASTER_KEY`/`_FILE`, `DNS_JWT_SECRET`/`_FILE`, `DNS_LOG_LEVEL`, `DNS_HTTP_PORT`) are always read from environment variables and cannot be changed at runtime.
+2. **DB-configurable settings** (13 settings) are stored in the `system_config` table and managed via `GET/PUT /api/v1/settings` (admin-only). Environment variables seed initial values on first run; DB values take precedence after seeding. See §5.2b for the full registry.
 
 For sensitive secrets (`DNS_MASTER_KEY`, `DNS_JWT_SECRET`), a `_FILE` variant is supported: if the base variable is unset, the application reads the secret from the file path specified in the `_FILE` variable. This is the recommended pattern for production deployments using Docker secrets or Kubernetes secret volume mounts (see §12.3).
 
@@ -1403,7 +1481,8 @@ meridian-dns/
 │   ├── common/
 │   │   ├── Errors.hpp              # AppError hierarchy
 │   │   ├── Logger.hpp              # Structured logging interface
-│   │   ├── Config.hpp              # Environment variable loader
+│   │   ├── Config.hpp              # Environment variable loader + seedToDb/loadFromDb
+│   │   ├── SettingsDef.hpp         # Compile-time registry of DB-configurable settings
 │   │   └── Types.hpp               # Shared value types (DnsRecord, etc.)
 │   ├── api/
 │   │   ├── ApiServer.hpp
@@ -1417,7 +1496,8 @@ meridian-dns/
 │   │       ├── VariableRoutes.hpp
 │   │       ├── DeploymentRoutes.hpp
 │   │       ├── AuditRoutes.hpp
-│   │       └── HealthRoutes.hpp
+│   │       ├── HealthRoutes.hpp
+│   │       └── SettingsRoutes.hpp
 │   ├── core/
 │   │   ├── VariableEngine.hpp
 │   │   ├── DiffEngine.hpp
@@ -1442,7 +1522,8 @@ meridian-dns/
 │   │   ├── AuditRepository.hpp
 │   │   ├── UserRepository.hpp
 │   │   ├── SessionRepository.hpp
-│   │   └── ApiKeyRepository.hpp
+│   │   ├── ApiKeyRepository.hpp
+│   │   └── SettingsRepository.hpp
 │   ├── gitops/
 │   │   └── GitOpsMirror.hpp
 │   └── security/
@@ -1608,6 +1689,13 @@ volumes:
 ### 11.4 Startup Sequence
 
 ```
+0.  Run pending DB migrations (scripts/db/v*/*.sql in order)
+0b. Seed and load DB settings:
+    - Create temporary 1-connection pool
+    - Config::seedToDb(repo): for each setting in kSettings, insert env var value
+      (or compiled default) into system_config if key does not exist
+    - Config::loadFromDb(repo): overwrite Config fields from DB values
+    - Destroy temporary pool
 1. Load and validate all required environment variables (fail fast if missing)
    - For DNS_MASTER_KEY: use env var if set, else read DNS_MASTER_KEY_FILE; fatal if neither set
    - For DNS_JWT_SECRET: use env var if set, else read DNS_JWT_SECRET_FILE; fatal if neither set
@@ -1617,19 +1705,21 @@ volumes:
 2. Initialize CryptoService with DNS_MASTER_KEY
 3. Construct IJwtSigner based on DNS_JWT_ALGORITHM (default: HmacJwtSigner/HS256)
 4. Initialize ConnectionPool (DNS_DB_URL, DNS_DB_POOL_SIZE)
-5. Run pending DB migrations (scripts/db/*.sql in order)
+5. Foundation layer ready
 6. Initialize GitOpsMirror (if DNS_GIT_REMOTE_URL is set): git clone or git pull
 7. Initialize ThreadPool (DNS_THREAD_POOL_SIZE workers)
 7a. Initialize MaintenanceScheduler (see §4.9):
-    - Register SessionRepository::pruneExpired()   every DNS_SESSION_CLEANUP_INTERVAL_SECONDS
-    - Register ApiKeyRepository::pruneScheduled()  every DNS_API_KEY_CLEANUP_INTERVAL_SECONDS
-    - Register AuditRepository::purgeOld(DNS_AUDIT_RETENTION_DAYS)
-        every DNS_AUDIT_PURGE_INTERVAL_SECONDS
-        (only if DNS_AUDIT_DB_URL is set; log startup warning if unset)
+    - Register SessionRepository::pruneExpired()   every session.cleanup_interval_seconds
+    - Register ApiKeyRepository::pruneScheduled()  every apikey.cleanup_interval_seconds
+    - Register AuditRepository::purgeOld(audit.retention_days)
+        every audit.purge_interval_seconds
+    - Register sync-check every sync.check_interval_seconds (if > 0)
     - Start MaintenanceScheduler background thread
+    - Create SettingsRepository on main pool (for SettingsRoutes)
 8. Initialize SamlReplayCache (if SAML is enabled)
-9. Initialize ProviderFactory
+9. Initialize core engines (VariableEngine, DiffEngine, DeploymentEngine, RollbackEngine)
 10. Register all API routes on ApiServer (with security headers middleware)
+    - Includes SettingsRoutes (GET/PUT /api/v1/settings, admin-only)
 11. Start Crow HTTP server on DNS_HTTP_PORT
 12. Log "meridian-dns ready" to stdout
 ```
