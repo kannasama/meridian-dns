@@ -15,7 +15,8 @@ struct SettingDef {
 };
 
 /// All DB-configurable settings. Source of truth for keys, defaults, and descriptions.
-inline constexpr std::array<SettingDef, 13> kSettings = {{
+inline constexpr std::array<SettingDef, 14> kSettings = {{
+  {"app.base_url", "", "Application base URL for generating callback URLs (e.g. https://dns.example.com)", "DNS_BASE_URL", false},
   {"http.threads", "4", "Number of HTTP server threads", "DNS_HTTP_THREADS", true},
   {"session.absolute_ttl_seconds", "86400", "Session absolute TTL in seconds",
    "DNS_SESSION_ABSOLUTE_TTL_SECONDS", false},

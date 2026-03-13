@@ -16,7 +16,12 @@ const editValues = ref<Record<string, string>>({})
 const loading = ref(false)
 const saving = ref(false)
 
-const sections = [
+const leftSections = [
+  {
+    title: 'Application',
+    icon: 'pi pi-globe',
+    keys: ['app.base_url'],
+  },
   {
     title: 'Session & Security',
     icon: 'pi pi-shield',
@@ -32,6 +37,9 @@ const sections = [
     icon: 'pi pi-upload',
     keys: ['deployment.retention_count'],
   },
+]
+
+const rightSections = [
   {
     title: 'Sync',
     icon: 'pi pi-sync',
@@ -46,15 +54,13 @@ const sections = [
       'audit.stdout',
     ],
   },
+]
+
+const fullWidthSections = [
   {
-    title: 'Paths',
+    title: 'Paths & Infrastructure',
     icon: 'pi pi-folder',
-    keys: ['ui.dir', 'migrations.dir', 'audit.db_url'],
-  },
-  {
-    title: 'Performance',
-    icon: 'pi pi-bolt',
-    keys: ['http.threads'],
+    keys: ['ui.dir', 'migrations.dir', 'audit.db_url', 'http.threads'],
   },
 ]
 
@@ -127,7 +133,7 @@ function resetToDefaults() {
 }
 
 function isIntegerSetting(key: string) {
-  return !key.endsWith('.stdout') && !key.includes('.dir') && !key.includes('.db_url')
+  return !key.endsWith('.stdout') && !key.includes('.dir') && !key.includes('.db_url') && !key.includes('base_url')
 }
 
 function isBooleanSetting(key: string) {
@@ -135,7 +141,7 @@ function isBooleanSetting(key: string) {
 }
 
 function isStringSetting(key: string) {
-  return key.includes('.dir') || key.includes('.db_url')
+  return key.includes('.dir') || key.includes('.db_url') || key.includes('base_url')
 }
 
 onMounted(fetchSettings)
@@ -164,13 +170,128 @@ onMounted(fetchSettings)
 
     <div v-if="loading" class="loading-state">Loading settings...</div>
 
-    <div v-else class="settings-sections">
-      <section v-for="section in sections" :key="section.title" class="settings-section">
+    <div v-else class="settings-layout">
+      <!-- Left column -->
+      <div class="settings-column">
+        <section v-for="section in leftSections" :key="section.title" class="settings-section">
+          <h3 class="section-title">
+            <i :class="section.icon" class="section-icon" />
+            {{ section.title }}
+          </h3>
+          <div class="settings-grid">
+            <div
+              v-for="key in section.keys"
+              :key="key"
+              class="setting-field"
+            >
+              <div class="setting-header">
+                <label :for="key" class="setting-label">{{ key }}</label>
+                <Tag
+                  v-if="settingsByKey[key]?.restart_required"
+                  value="Restart required"
+                  severity="warn"
+                  class="restart-tag"
+                />
+              </div>
+              <p class="setting-description">
+                {{ settingsByKey[key]?.description }}
+              </p>
+              <div class="setting-input">
+                <InputSwitch
+                  v-if="isBooleanSetting(key)"
+                  :modelValue="editValues[key] === 'true'"
+                  @update:modelValue="editValues[key] = $event ? 'true' : 'false'"
+                />
+                <InputNumber
+                  v-else-if="isIntegerSetting(key)"
+                  :modelValue="Number(editValues[key]) || 0"
+                  @update:modelValue="editValues[key] = String($event ?? 0)"
+                  :id="key"
+                  class="w-full"
+                  :useGrouping="false"
+                />
+                <InputText
+                  v-else-if="isStringSetting(key)"
+                  v-model="editValues[key]"
+                  :id="key"
+                  class="w-full"
+                  :placeholder="settingsByKey[key]?.default || key === 'app.base_url' ? 'https://dns.example.com' : '(empty)'"
+                />
+              </div>
+              <small class="setting-default">
+                Default: {{ settingsByKey[key]?.default || '(empty)' }}
+              </small>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right column -->
+      <div class="settings-column">
+        <section v-for="section in rightSections" :key="section.title" class="settings-section">
+          <h3 class="section-title">
+            <i :class="section.icon" class="section-icon" />
+            {{ section.title }}
+          </h3>
+          <div class="settings-grid">
+            <div
+              v-for="key in section.keys"
+              :key="key"
+              class="setting-field"
+            >
+              <div class="setting-header">
+                <label :for="key" class="setting-label">{{ key }}</label>
+                <Tag
+                  v-if="settingsByKey[key]?.restart_required"
+                  value="Restart required"
+                  severity="warn"
+                  class="restart-tag"
+                />
+              </div>
+              <p class="setting-description">
+                {{ settingsByKey[key]?.description }}
+              </p>
+              <div class="setting-input">
+                <InputSwitch
+                  v-if="isBooleanSetting(key)"
+                  :modelValue="editValues[key] === 'true'"
+                  @update:modelValue="editValues[key] = $event ? 'true' : 'false'"
+                />
+                <InputNumber
+                  v-else-if="isIntegerSetting(key)"
+                  :modelValue="Number(editValues[key]) || 0"
+                  @update:modelValue="editValues[key] = String($event ?? 0)"
+                  :id="key"
+                  class="w-full"
+                  :useGrouping="false"
+                />
+                <InputText
+                  v-else-if="isStringSetting(key)"
+                  v-model="editValues[key]"
+                  :id="key"
+                  class="w-full"
+                  :placeholder="settingsByKey[key]?.default || '(empty)'"
+                />
+              </div>
+              <small class="setting-default">
+                Default: {{ settingsByKey[key]?.default || '(empty)' }}
+              </small>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Full-width sections -->
+      <section
+        v-for="section in fullWidthSections"
+        :key="section.title"
+        class="settings-section settings-full-width"
+      >
         <h3 class="section-title">
           <i :class="section.icon" class="section-icon" />
           {{ section.title }}
         </h3>
-        <div class="settings-grid">
+        <div class="settings-grid settings-grid-wide">
           <div
             v-for="key in section.keys"
             :key="key"
@@ -222,8 +343,7 @@ onMounted(fetchSettings)
 
 <style scoped>
 .settings-page {
-  padding: 1.5rem;
-  max-width: 60rem;
+  padding: 0;
 }
 
 .loading-state {
@@ -231,10 +351,29 @@ onMounted(fetchSettings)
   padding: 2rem;
 }
 
-.settings-sections {
+/* Two-column grid layout like ProfileView */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  max-width: 80rem;
+}
+
+.settings-column {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.settings-full-width {
+  grid-column: 1 / -1;
+}
+
+/* Fall back to single column on narrow viewports */
+@media (max-width: 860px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settings-section {
@@ -268,6 +407,12 @@ onMounted(fetchSettings)
 }
 
 .settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.settings-grid-wide {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
   gap: 1.25rem;

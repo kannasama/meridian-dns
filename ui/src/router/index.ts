@@ -80,34 +80,48 @@ const router = createRouter({
           component: () => import('../views/AuditView.vue'),
         },
         {
-          path: 'users',
-          name: 'users',
-          component: () => import('../views/UsersView.vue'),
-        },
-        {
-          path: 'groups',
-          name: 'groups',
-          component: () => import('../views/GroupsView.vue'),
-        },
-        {
-          path: 'roles',
-          name: 'roles',
-          component: () => import('../views/RolesView.vue'),
-        },
-        {
           path: 'profile',
           name: 'profile',
           component: () => import('../views/ProfileView.vue'),
         },
+
+        // ─── Administration routes ───
         {
-          path: 'settings',
-          name: 'settings',
+          path: 'admin/auth',
+          name: 'admin-auth',
+          component: () => import('../views/AdminAuthView.vue'),
+        },
+        {
+          path: 'admin/identity-providers',
+          name: 'admin-identity-providers',
+          component: () => import('../views/IdentityProvidersView.vue'),
+        },
+        {
+          path: 'admin/settings',
+          name: 'admin-settings',
           component: () => import('../views/SettingsView.vue'),
+        },
+
+        // ─── Backward-compatible redirects ───
+        {
+          path: 'users',
+          redirect: { name: 'admin-auth', query: { tab: 'users' } },
+        },
+        {
+          path: 'groups',
+          redirect: { name: 'admin-auth', query: { tab: 'groups' } },
+        },
+        {
+          path: 'roles',
+          redirect: { name: 'admin-auth', query: { tab: 'permissions' } },
         },
         {
           path: 'identity-providers',
-          name: 'identity-providers',
-          component: () => import('../views/IdentityProvidersView.vue'),
+          redirect: { name: 'admin-identity-providers' },
+        },
+        {
+          path: 'settings',
+          redirect: { name: 'admin-settings' },
         },
       ],
     },

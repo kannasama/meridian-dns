@@ -9,12 +9,14 @@ import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import InputSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
+import Message from 'primevue/message'
 import PageHeader from '../components/shared/PageHeader.vue'
 import { useConfirmAction } from '../composables/useConfirm'
 import { useNotificationStore } from '../stores/notification'
 import type { IdentityProvider, GroupMappingRule } from '../types'
 import * as idpApi from '../api/identityProviders'
 import { listGroups } from '../api/groups'
+import { listSettings } from '../api/settings'
 
 const notify = useNotificationStore()
 const { confirmDelete } = useConfirmAction()
@@ -26,6 +28,19 @@ const isEditing = ref(false)
 
 const groups = ref<{ id: number; name: string }[]>([])
 
+// Base URL for auto-generating callback URLs
+const baseUrl = ref('')
+const baseUrlConfigured = ref(false)
+
+const computedBaseUrl = computed(() => {
+  if (baseUrl.value) return baseUrl.value
+  // Fallback: derive from current browser URL
+  return `${window.location.protocol}//${window.location.host}`
+})
+
+const oidcRedirectUri = computed(() => `${computedBaseUrl.value}/auth/callback`)
+const samlAcsUrl = computed(() => `${computedBaseUrl.value}/auth/saml/acs`)
+
 // Form state
 const form = ref({
   id: 0,
@@ -36,14 +51,12 @@ const form = ref({
   issuer_url: '',
   client_id: '',
   client_secret: '',
-  redirect_uri: '',
   scopes: 'openid email profile',
   groups_claim: 'groups',
   // SAML fields
   entity_id: '',
   sso_url: '',
   certificate: '',
-  acs_url: '',
   name_id_format: '',
   group_attribute: 'groups',
   // Group mappings
@@ -59,12 +72,26 @@ const typeOptions = [
 async function fetchData() {
   loading.value = true
   try {
-    items.value = await idpApi.listIdentityProviders()
-    const allGroups = await listGroups()
+    const [idps, allGroups, settings] = await Promise.all([
+      idpApi.listIdentityProviders(),
+      listGroups(),
+      listSettings(),
+    ])
+    items.value = idps
     groups.value = allGroups.map((g: { id: number; name: string }) => ({
       id: g.id,
       name: g.name,
     }))
+
+    // Extract base URL from settings
+    const baseUrlSetting = settings.find(s => s.key === 'app.base_url')
+    if (baseUrlSetting && baseUrlSetting.value) {
+      baseUrl.value = baseUrlSetting.value.replace(/\/$/, '') // strip trailing slash
+      baseUrlConfigured.value = true
+    } else {
+      baseUrl.value = ''
+      baseUrlConfigured.value = false
+    }
   } finally {
     loading.value = false
   }
@@ -82,13 +109,11 @@ function openCreate() {
     issuer_url: '',
     client_id: '',
     client_secret: '',
-    redirect_uri: '',
     scopes: 'openid email profile',
     groups_claim: 'groups',
     entity_id: '',
     sso_url: '',
     certificate: '',
-    acs_url: '',
     name_id_format: '',
     group_attribute: 'groups',
     mappingRules: [],
@@ -108,7 +133,6 @@ function openEdit(idp: IdentityProvider) {
     issuer_url: cfg.issuer_url ?? '',
     client_id: cfg.client_id ?? '',
     client_secret: '',
-    redirect_uri: cfg.redirect_uri ?? '',
     scopes: Array.isArray(cfg.scopes)
       ? (cfg.scopes as unknown as string[]).join(' ')
       : (cfg.scopes ?? 'openid email profile'),
@@ -116,7 +140,6 @@ function openEdit(idp: IdentityProvider) {
     entity_id: cfg.entity_id ?? '',
     sso_url: cfg.sso_url ?? '',
     certificate: cfg.certificate ?? '',
-    acs_url: cfg.assertion_consumer_service_url ?? '',
     name_id_format: cfg.name_id_format ?? '',
     group_attribute: cfg.group_attribute ?? 'groups',
     mappingRules: idp.group_mappings?.rules ?? [],
@@ -130,7 +153,7 @@ function buildConfig() {
     return {
       issuer_url: form.value.issuer_url,
       client_id: form.value.client_id,
-      redirect_uri: form.value.redirect_uri,
+      redirect_uri: oidcRedirectUri.value,
       scopes: form.value.scopes.split(/\s+/).filter(Boolean),
       groups_claim: form.value.groups_claim,
     }
@@ -139,7 +162,7 @@ function buildConfig() {
     entity_id: form.value.entity_id,
     sso_url: form.value.sso_url,
     certificate: form.value.certificate,
-    assertion_consumer_service_url: form.value.acs_url,
+    assertion_consumer_service_url: samlAcsUrl.value,
     name_id_format: form.value.name_id_format,
     group_attribute: form.value.group_attribute,
   }
@@ -216,13 +239,25 @@ function typeSeverity(type: string) {
 const groupOptions = computed(() =>
   groups.value.map((g) => ({ label: g.name, value: g.id })),
 )
+
+function copyToClipboard(text: string) {
+  navigator.clipboard.writeText(text)
+  notify.success('Copied to clipboard')
+}
 </script>
 
 <template>
   <div>
-    <PageHeader title="Identity Providers">
+    <PageHeader title="Identity Providers" subtitle="Configure external authentication">
       <Button label="Add Provider" icon="pi pi-plus" @click="openCreate" />
     </PageHeader>
+
+    <Message v-if="!baseUrlConfigured" severity="warn" :closable="false" class="mb-3">
+      <strong>app.base_url</strong> is not configured. Callback URLs are being derived from your
+      current browser URL (<code>{{ computedBaseUrl }}</code>). Set <code>app.base_url</code> in
+      <router-link to="/admin/settings">Settings</router-link> or the <code>DNS_BASE_URL</code>
+      environment variable for reliable IdP configuration.
+    </Message>
 
     <DataTable :value="items" :loading="loading" stripedRows>
       <Column field="name" header="Name" sortable />
@@ -237,6 +272,11 @@ const groupOptions = computed(() =>
             :class="data.is_enabled ? 'pi pi-check-circle' : 'pi pi-times-circle'"
             :style="{ color: data.is_enabled ? 'var(--p-green-400)' : 'var(--p-red-400)' }"
           />
+        </template>
+      </Column>
+      <Column header="Callback URL">
+        <template #body="{ data }">
+          <code class="callback-url">{{ data.type === 'oidc' ? oidcRedirectUri : samlAcsUrl }}</code>
         </template>
       </Column>
       <Column header="Actions" style="width: 12rem">
@@ -276,80 +316,120 @@ const groupOptions = computed(() =>
       v-model:visible="dialogVisible"
       :header="isEditing ? 'Edit Identity Provider' : 'Add Identity Provider'"
       modal
-      :style="{ width: '40rem' }"
+      :style="{ width: '44rem' }"
     >
-      <div class="flex flex-col gap-4">
-        <div class="field">
-          <label>Name</label>
-          <InputText v-model="form.name" class="w-full" />
-        </div>
+      <div class="idp-form">
+        <div class="form-grid">
+          <div class="field">
+            <label>Name</label>
+            <InputText v-model="form.name" class="w-full" />
+          </div>
 
-        <div class="field" v-if="!isEditing">
-          <label>Type</label>
-          <Select
-            v-model="form.type"
-            :options="typeOptions"
-            optionLabel="label"
-            optionValue="value"
-            class="w-full"
-          />
-        </div>
+          <div class="field" v-if="!isEditing">
+            <label>Type</label>
+            <Select
+              v-model="form.type"
+              :options="typeOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+          </div>
 
-        <div class="field" v-if="isEditing">
-          <label>Enabled</label>
-          <InputSwitch v-model="form.is_enabled" />
+          <div class="field" v-if="isEditing">
+            <label>Enabled</label>
+            <InputSwitch v-model="form.is_enabled" />
+          </div>
         </div>
 
         <!-- OIDC Config -->
         <template v-if="form.type === 'oidc'">
-          <div class="field">
-            <label>Issuer URL</label>
-            <InputText v-model="form.issuer_url" class="w-full" placeholder="https://accounts.google.com" />
-          </div>
-          <div class="field">
-            <label>Client ID</label>
-            <InputText v-model="form.client_id" class="w-full" />
-          </div>
-          <div class="field">
-            <label>Client Secret</label>
-            <InputText
-              v-model="form.client_secret"
-              type="password"
-              class="w-full"
-              :placeholder="isEditing ? '(unchanged)' : ''"
-            />
-          </div>
-          <div class="field">
+          <h4 class="form-section-title">OIDC Configuration</h4>
+
+          <!-- Auto-generated Redirect URI -->
+          <div class="callback-display">
             <label>Redirect URI</label>
-            <InputText v-model="form.redirect_uri" class="w-full" />
+            <div class="callback-value">
+              <code>{{ oidcRedirectUri }}</code>
+              <Button
+                icon="pi pi-copy"
+                text
+                rounded
+                size="small"
+                v-tooltip="'Copy'"
+                @click="copyToClipboard(oidcRedirectUri)"
+              />
+            </div>
+            <small class="callback-hint">
+              Configure this URL in your identity provider's OAuth/OIDC settings.
+            </small>
           </div>
-          <div class="field">
-            <label>Scopes</label>
-            <InputText v-model="form.scopes" class="w-full" placeholder="openid email profile" />
-          </div>
-          <div class="field">
-            <label>Groups Claim</label>
-            <InputText v-model="form.groups_claim" class="w-full" placeholder="groups" />
+
+          <div class="form-grid">
+            <div class="field">
+              <label>Issuer URL</label>
+              <InputText v-model="form.issuer_url" class="w-full" placeholder="https://accounts.google.com" />
+            </div>
+            <div class="field">
+              <label>Client ID</label>
+              <InputText v-model="form.client_id" class="w-full" />
+            </div>
+            <div class="field">
+              <label>Client Secret</label>
+              <InputText
+                v-model="form.client_secret"
+                type="password"
+                class="w-full"
+                :placeholder="isEditing ? '(unchanged)' : ''"
+              />
+            </div>
+            <div class="field">
+              <label>Scopes</label>
+              <InputText v-model="form.scopes" class="w-full" placeholder="openid email profile" />
+            </div>
+            <div class="field">
+              <label>Groups Claim</label>
+              <InputText v-model="form.groups_claim" class="w-full" placeholder="groups" />
+            </div>
           </div>
         </template>
 
         <!-- SAML Config -->
         <template v-if="form.type === 'saml'">
-          <div class="field">
-            <label>SP Entity ID</label>
-            <InputText v-model="form.entity_id" class="w-full" />
+          <h4 class="form-section-title">SAML Configuration</h4>
+
+          <!-- Auto-generated ACS URL -->
+          <div class="callback-display">
+            <label>Assertion Consumer Service (ACS) URL</label>
+            <div class="callback-value">
+              <code>{{ samlAcsUrl }}</code>
+              <Button
+                icon="pi pi-copy"
+                text
+                rounded
+                size="small"
+                v-tooltip="'Copy'"
+                @click="copyToClipboard(samlAcsUrl)"
+              />
+            </div>
+            <small class="callback-hint">
+              Configure this URL in your SAML identity provider settings.
+            </small>
           </div>
-          <div class="field">
-            <label>IdP SSO URL</label>
-            <InputText v-model="form.sso_url" class="w-full" />
+
+          <div class="form-grid">
+            <div class="field">
+              <label>SP Entity ID</label>
+              <InputText v-model="form.entity_id" class="w-full" />
+            </div>
+            <div class="field">
+              <label>IdP SSO URL</label>
+              <InputText v-model="form.sso_url" class="w-full" />
+            </div>
           </div>
           <div class="field">
             <label>IdP Certificate (PEM)</label>
             <Textarea v-model="form.certificate" class="w-full" rows="4" />
-          </div>
-          <div class="field">
-            <label>ACS URL</label>
-            <InputText v-model="form.acs_url" class="w-full" />
           </div>
           <div class="field">
             <label>Group Attribute</label>
@@ -403,6 +483,34 @@ const groupOptions = computed(() =>
 </template>
 
 <style scoped>
+.mb-3 { margin-bottom: 0.75rem; }
+
+.idp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.form-section-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--p-surface-700);
+  color: var(--p-surface-200);
+}
+
+:root:not(.app-dark) .form-section-title {
+  border-bottom-color: var(--p-surface-200);
+  color: var(--p-surface-800);
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -417,6 +525,60 @@ const groupOptions = computed(() =>
 
 :root:not(.app-dark) .field label {
   color: var(--p-surface-600);
+}
+
+/* Callback URL display */
+.callback-display {
+  background: var(--p-surface-800);
+  border: 1px solid var(--p-surface-700);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+:root:not(.app-dark) .callback-display {
+  background: var(--p-surface-50);
+  border-color: var(--p-surface-200);
+}
+
+.callback-display label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--p-surface-300);
+}
+
+:root:not(.app-dark) .callback-display label {
+  color: var(--p-surface-600);
+}
+
+.callback-value {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.callback-value code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.8125rem;
+  color: var(--p-primary-400);
+  word-break: break-all;
+}
+
+:root:not(.app-dark) .callback-value code {
+  color: var(--p-primary-600);
+}
+
+.callback-hint {
+  font-size: 0.75rem;
+  color: var(--p-surface-500);
+}
+
+.callback-url {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.75rem;
+  color: var(--p-surface-400);
 }
 
 .mapping-section {
