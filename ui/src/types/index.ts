@@ -170,7 +170,8 @@ export interface User {
   user_id: number
   username: string
   email: string
-  role: 'admin' | 'operator' | 'viewer'
+  role: string
+  permissions: string[]
   auth_method: string
   force_password_change: boolean
 }
@@ -198,13 +199,41 @@ export interface UserDetail {
 export interface Group {
   id: number
   name: string
-  role: 'admin' | 'operator' | 'viewer'
   description: string
   member_count: number
 }
 
+export interface GroupMember {
+  user_id: number
+  username: string
+  role_id: number
+  role_name: string
+  scope_type?: string
+  scope_id?: number
+}
+
 export interface GroupDetail extends Group {
-  members: { id: number; username: string }[]
+  members: GroupMember[]
+}
+
+export interface Role {
+  id: number
+  name: string
+  description: string
+  is_system: boolean
+  permissions: string[]
+  created_at: string
+}
+
+export interface RoleCreate {
+  name: string
+  description: string
+  permissions?: string[]
+}
+
+export interface PermissionCategory {
+  name: string
+  permissions: string[]
 }
 
 export interface ApiKeyEntry {
