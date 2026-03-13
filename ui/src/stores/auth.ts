@@ -8,9 +8,10 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('jwt'))
 
   const isAuthenticated = computed(() => !!token.value && !!user.value)
-  const role = computed(() => user.value?.role ?? 'viewer')
-  const isAdmin = computed(() => role.value === 'admin')
-  const isOperator = computed(() => role.value === 'operator' || role.value === 'admin')
+  const role = computed(() => user.value?.role ?? 'Viewer')
+  const permissions = computed(() => user.value?.permissions ?? [])
+  const isAdmin = computed(() => role.value === 'Admin')
+  const isOperator = computed(() => role.value === 'Operator' || role.value === 'Admin')
 
   async function hydrate(): Promise<boolean> {
     if (!token.value) return false
@@ -44,5 +45,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('jwt')
   }
 
-  return { user, token, isAuthenticated, role, isAdmin, isOperator, hydrate, login, logout }
+  return { user, token, isAuthenticated, role, permissions, isAdmin, isOperator, hydrate, login, logout }
 })
