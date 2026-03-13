@@ -23,3 +23,7 @@ export function changePassword(data: {
 }): Promise<{ message: string }> {
   return post('/auth/change-password', data)
 }
+
+export function listEnabledIdps(): Promise<{ id: number; name: string; type: string }[]> {
+  return get('/auth/identity-providers')
+}

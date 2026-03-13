@@ -19,6 +19,12 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/auth/callback',
+      name: 'auth-callback',
+      component: () => import('../views/AuthCallbackView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/setup',
       name: 'setup',
       component: () => import('../views/SetupView.vue'),
@@ -97,6 +103,11 @@ const router = createRouter({
           path: 'settings',
           name: 'settings',
           component: () => import('../views/SettingsView.vue'),
+        },
+        {
+          path: 'identity-providers',
+          name: 'identity-providers',
+          component: () => import('../views/IdentityProvidersView.vue'),
         },
       ],
     },

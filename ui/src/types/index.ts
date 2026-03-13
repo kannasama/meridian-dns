@@ -269,3 +269,61 @@ export interface SystemSetting {
   restart_required: boolean
   updated_at: string
 }
+
+export interface IdentityProvider {
+  id: number
+  name: string
+  type: 'oidc' | 'saml'
+  is_enabled: boolean
+  config: Record<string, unknown>
+  has_secret: boolean
+  group_mappings: GroupMappingRules | null
+  default_group_id: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GroupMappingRule {
+  idp_group: string
+  meridian_group_id: number
+}
+
+export interface GroupMappingRules {
+  rules: GroupMappingRule[]
+}
+
+export interface IdentityProviderCreate {
+  name: string
+  type: 'oidc' | 'saml'
+  config: Record<string, unknown>
+  client_secret?: string
+  group_mappings?: GroupMappingRules
+  default_group_id?: number
+}
+
+export interface IdentityProviderUpdate {
+  name: string
+  is_enabled: boolean
+  config: Record<string, unknown>
+  client_secret?: string
+  group_mappings?: GroupMappingRules
+  default_group_id?: number
+}
+
+export interface IdpTestResult {
+  redirect_url: string
+}
+
+export interface IdpClaimsResult {
+  subject: string
+  email: string
+  username: string
+  groups: string[]
+  all_claims: Record<string, unknown>
+}
+
+export interface EnabledIdp {
+  id: number
+  name: string
+  type: 'oidc' | 'saml'
+}

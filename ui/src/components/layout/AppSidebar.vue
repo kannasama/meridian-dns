@@ -16,6 +16,7 @@ const navItems = [
   { label: 'Users', icon: 'pi pi-users', to: '/users', adminOnly: true },
   { label: 'Groups', icon: 'pi pi-id-card', to: '/groups', adminOnly: true },
   { label: 'Roles', icon: 'pi pi-shield', to: '/roles', adminOnly: true },
+  { label: 'Identity Providers', icon: 'pi pi-key', to: '/identity-providers', adminOnly: true },
   { label: 'Settings', icon: 'pi pi-cog', to: '/settings', adminOnly: true },
 ]
 

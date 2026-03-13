@@ -1,19 +1,35 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import { useAuthStore } from '../stores/auth'
 import { ApiRequestError } from '../api/client'
+import { listEnabledIdps } from '../api/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 
 const username = ref('')
 const password = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
+const idps = ref<{ id: number; name: string; type: string }[]>([])
+
+onMounted(async () => {
+  // Show error from federated auth redirect
+  if (route.query.error) {
+    errorMessage.value = 'Authentication failed. Please try again.'
+  }
+  // Fetch enabled identity providers
+  try {
+    idps.value = await listEnabledIdps()
+  } catch {
+    // Silently ignore — federated buttons just won't show
+  }
+})
 
 async function handleLogin() {
   errorMessage.value = ''
@@ -30,6 +46,10 @@ async function handleLogin() {
   } finally {
     loading.value = false
   }
+}
+
+function federatedLogin(idp: { id: number; type: string }) {
+  window.location.href = `/api/v1/auth/${idp.type}/${idp.id}/login`
 }
 </script>
 
@@ -69,6 +89,22 @@ async function handleLogin() {
           class="w-full"
         />
       </form>
+
+      <template v-if="idps.length > 0">
+        <div class="login-divider"><span>or</span></div>
+        <div class="federated-buttons">
+          <Button
+            v-for="idp in idps"
+            :key="idp.id"
+            :label="`Sign in with ${idp.name}`"
+            :icon="idp.type === 'saml' ? 'pi pi-shield' : 'pi pi-lock'"
+            severity="secondary"
+            outlined
+            class="w-full"
+            @click="federatedLogin(idp)"
+          />
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -142,5 +178,33 @@ async function handleLogin() {
 
 .w-full {
   width: 100%;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  color: var(--p-surface-500);
+  font-size: 0.8rem;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--p-surface-700);
+}
+
+:root:not(.app-dark) .login-divider::before,
+:root:not(.app-dark) .login-divider::after {
+  background: var(--p-surface-200);
+}
+
+.federated-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 </style>
