@@ -5,7 +5,6 @@ import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
-import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
@@ -28,15 +27,8 @@ const expandedRows = ref({})
 
 const form = ref({
   name: '',
-  role: 'viewer',
   description: '',
 })
-
-const roleOptions = [
-  { label: 'Admin', value: 'admin' },
-  { label: 'Operator', value: 'operator' },
-  { label: 'Viewer', value: 'viewer' },
-]
 
 const groupDetails = ref<Map<number, GroupDetail>>(new Map())
 
@@ -51,13 +43,13 @@ async function fetchGroups() {
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', role: 'viewer', description: '' }
+  form.value = { name: '', description: '' }
   drawerVisible.value = true
 }
 
 function openEdit(group: Group) {
   editingId.value = group.id
-  form.value = { name: group.name, role: group.role, description: group.description }
+  form.value = { name: group.name, description: group.description }
   drawerVisible.value = true
 }
 
@@ -89,14 +81,6 @@ function handleDelete(group: Group) {
   })
 }
 
-function roleSeverity(role: string) {
-  switch (role) {
-    case 'admin': return 'danger'
-    case 'operator': return 'warn'
-    default: return 'info'
-  }
-}
-
 async function onRowExpand(event: any) {
   const id = event.data.id
   if (!groupDetails.value.has(id)) {
@@ -105,6 +89,11 @@ async function onRowExpand(event: any) {
       groupDetails.value.set(id, detail)
     } catch { /* ignore */ }
   }
+}
+
+function scopeLabel(scopeType?: string, scopeId?: number): string {
+  if (!scopeType) return 'Global'
+  return `${scopeType} #${scopeId}`
 }
 
 onMounted(fetchGroups)
@@ -147,11 +136,6 @@ onMounted(fetchGroups)
           <span class="font-mono">{{ data.name }}</span>
         </template>
       </Column>
-      <Column field="role" header="Role" sortable>
-        <template #body="{ data }">
-          <Tag :value="data.role" :severity="roleSeverity(data.role)" />
-        </template>
-      </Column>
       <Column field="description" header="Description" />
       <Column field="member_count" header="Members" sortable style="width: 6rem" />
       <Column header="Actions" style="width: 6rem; text-align: right">
@@ -165,8 +149,12 @@ onMounted(fetchGroups)
       <template #expansion="{ data }">
         <div class="expansion-content">
           <h4 class="expansion-title">Members</h4>
-          <div v-if="groupDetails.get(data.id)?.members?.length">
-            <Tag v-for="m in groupDetails.get(data.id)!.members" :key="m.id" :value="m.username" severity="secondary" class="mr-1 mb-1" />
+          <div v-if="groupDetails.get(data.id)?.members?.length" class="members-list">
+            <div v-for="m in groupDetails.get(data.id)!.members" :key="`${m.user_id}-${m.role_id}`" class="member-row">
+              <Tag :value="m.username" severity="secondary" />
+              <Tag :value="m.role_name" severity="info" class="ml-1" />
+              <Tag :value="scopeLabel(m.scope_type, m.scope_id)" severity="contrast" class="ml-1" />
+            </div>
           </div>
           <span v-else class="text-surface-400 text-sm">No members</span>
         </div>
@@ -178,10 +166,6 @@ onMounted(fetchGroups)
         <div class="field">
           <label>Name</label>
           <InputText v-model="form.name" class="w-full" />
-        </div>
-        <div class="field">
-          <label>Role</label>
-          <Select v-model="form.role" :options="roleOptions" optionLabel="label" optionValue="value" class="w-full" />
         </div>
         <div class="field">
           <label>Description</label>
@@ -196,8 +180,7 @@ onMounted(fetchGroups)
 <style scoped>
 .skeleton-table { display: flex; flex-direction: column; gap: 0.5rem; }
 .mb-2 { margin-bottom: 0.5rem; }
-.mr-1 { margin-right: 0.25rem; }
-.mb-1 { margin-bottom: 0.25rem; }
+.ml-1 { margin-left: 0.25rem; }
 .text-surface-400 { color: var(--p-surface-400); }
 .text-sm { font-size: 0.875rem; }
 .action-buttons { display: flex; justify-content: flex-end; gap: 0.25rem; }
@@ -208,4 +191,6 @@ onMounted(fetchGroups)
 .w-25rem { width: 25rem; }
 .expansion-content { padding: 0.75rem 1rem; }
 .expansion-title { font-size: 0.875rem; font-weight: 600; margin: 0 0 0.5rem; }
+.members-list { display: flex; flex-direction: column; gap: 0.375rem; }
+.member-row { display: flex; align-items: center; gap: 0.25rem; }
 </style>
