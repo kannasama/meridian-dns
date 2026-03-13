@@ -24,6 +24,9 @@
 #include "api/routes/VariableRoutes.hpp"
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
+#include "api/routes/IdpRoutes.hpp"
+#include "api/routes/OidcRoutes.hpp"
+#include "api/routes/SamlRoutes.hpp"
 #include "common/Config.hpp"
 #include "common/Logger.hpp"
 #include "api/routes/AuditRoutes.hpp"
@@ -40,6 +43,7 @@
 #include "dal/ConnectionPool.hpp"
 #include "dal/DeploymentRepository.hpp"
 #include "dal/GroupRepository.hpp"
+#include "dal/IdpRepository.hpp"
 #include "dal/MigrationRunner.hpp"
 #include "dal/RoleRepository.hpp"
 #include "dal/ProviderRepository.hpp"
@@ -52,9 +56,12 @@
 #include "dal/ZoneRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
+#include "security/FederatedAuthService.hpp"
 #include "security/HmacJwtSigner.hpp"
 #include "security/IJwtSigner.hpp"
+#include "security/OidcService.hpp"
 #include "security/SamlReplayCache.hpp"
+#include "security/SamlService.hpp"
 
 #include <termios.h>
 #include <unistd.h>
@@ -281,6 +288,7 @@ int main(int argc, char* argv[]) {
     auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
     auto roleRepo = std::make_unique<dns::dal::RoleRepository>(*cpPool);
     auto settingsRepo = std::make_unique<dns::dal::SettingsRepository>(*cpPool);
+    auto idpRepo = std::make_unique<dns::dal::IdpRepository>(*cpPool, *csService);
 
     auto msScheduler = std::make_unique<dns::core::MaintenanceScheduler>();
 
@@ -347,7 +355,9 @@ int main(int argc, char* argv[]) {
 
     // ── Step 8: Initialize SamlReplayCache ────────────────────────────────
     auto srcCache = std::make_unique<dns::security::SamlReplayCache>();
-    spLog->info("Step 8: SamlReplayCache initialized");
+    auto oidcService = std::make_unique<dns::security::OidcService>();
+    auto samlService = std::make_unique<dns::security::SamlService>(*srcCache);
+    spLog->info("Step 8: SamlReplayCache + OIDC/SAML services initialized");
 
     // ── Step 9: Core engines ─────────────────────────────────────────────
     auto veEngine = std::make_unique<dns::core::VariableEngine>(*varRepo);
@@ -406,6 +416,10 @@ int main(int argc, char* argv[]) {
         *urRepo, *srRepo, *roleRepo, *upSigner,
         cfgApp.iJwtTtlSeconds, cfgApp.iSessionAbsoluteTtlSeconds);
 
+    auto fedAuthService = std::make_unique<dns::security::FederatedAuthService>(
+        *urRepo, *grRepo, *roleRepo, *srRepo, *upSigner,
+        cfgApp.iJwtTtlSeconds, cfgApp.iSessionAbsoluteTtlSeconds);
+
     auto authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*asService, *amMiddleware, *urRepo);
     auto providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*prRepo, *amMiddleware);
     auto viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*vrRepo, *amMiddleware);
@@ -426,6 +440,12 @@ int main(int argc, char* argv[]) {
     auto apiKeyRoutes = std::make_unique<dns::api::routes::ApiKeyRoutes>(*akrRepo, *amMiddleware);
     auto settingsRoutes = std::make_unique<dns::api::routes::SettingsRoutes>(
         *settingsRepo, *amMiddleware, msScheduler.get());
+    auto idpRoutes = std::make_unique<dns::api::routes::IdpRoutes>(
+        *idpRepo, *amMiddleware, *oidcService, *samlService);
+    auto oidcRoutes = std::make_unique<dns::api::routes::OidcRoutes>(
+        *idpRepo, *oidcService, *fedAuthService);
+    auto samlRoutes = std::make_unique<dns::api::routes::SamlRoutes>(
+        *idpRepo, *samlService, *fedAuthService);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
@@ -440,6 +460,9 @@ int main(int argc, char* argv[]) {
     apiKeyRoutes->registerRoutes(crowApp);
     settingsRoutes->registerRoutes(crowApp);
     themeRoutes->registerRoutes(crowApp);
+    idpRoutes->registerRoutes(crowApp);
+    oidcRoutes->registerRoutes(crowApp);
+    samlRoutes->registerRoutes(crowApp);
 
     // Serve static UI files (SPA fallback) — must be registered after API routes
     auto sfhHandler = std::make_unique<dns::api::StaticFileHandler>(cfgApp.sUiDir);
