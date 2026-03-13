@@ -12,13 +12,14 @@ export function getGroup(id: number): Promise<GroupDetail> {
 export function createGroup(data: {
   name: string
   description: string
+  role_id: number
 }): Promise<{ id: number }> {
   return post('/groups', data)
 }
 
 export function updateGroup(
   id: number,
-  data: { name: string; description: string },
+  data: { name: string; description: string; role_id: number },
 ): Promise<{ message: string }> {
   return put(`/groups/${id}`, data)
 }

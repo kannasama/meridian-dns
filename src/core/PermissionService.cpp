@@ -18,22 +18,17 @@ bool PermissionService::hasPermission(int64_t iUserId, std::string_view svPermis
 
 bool PermissionService::hasPermissionForZone(int64_t iUserId,
                                               std::string_view svPermission,
-                                              int64_t iZoneId) {
-  // Look up the zone's view_id for view-level scope matching
-  int64_t iViewId = 0;
-  auto oZone = _zrRepo.findById(iZoneId);
-  if (oZone.has_value()) {
-    iViewId = oZone->iViewId;
-  }
-
-  auto perms = _rrRepo.resolveUserPermissions(iUserId, iViewId, iZoneId);
+                                              int64_t /*iZoneId*/) {
+  // With group→role model, all permissions are global.
+  auto perms = _rrRepo.resolveUserPermissions(iUserId);
   return perms.count(std::string(svPermission)) > 0;
 }
 
 bool PermissionService::hasPermissionForView(int64_t iUserId,
                                               std::string_view svPermission,
-                                              int64_t iViewId) {
-  auto perms = _rrRepo.resolveUserPermissions(iUserId, iViewId);
+                                              int64_t /*iViewId*/) {
+  // With group→role model, all permissions are global.
+  auto perms = _rrRepo.resolveUserPermissions(iUserId);
   return perms.count(std::string(svPermission)) > 0;
 }
 
@@ -43,13 +38,9 @@ std::unordered_set<std::string> PermissionService::getEffectivePermissions(
 }
 
 std::unordered_set<std::string> PermissionService::getEffectivePermissionsForZone(
-    int64_t iUserId, int64_t iZoneId) {
-  int64_t iViewId = 0;
-  auto oZone = _zrRepo.findById(iZoneId);
-  if (oZone.has_value()) {
-    iViewId = oZone->iViewId;
-  }
-  return _rrRepo.resolveUserPermissions(iUserId, iViewId, iZoneId);
+    int64_t iUserId, int64_t /*iZoneId*/) {
+  // With group→role model, all permissions are global.
+  return _rrRepo.resolveUserPermissions(iUserId);
 }
 
 }  // namespace dns::core

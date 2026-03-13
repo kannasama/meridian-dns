@@ -6,6 +6,7 @@ import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
+import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
 import PageHeader from '../components/shared/PageHeader.vue'
@@ -13,7 +14,8 @@ import EmptyState from '../components/shared/EmptyState.vue'
 import { useConfirmAction } from '../composables/useConfirm'
 import { useNotificationStore } from '../stores/notification'
 import * as groupApi from '../api/groups'
-import type { Group, GroupDetail } from '../types'
+import * as roleApi from '../api/roles'
+import type { Group, GroupDetail, Role } from '../types'
 
 const notify = useNotificationStore()
 const { confirmDelete } = useConfirmAction()
@@ -25,9 +27,12 @@ const drawerVisible = ref(false)
 const editingId = ref<number | null>(null)
 const expandedRows = ref({})
 
+const roles = ref<Role[]>([])
+
 const form = ref({
   name: '',
   description: '',
+  role_id: null as number | null,
 })
 
 const groupDetails = ref<Map<number, GroupDetail>>(new Map())
@@ -41,25 +46,36 @@ async function fetchGroups() {
   }
 }
 
+async function fetchRoles() {
+  try {
+    roles.value = await roleApi.listRoles()
+  } catch { /* ignore */ }
+}
+
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', description: '' }
+  form.value = { name: '', description: '', role_id: null }
   drawerVisible.value = true
 }
 
 function openEdit(group: Group) {
   editingId.value = group.id
-  form.value = { name: group.name, description: group.description }
+  form.value = { name: group.name, description: group.description, role_id: group.role_id }
   drawerVisible.value = true
 }
 
 async function handleSubmit() {
   try {
+    const payload = {
+      name: form.value.name,
+      description: form.value.description,
+      role_id: form.value.role_id!,
+    }
     if (editingId.value !== null) {
-      await groupApi.updateGroup(editingId.value, form.value)
+      await groupApi.updateGroup(editingId.value, payload)
       notify.success('Group updated')
     } else {
-      await groupApi.createGroup(form.value)
+      await groupApi.createGroup(payload)
       notify.success('Group created')
     }
     drawerVisible.value = false
@@ -91,12 +107,10 @@ async function onRowExpand(event: any) {
   }
 }
 
-function scopeLabel(scopeType?: string, scopeId?: number): string {
-  if (!scopeType) return 'Global'
-  return `${scopeType} #${scopeId}`
-}
-
-onMounted(fetchGroups)
+onMounted(() => {
+  fetchGroups()
+  fetchRoles()
+})
 </script>
 
 <template>
@@ -137,6 +151,11 @@ onMounted(fetchGroups)
         </template>
       </Column>
       <Column field="description" header="Description" />
+      <Column field="role_name" header="Role" sortable style="width: 10rem">
+        <template #body="{ data }">
+          <Tag :value="data.role_name" severity="info" />
+        </template>
+      </Column>
       <Column field="member_count" header="Members" sortable style="width: 6rem" />
       <Column header="Actions" style="width: 6rem; text-align: right">
         <template #body="{ data }">
@@ -150,10 +169,8 @@ onMounted(fetchGroups)
         <div class="expansion-content">
           <h4 class="expansion-title">Members</h4>
           <div v-if="groupDetails.get(data.id)?.members?.length" class="members-list">
-            <div v-for="m in groupDetails.get(data.id)!.members" :key="`${m.user_id}-${m.role_id}`" class="member-row">
+            <div v-for="m in groupDetails.get(data.id)!.members" :key="m.user_id" class="member-row">
               <Tag :value="m.username" severity="secondary" />
-              <Tag :value="m.role_name" severity="info" class="ml-1" />
-              <Tag :value="scopeLabel(m.scope_type, m.scope_id)" severity="contrast" class="ml-1" />
             </div>
           </div>
           <span v-else class="text-surface-400 text-sm">No members</span>
@@ -170,6 +187,10 @@ onMounted(fetchGroups)
         <div class="field">
           <label>Description</label>
           <Textarea v-model="form.description" class="w-full" rows="3" />
+        </div>
+        <div class="field">
+          <label>Role</label>
+          <Select v-model="form.role_id" :options="roles" optionLabel="name" optionValue="id" class="w-full" placeholder="Select a role" />
         </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>

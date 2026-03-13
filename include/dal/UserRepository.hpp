@@ -53,10 +53,8 @@ class UserRepository {
   /// Set the force_password_change flag for a user.
   void setForcePasswordChange(int64_t iUserId, bool bForce);
 
-  /// Add a user to a group with a specific role (and optional scope).
-  void addToGroup(int64_t iUserId, int64_t iGroupId, int64_t iRoleId,
-                  const std::string& sScopeType = "",
-                  int64_t iScopeId = 0);
+  /// Add a user to a group.
+  void addToGroup(int64_t iUserId, int64_t iGroupId);
 
   /// Remove a user from a group (removes all role/scope memberships).
   void removeFromGroup(int64_t iUserId, int64_t iGroupId);

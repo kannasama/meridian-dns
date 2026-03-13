@@ -200,16 +200,14 @@ export interface Group {
   id: number
   name: string
   description: string
+  role_id: number
+  role_name: string
   member_count: number
 }
 
 export interface GroupMember {
   user_id: number
   username: string
-  role_id: number
-  role_name: string
-  scope_type?: string
-  scope_id?: number
 }
 
 export interface GroupDetail extends Group {

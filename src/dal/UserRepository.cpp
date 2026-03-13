@@ -152,27 +152,19 @@ void UserRepository::setForcePasswordChange(int64_t iUserId, bool bForce) {
   }
 }
 
-void UserRepository::addToGroup(int64_t iUserId, int64_t iGroupId, int64_t iRoleId,
-                                const std::string& sScopeType, int64_t iScopeId) {
+void UserRepository::addToGroup(int64_t iUserId, int64_t iGroupId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
 
   try {
-    if (sScopeType.empty()) {
-      txn.exec(
-          "INSERT INTO group_members (user_id, group_id, role_id) VALUES ($1, $2, $3) "
-          "ON CONFLICT DO NOTHING",
-          pqxx::params{iUserId, iGroupId, iRoleId});
-    } else {
-      txn.exec(
-          "INSERT INTO group_members (user_id, group_id, role_id, scope_type, scope_id) "
-          "VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
-          pqxx::params{iUserId, iGroupId, iRoleId, sScopeType, iScopeId});
-    }
+    txn.exec(
+        "INSERT INTO group_members (user_id, group_id) VALUES ($1, $2) "
+        "ON CONFLICT DO NOTHING",
+        pqxx::params{iUserId, iGroupId});
     txn.commit();
   } catch (const pqxx::foreign_key_violation&) {
     throw common::NotFoundError("INVALID_USER_OR_GROUP",
-                                "User, group, or role does not exist");
+                                "User or group does not exist");
   }
 }
 

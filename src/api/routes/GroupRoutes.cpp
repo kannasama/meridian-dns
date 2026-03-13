@@ -33,6 +33,8 @@ void GroupRoutes::registerRoutes(crow::SimpleApp& app) {
                 {"id", group.iId},
                 {"name", group.sName},
                 {"description", group.sDescription},
+                {"role_id", group.iRoleId},
+                {"role_name", group.sRoleName},
                 {"member_count", group.iMemberCount},
                 {"created_at", std::chrono::duration_cast<std::chrono::seconds>(
                                    group.tpCreatedAt.time_since_epoch())
@@ -55,10 +57,14 @@ void GroupRoutes::registerRoutes(crow::SimpleApp& app) {
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
           std::string sDescription = jBody.value("description", "");
+          int64_t iRoleId = jBody.value("role_id", static_cast<int64_t>(0));
 
           RequestValidator::validateGroupName(sName);
+          if (iRoleId <= 0) {
+            throw common::ValidationError("INVALID_ROLE_ID", "role_id is required");
+          }
 
-          int64_t iId = _grRepo.create(sName, sDescription);
+          int64_t iId = _grRepo.create(sName, sDescription, iRoleId);
           return jsonResponse(201, {{"id", iId}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
@@ -80,23 +86,18 @@ void GroupRoutes::registerRoutes(crow::SimpleApp& app) {
           auto vMembers = _grRepo.listMembers(iGroupId);
           nlohmann::json jMembers = nlohmann::json::array();
           for (const auto& member : vMembers) {
-            nlohmann::json jMember = {
+            jMembers.push_back({
                 {"user_id", member.iUserId},
                 {"username", member.sUsername},
-                {"role_id", member.iRoleId},
-                {"role_name", member.sRoleName},
-                {"scope_type", member.sScopeType},
-            };
-            if (member.iScopeId > 0) {
-              jMember["scope_id"] = member.iScopeId;
-            }
-            jMembers.push_back(jMember);
+            });
           }
 
           return jsonResponse(200, {
               {"id", oGroup->iId},
               {"name", oGroup->sName},
               {"description", oGroup->sDescription},
+              {"role_id", oGroup->iRoleId},
+              {"role_name", oGroup->sRoleName},
               {"member_count", oGroup->iMemberCount},
               {"created_at", std::chrono::duration_cast<std::chrono::seconds>(
                                  oGroup->tpCreatedAt.time_since_epoch())
@@ -121,10 +122,11 @@ void GroupRoutes::registerRoutes(crow::SimpleApp& app) {
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", oGroup->sName);
           std::string sDescription = jBody.value("description", oGroup->sDescription);
+          int64_t iRoleId = jBody.value("role_id", oGroup->iRoleId);
 
           RequestValidator::validateGroupName(sName);
 
-          _grRepo.update(iGroupId, sName, sDescription);
+          _grRepo.update(iGroupId, sName, sDescription, iRoleId);
           return jsonResponse(200, {{"message", "Group updated"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);

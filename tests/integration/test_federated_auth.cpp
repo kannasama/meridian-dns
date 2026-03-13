@@ -159,8 +159,10 @@ TEST_F(FederatedAuthIntegrationTest, DisabledUserRejected) {
 }
 
 TEST_F(FederatedAuthIntegrationTest, GroupMappingAssignsCorrectGroups) {
-  // Create a test group
-  int64_t iGroupId = _upGroupRepo->create("test-fed-dns-admins", "Test DNS Admins");
+  // Create a test group (look up Viewer role for the group's role_id)
+  auto oViewerRole = _upRoleRepo->findByName("Viewer");
+  ASSERT_TRUE(oViewerRole.has_value());
+  int64_t iGroupId = _upGroupRepo->create("test-fed-dns-admins", "Test DNS Admins", oViewerRole->iId);
 
   nlohmann::json jMappings = {
       {"rules", nlohmann::json::array({
@@ -185,7 +187,9 @@ TEST_F(FederatedAuthIntegrationTest, GroupMappingAssignsCorrectGroups) {
 }
 
 TEST_F(FederatedAuthIntegrationTest, GroupMappingWildcard) {
-  int64_t iGroupId = _upGroupRepo->create("test-fed-platform", "Test Platform");
+  auto oViewerRole = _upRoleRepo->findByName("Viewer");
+  ASSERT_TRUE(oViewerRole.has_value());
+  int64_t iGroupId = _upGroupRepo->create("test-fed-platform", "Test Platform", oViewerRole->iId);
 
   nlohmann::json jMappings = {
       {"rules", nlohmann::json::array({
@@ -209,7 +213,9 @@ TEST_F(FederatedAuthIntegrationTest, GroupMappingWildcard) {
 }
 
 TEST_F(FederatedAuthIntegrationTest, GroupMappingFallsBackToDefault) {
-  int64_t iDefaultGroupId = _upGroupRepo->create("test-fed-default", "Test Default");
+  auto oViewerRole = _upRoleRepo->findByName("Viewer");
+  ASSERT_TRUE(oViewerRole.has_value());
+  int64_t iDefaultGroupId = _upGroupRepo->create("test-fed-default", "Test Default", oViewerRole->iId);
 
   nlohmann::json jMappings = {
       {"rules", nlohmann::json::array({

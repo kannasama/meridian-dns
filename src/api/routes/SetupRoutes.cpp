@@ -112,25 +112,28 @@ void SetupRoutes::registerRoutes(crow::SimpleApp& app) {
               pqxx::params{sUsername, sEmail, sPasswordHash});
           int64_t iUserId = rUser[0][0].as<int64_t>();
 
-          // 4e. Create Admins group
-          auto rGroup = txn.exec(
-              "INSERT INTO groups (name, description) "
-              "VALUES ('Admins', 'System administrators') RETURNING id");
-          int64_t iGroupId = rGroup[0][0].as<int64_t>();
-
-          // 4f. Add user to group with Admin role
+          // 4e. Look up Admin role
           auto rRole = txn.exec("SELECT id FROM roles WHERE name = 'Admin'");
           int64_t iRoleId = rRole[0][0].as<int64_t>();
-          txn.exec(
-              "INSERT INTO group_members (user_id, group_id, role_id) VALUES ($1, $2, $3)",
-              pqxx::params{iUserId, iGroupId, iRoleId});
 
-          // 4g. Mark setup complete
+          // 4f. Create Admins group with Admin role
+          auto rGroup = txn.exec(
+              "INSERT INTO groups (name, description, role_id) "
+              "VALUES ('Admins', 'System administrators', $1) RETURNING id",
+              pqxx::params{iRoleId});
+          int64_t iGroupId = rGroup[0][0].as<int64_t>();
+
+          // 4g. Add user to group
+          txn.exec(
+              "INSERT INTO group_members (user_id, group_id) VALUES ($1, $2)",
+              pqxx::params{iUserId, iGroupId});
+
+          // 4h. Mark setup complete
           txn.exec(
               "INSERT INTO system_config (key, value) VALUES ('setup_completed', 'true') "
               "ON CONFLICT (key) DO UPDATE SET value = 'true'");
 
-          // 4h. Commit transaction
+          // 4i. Commit transaction
           txn.commit();
 
           // 5. Update cached flag

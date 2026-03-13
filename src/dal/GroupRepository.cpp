@@ -14,11 +14,13 @@ std::vector<GroupRow> GroupRepository::listAll() {
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT g.id, g.name, COALESCE(g.description, ''), "
+      "g.role_id, r.name, "
       "EXTRACT(EPOCH FROM g.created_at)::bigint, "
       "COUNT(gm.user_id)::int "
       "FROM groups g "
+      "JOIN roles r ON r.id = g.role_id "
       "LEFT JOIN group_members gm ON gm.group_id = g.id "
-      "GROUP BY g.id ORDER BY g.name");
+      "GROUP BY g.id, r.name ORDER BY g.name");
   txn.commit();
 
   std::vector<GroupRow> vGroups;
@@ -28,8 +30,10 @@ std::vector<GroupRow> GroupRepository::listAll() {
         row[0].as<int64_t>(),
         row[1].as<std::string>(),
         row[2].as<std::string>(),
-        row[4].as<int>(),
-        std::chrono::system_clock::time_point(std::chrono::seconds(row[3].as<int64_t>())),
+        row[3].as<int64_t>(),
+        row[4].as<std::string>(),
+        row[6].as<int>(),
+        std::chrono::system_clock::time_point(std::chrono::seconds(row[5].as<int64_t>())),
     });
   }
   return vGroups;
@@ -40,11 +44,13 @@ std::optional<GroupRow> GroupRepository::findById(int64_t iGroupId) {
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT g.id, g.name, COALESCE(g.description, ''), "
+      "g.role_id, r.name, "
       "EXTRACT(EPOCH FROM g.created_at)::bigint, "
       "COUNT(gm.user_id)::int "
       "FROM groups g "
+      "JOIN roles r ON r.id = g.role_id "
       "LEFT JOIN group_members gm ON gm.group_id = g.id "
-      "WHERE g.id = $1 GROUP BY g.id",
+      "WHERE g.id = $1 GROUP BY g.id, r.name",
       pqxx::params{iGroupId});
   txn.commit();
 
@@ -54,18 +60,21 @@ std::optional<GroupRow> GroupRepository::findById(int64_t iGroupId) {
       row[0].as<int64_t>(),
       row[1].as<std::string>(),
       row[2].as<std::string>(),
-      row[4].as<int>(),
-      std::chrono::system_clock::time_point(std::chrono::seconds(row[3].as<int64_t>())),
+      row[3].as<int64_t>(),
+      row[4].as<std::string>(),
+      row[6].as<int>(),
+      std::chrono::system_clock::time_point(std::chrono::seconds(row[5].as<int64_t>())),
   };
 }
 
-int64_t GroupRepository::create(const std::string& sName, const std::string& sDescription) {
+int64_t GroupRepository::create(const std::string& sName, const std::string& sDescription,
+                                int64_t iRoleId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   try {
     auto result = txn.exec(
-        "INSERT INTO groups (name, description) VALUES ($1, $2) RETURNING id",
-        pqxx::params{sName, sDescription});
+        "INSERT INTO groups (name, description, role_id) VALUES ($1, $2, $3) RETURNING id",
+        pqxx::params{sName, sDescription, iRoleId});
     txn.commit();
     return result[0][0].as<int64_t>();
   } catch (const pqxx::unique_violation&) {
@@ -74,12 +83,12 @@ int64_t GroupRepository::create(const std::string& sName, const std::string& sDe
 }
 
 void GroupRepository::update(int64_t iGroupId, const std::string& sName,
-                             const std::string& sDescription) {
+                             const std::string& sDescription, int64_t iRoleId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      "UPDATE groups SET name = $1, description = $2 WHERE id = $3",
-      pqxx::params{sName, sDescription, iGroupId});
+      "UPDATE groups SET name = $1, description = $2, role_id = $3 WHERE id = $4",
+      pqxx::params{sName, sDescription, iRoleId, iGroupId});
   txn.commit();
   if (result.affected_rows() == 0)
     throw common::NotFoundError("GROUP_NOT_FOUND", "Group not found");
@@ -113,11 +122,9 @@ std::vector<GroupMemberRow> GroupRepository::listMembers(int64_t iGroupId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      "SELECT u.id, u.username, gm.role_id, r.name, "
-      "COALESCE(gm.scope_type, ''), COALESCE(gm.scope_id, 0) "
+      "SELECT u.id, u.username "
       "FROM users u "
       "JOIN group_members gm ON gm.user_id = u.id "
-      "JOIN roles r ON r.id = gm.role_id "
       "WHERE gm.group_id = $1 ORDER BY u.username",
       pqxx::params{iGroupId});
   txn.commit();
@@ -128,57 +135,33 @@ std::vector<GroupMemberRow> GroupRepository::listMembers(int64_t iGroupId) {
     vMembers.push_back({
         row[0].as<int64_t>(),
         row[1].as<std::string>(),
-        row[2].as<int64_t>(),
-        row[3].as<std::string>(),
-        row[4].as<std::string>(),
-        row[5].as<int64_t>(),
     });
   }
   return vMembers;
 }
 
-void GroupRepository::addMember(int64_t iGroupId, int64_t iUserId, int64_t iRoleId,
-                                 const std::string& sScopeType, int64_t iScopeId) {
+void GroupRepository::addMember(int64_t iGroupId, int64_t iUserId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   try {
-    if (sScopeType.empty()) {
-      txn.exec(
-          "INSERT INTO group_members (user_id, group_id, role_id) VALUES ($1, $2, $3)",
-          pqxx::params{iUserId, iGroupId, iRoleId});
-    } else {
-      txn.exec(
-          "INSERT INTO group_members (user_id, group_id, role_id, scope_type, scope_id) "
-          "VALUES ($1, $2, $3, $4, $5)",
-          pqxx::params{iUserId, iGroupId, iRoleId, sScopeType, iScopeId});
-    }
+    txn.exec(
+        "INSERT INTO group_members (user_id, group_id) VALUES ($1, $2)",
+        pqxx::params{iUserId, iGroupId});
     txn.commit();
   } catch (const pqxx::unique_violation&) {
-    throw common::ConflictError("MEMBER_EXISTS",
-                                 "Member already exists with this role and scope");
+    throw common::ConflictError("MEMBER_EXISTS", "User is already a member of this group");
   }
 }
 
-void GroupRepository::removeMember(int64_t iGroupId, int64_t iUserId, int64_t iRoleId,
-                                    const std::string& sScopeType, int64_t iScopeId) {
+void GroupRepository::removeMember(int64_t iGroupId, int64_t iUserId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  pqxx::result result;
-  if (sScopeType.empty()) {
-    result = txn.exec(
-        "DELETE FROM group_members "
-        "WHERE user_id = $1 AND group_id = $2 AND role_id = $3 AND scope_type IS NULL",
-        pqxx::params{iUserId, iGroupId, iRoleId});
-  } else {
-    result = txn.exec(
-        "DELETE FROM group_members "
-        "WHERE user_id = $1 AND group_id = $2 AND role_id = $3 "
-        "AND scope_type = $4 AND scope_id = $5",
-        pqxx::params{iUserId, iGroupId, iRoleId, sScopeType, iScopeId});
-  }
+  auto result = txn.exec(
+      "DELETE FROM group_members WHERE user_id = $1 AND group_id = $2",
+      pqxx::params{iUserId, iGroupId});
   txn.commit();
   if (result.affected_rows() == 0)
-    throw common::NotFoundError("MEMBER_NOT_FOUND", "Member assignment not found");
+    throw common::NotFoundError("MEMBER_NOT_FOUND", "Member not found in group");
 }
 
 }  // namespace dns::dal

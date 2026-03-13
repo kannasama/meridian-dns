@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Tag from 'primevue/tag'
@@ -194,7 +194,7 @@ onMounted(() => {
       </Column>
     </DataTable>
 
-    <Drawer v-model:visible="drawerVisible" :header="editingId ? 'Edit Role' : 'Add Role'" position="right" class="w-30rem">
+    <Dialog v-model:visible="drawerVisible" :header="editingId ? 'Edit Role' : 'Add Role'" :style="{ width: '56rem' }" modal>
       <form @submit.prevent="handleSubmit" class="drawer-form">
         <div class="field">
           <label>Name</label>
@@ -231,7 +231,7 @@ onMounted(() => {
 
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 

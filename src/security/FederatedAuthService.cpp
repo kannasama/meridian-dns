@@ -127,14 +127,8 @@ FederatedAuthService::LoginResult FederatedAuthService::processFederatedLogin(
   // 4. Match and assign groups
   auto vGroupIds = matchGroups(jGroupMappings, vIdpGroups, iDefaultGroupId);
 
-  // Find the Viewer system role for default assignment
-  auto oViewerRole = _rrRepo.findByName("Viewer");
-  int64_t iViewerRoleId = oViewerRole.has_value() ? oViewerRole->iId : 0;
-
   for (int64_t iGroupId : vGroupIds) {
-    if (iViewerRoleId > 0) {
-      _urRepo.addToGroup(oUser->iId, iGroupId, iViewerRoleId);
-    }
+    _urRepo.addToGroup(oUser->iId, iGroupId);
   }
 
   // 5. Resolve role name for JWT

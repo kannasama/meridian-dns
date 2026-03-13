@@ -51,10 +51,8 @@ class RoleRepository {
   void setPermissions(int64_t iRoleId, const std::vector<std::string>& vPermissions);
 
   /// Resolve all permissions for a user across all group memberships.
-  /// Considers scope_type and scope_id for resource-level access.
-  /// iViewId and iZoneId are the resource being accessed (0 = global check).
-  std::unordered_set<std::string> resolveUserPermissions(
-      int64_t iUserId, int64_t iViewId = 0, int64_t iZoneId = 0);
+  /// Permissions come from groups.role_id → role_permissions.
+  std::unordered_set<std::string> resolveUserPermissions(int64_t iUserId);
 
   /// Get the highest-privilege role name for a user (for display/JWT).
   /// Returns empty string if no group membership.

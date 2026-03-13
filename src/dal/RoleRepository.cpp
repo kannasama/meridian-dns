@@ -131,13 +131,13 @@ void RoleRepository::deleteRole(int64_t iRoleId) {
                                  "Cannot delete a system role");
   }
 
-  // Check if role is in use
+  // Check if role is in use by any group
   auto usage = txn.exec(
-      "SELECT COUNT(*) FROM group_members WHERE role_id = $1",
+      "SELECT COUNT(*) FROM groups WHERE role_id = $1",
       pqxx::params{iRoleId});
   if (usage[0][0].as<int>() > 0) {
     throw common::ConflictError("ROLE_IN_USE",
-                                 "Cannot delete role: still assigned to group members");
+                                 "Cannot delete role: still assigned to groups");
   }
 
   txn.exec("DELETE FROM roles WHERE id = $1", pqxx::params{iRoleId});
@@ -179,26 +179,19 @@ void RoleRepository::setPermissions(int64_t iRoleId,
   txn.commit();
 }
 
-std::unordered_set<std::string> RoleRepository::resolveUserPermissions(
-    int64_t iUserId, int64_t iViewId, int64_t iZoneId) {
+std::unordered_set<std::string> RoleRepository::resolveUserPermissions(int64_t iUserId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
 
-  // Collect permissions from all matching group memberships:
-  // - Global scope (scope_type IS NULL)
-  // - View-level scope matching iViewId
-  // - Zone-level scope matching iZoneId
+  // Collect permissions from all groups the user belongs to.
+  // Path: group_members → groups.role_id → role_permissions
   auto result = txn.exec(
       "SELECT DISTINCT rp.permission "
       "FROM group_members gm "
-      "JOIN role_permissions rp ON rp.role_id = gm.role_id "
-      "WHERE gm.user_id = $1 "
-      "AND ("
-      "  gm.scope_type IS NULL "
-      "  OR (gm.scope_type = 'view' AND gm.scope_id = $2 AND $2 > 0) "
-      "  OR (gm.scope_type = 'zone' AND gm.scope_id = $3 AND $3 > 0)"
-      ")",
-      pqxx::params{iUserId, iViewId, iZoneId});
+      "JOIN groups g ON g.id = gm.group_id "
+      "JOIN role_permissions rp ON rp.role_id = g.role_id "
+      "WHERE gm.user_id = $1",
+      pqxx::params{iUserId});
   txn.commit();
 
   std::unordered_set<std::string> vPerms;
@@ -212,13 +205,14 @@ std::string RoleRepository::getHighestRoleName(int64_t iUserId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
 
-  // Find the role with the most permissions among the user's global assignments
+  // Find the role with the most permissions among the user's groups
   auto result = txn.exec(
       "SELECT r.name, COUNT(rp.permission) AS perm_count "
       "FROM group_members gm "
-      "JOIN roles r ON r.id = gm.role_id "
+      "JOIN groups g ON g.id = gm.group_id "
+      "JOIN roles r ON r.id = g.role_id "
       "LEFT JOIN role_permissions rp ON rp.role_id = r.id "
-      "WHERE gm.user_id = $1 AND gm.scope_type IS NULL "
+      "WHERE gm.user_id = $1 "
       "GROUP BY r.name "
       "ORDER BY perm_count DESC "
       "LIMIT 1",

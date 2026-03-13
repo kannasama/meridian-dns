@@ -12,7 +12,9 @@ class ZoneRepository;
 
 namespace dns::core {
 
-/// Resolves effective permissions for a user, considering hierarchical scoping.
+/// Resolves effective permissions for a user.
+/// With the group→role model, all permissions are global (no resource scoping).
+/// The zone/view variants are kept for API compatibility but resolve identically.
 /// Class abbreviation: ps
 class PermissionService {
  public:
@@ -20,22 +22,21 @@ class PermissionService {
                     dns::dal::ZoneRepository& zrRepo);
   ~PermissionService();
 
-  /// Check if a user has a specific permission globally (no resource context).
+  /// Check if a user has a specific permission.
   bool hasPermission(int64_t iUserId, std::string_view svPermission);
 
-  /// Check if a user has a specific permission for a zone.
-  /// Resolves the zone's view for view-level scope matching.
+  /// Check if a user has a specific permission (zone context — resolves globally).
   bool hasPermissionForZone(int64_t iUserId, std::string_view svPermission,
                             int64_t iZoneId);
 
-  /// Check if a user has a specific permission for a view.
+  /// Check if a user has a specific permission (view context — resolves globally).
   bool hasPermissionForView(int64_t iUserId, std::string_view svPermission,
                             int64_t iViewId);
 
-  /// Get all effective permissions for a user (global scope only).
+  /// Get all effective permissions for a user.
   std::unordered_set<std::string> getEffectivePermissions(int64_t iUserId);
 
-  /// Get all effective permissions for a user for a specific zone.
+  /// Get all effective permissions for a user (zone context — resolves globally).
   std::unordered_set<std::string> getEffectivePermissionsForZone(
       int64_t iUserId, int64_t iZoneId);
 

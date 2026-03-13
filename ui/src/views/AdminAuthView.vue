@@ -9,6 +9,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Textarea from 'primevue/textarea'
+import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
@@ -160,6 +161,7 @@ const groupDetails = ref<Map<number, GroupDetail>>(new Map())
 const groupForm = ref({
   name: '',
   description: '',
+  role_id: null as number | null,
 })
 
 async function fetchGroups() {
@@ -173,23 +175,28 @@ async function fetchGroups() {
 
 function openCreateGroup() {
   editingGroupId.value = null
-  groupForm.value = { name: '', description: '' }
+  groupForm.value = { name: '', description: '', role_id: null }
   groupDrawerVisible.value = true
 }
 
 function openEditGroup(group: Group) {
   editingGroupId.value = group.id
-  groupForm.value = { name: group.name, description: group.description }
+  groupForm.value = { name: group.name, description: group.description, role_id: group.role_id }
   groupDrawerVisible.value = true
 }
 
 async function handleGroupSubmit() {
   try {
+    const payload = {
+      name: groupForm.value.name,
+      description: groupForm.value.description,
+      role_id: groupForm.value.role_id!,
+    }
     if (editingGroupId.value !== null) {
-      await groupApi.updateGroup(editingGroupId.value, groupForm.value)
+      await groupApi.updateGroup(editingGroupId.value, payload)
       notify.success('Group updated')
     } else {
-      await groupApi.createGroup(groupForm.value)
+      await groupApi.createGroup(payload)
       notify.success('Group created')
     }
     groupDrawerVisible.value = false
@@ -219,11 +226,6 @@ async function onGroupRowExpand(event: any) {
       groupDetails.value.set(id, detail)
     } catch { /* ignore */ }
   }
-}
-
-function scopeLabel(scopeType?: string, scopeId?: number): string {
-  if (!scopeType) return 'Global'
-  return `${scopeType} #${scopeId}`
 }
 
 // ─── Permissions (Roles) ───
@@ -475,6 +477,11 @@ onMounted(() => {
           </template>
         </Column>
         <Column field="description" header="Description" />
+        <Column field="role_name" header="Role" sortable style="width: 10rem">
+          <template #body="{ data }">
+            <Tag :value="data.role_name" severity="info" />
+          </template>
+        </Column>
         <Column field="member_count" header="Members" sortable style="width: 6rem" />
         <Column header="Actions" style="width: 6rem; text-align: right">
           <template #body="{ data }">
@@ -488,10 +495,8 @@ onMounted(() => {
           <div class="expansion-content">
             <h4 class="expansion-title">Members</h4>
             <div v-if="groupDetails.get(data.id)?.members?.length" class="members-list">
-              <div v-for="m in groupDetails.get(data.id)!.members" :key="`${m.user_id}-${m.role_id}`" class="member-row">
+              <div v-for="m in groupDetails.get(data.id)!.members" :key="m.user_id" class="member-row">
                 <Tag :value="m.username" severity="secondary" />
-                <Tag :value="m.role_name" severity="info" class="ml-1" />
-                <Tag :value="scopeLabel(m.scope_type, m.scope_id)" severity="contrast" class="ml-1" />
               </div>
             </div>
             <span v-else class="text-surface-400 text-sm">No members</span>
@@ -621,12 +626,16 @@ onMounted(() => {
           <label>Description</label>
           <Textarea v-model="groupForm.description" class="w-full" rows="3" />
         </div>
+        <div class="field">
+          <label>Role</label>
+          <Select v-model="groupForm.role_id" :options="roles" optionLabel="name" optionValue="id" class="w-full" placeholder="Select a role" />
+        </div>
         <Button type="submit" :label="editingGroupId ? 'Save' : 'Create'" class="w-full" />
       </form>
     </Drawer>
 
-    <!-- ═══ Role Drawer ═══ -->
-    <Drawer v-model:visible="roleDrawerVisible" :header="editingRoleId ? 'Edit Role' : 'Add Role'" position="right" class="w-30rem">
+    <!-- ═══ Role Dialog ═══ -->
+    <Dialog v-model:visible="roleDrawerVisible" :header="editingRoleId ? 'Edit Role' : 'Add Role'" :style="{ width: '56rem' }" modal>
       <form @submit.prevent="handleRoleSubmit" class="drawer-form">
         <div class="field">
           <label>Name</label>
@@ -663,7 +672,7 @@ onMounted(() => {
 
         <Button type="submit" :label="editingRoleId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 

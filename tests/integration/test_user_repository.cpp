@@ -135,19 +135,21 @@ TEST_F(UserRepositoryTest, SetForcePasswordChange) {
 TEST_F(UserRepositoryTest, AddRemoveGroupAndListGroups) {
   int64_t iUserId = _urRepo->create("ivan", "ivan@example.com", "hash");
 
-  // Create groups and get a role ID
+  // Create groups with a role
   auto cg = _cpPool->checkout();
   pqxx::work txn(*cg);
-  auto r1 = txn.exec("INSERT INTO groups (name) VALUES ('grp-a') RETURNING id");
-  auto r2 = txn.exec("INSERT INTO groups (name) VALUES ('grp-b') RETURNING id");
-  int64_t iGrpA = r1.one_row()[0].as<int64_t>();
-  int64_t iGrpB = r2.one_row()[0].as<int64_t>();
   auto rRole = txn.exec("SELECT id FROM roles WHERE name = 'Viewer'").one_row();
   int64_t iRoleId = rRole[0].as<int64_t>();
+  auto r1 = txn.exec("INSERT INTO groups (name, role_id) VALUES ('grp-a', $1) RETURNING id",
+                      pqxx::params{iRoleId});
+  auto r2 = txn.exec("INSERT INTO groups (name, role_id) VALUES ('grp-b', $1) RETURNING id",
+                      pqxx::params{iRoleId});
+  int64_t iGrpA = r1.one_row()[0].as<int64_t>();
+  int64_t iGrpB = r2.one_row()[0].as<int64_t>();
   txn.commit();
 
-  _urRepo->addToGroup(iUserId, iGrpA, iRoleId);
-  _urRepo->addToGroup(iUserId, iGrpB, iRoleId);
+  _urRepo->addToGroup(iUserId, iGrpA);
+  _urRepo->addToGroup(iUserId, iGrpB);
 
   auto vGroups = _urRepo->listGroupsForUser(iUserId);
   ASSERT_EQ(vGroups.size(), 2u);
