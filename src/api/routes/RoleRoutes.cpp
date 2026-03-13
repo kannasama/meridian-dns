@@ -29,12 +29,18 @@ void RoleRoutes::registerRoutes(crow::SimpleApp& app) {
           auto vRoles = _rrRepo.listAll();
           nlohmann::json jArr = nlohmann::json::array();
           for (const auto& role : vRoles) {
+            auto perms = _rrRepo.getPermissions(role.iId);
+            nlohmann::json jPerms = nlohmann::json::array();
+            for (const auto& p : perms) {
+              jPerms.push_back(p);
+            }
             jArr.push_back({
                 {"id", role.iId},
                 {"name", role.sName},
                 {"description", role.sDescription},
                 {"is_system", role.bIsSystem},
                 {"created_at", role.sCreatedAt},
+                {"permissions", jPerms},
             });
           }
           return jsonResponse(200, jArr);
