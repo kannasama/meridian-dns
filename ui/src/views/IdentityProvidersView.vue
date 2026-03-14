@@ -47,6 +47,10 @@ function samlAcsUrl(idpId?: number) {
   return `${computedBaseUrl.value}/api/v1/auth/saml/{id}/acs`
 }
 
+function samlMetadataUrl(idpId: number) {
+  return `${computedBaseUrl.value}/api/v1/auth/saml/${idpId}/metadata`
+}
+
 // Form state
 const form = ref({
   id: 0,
@@ -65,6 +69,12 @@ const form = ref({
   certificate: '',
   name_id_format: '',
   group_attribute: 'groups',
+  // New SAML fields
+  allow_idp_initiated: false,
+  sign_requests: false,
+  idp_entity_id: '',
+  slo_url: '',
+  sp_certificate: '',
   // Group mappings
   mappingRules: [] as GroupMappingRule[],
   default_group_id: null as number | null,
@@ -122,6 +132,11 @@ function openCreate() {
     certificate: '',
     name_id_format: '',
     group_attribute: 'groups',
+    allow_idp_initiated: false,
+    sign_requests: false,
+    idp_entity_id: '',
+    slo_url: '',
+    sp_certificate: '',
     mappingRules: [],
     default_group_id: null,
   }
@@ -130,24 +145,29 @@ function openCreate() {
 
 function openEdit(idp: IdentityProvider) {
   isEditing.value = true
-  const cfg = idp.config as Record<string, string>
+  const cfg = idp.config as Record<string, unknown>
   form.value = {
     id: idp.id,
     name: idp.name,
     type: idp.type,
     is_enabled: idp.is_enabled,
-    issuer_url: cfg.issuer_url ?? '',
-    client_id: cfg.client_id ?? '',
+    issuer_url: (cfg.issuer_url as string) ?? '',
+    client_id: (cfg.client_id as string) ?? '',
     client_secret: '',
     scopes: Array.isArray(cfg.scopes)
-      ? (cfg.scopes as unknown as string[]).join(' ')
-      : (cfg.scopes ?? 'openid email profile'),
-    groups_claim: cfg.groups_claim ?? 'groups',
-    entity_id: cfg.entity_id ?? '',
-    sso_url: cfg.sso_url ?? '',
-    certificate: cfg.certificate ?? '',
-    name_id_format: cfg.name_id_format ?? '',
-    group_attribute: cfg.group_attribute ?? 'groups',
+      ? (cfg.scopes as string[]).join(' ')
+      : ((cfg.scopes as string) ?? 'openid email profile'),
+    groups_claim: (cfg.groups_claim as string) ?? 'groups',
+    entity_id: (cfg.entity_id as string) ?? '',
+    sso_url: (cfg.sso_url as string) ?? '',
+    certificate: (cfg.certificate as string) ?? '',
+    name_id_format: (cfg.name_id_format as string) ?? '',
+    group_attribute: (cfg.group_attribute as string) ?? 'groups',
+    allow_idp_initiated: (cfg.allow_idp_initiated as boolean) ?? false,
+    sign_requests: (cfg.sign_requests as boolean) ?? false,
+    idp_entity_id: (cfg.idp_entity_id as string) ?? '',
+    slo_url: (cfg.slo_url as string) ?? '',
+    sp_certificate: (cfg.sp_certificate as string) ?? '',
     mappingRules: idp.group_mappings?.rules ?? [],
     default_group_id: idp.default_group_id,
   }
@@ -171,6 +191,11 @@ function buildConfig() {
     assertion_consumer_service_url: samlAcsUrl(form.value.id),
     name_id_format: form.value.name_id_format,
     group_attribute: form.value.group_attribute,
+    allow_idp_initiated: form.value.allow_idp_initiated,
+    sign_requests: form.value.sign_requests,
+    idp_entity_id: form.value.idp_entity_id || undefined,
+    slo_url: form.value.slo_url || undefined,
+    sp_certificate: form.value.sp_certificate || undefined,
   }
 }
 
@@ -432,14 +457,58 @@ function copyToClipboard(text: string) {
               <label>IdP SSO URL</label>
               <InputText v-model="form.sso_url" class="w-full" />
             </div>
+            <div class="field">
+              <label>IdP Entity ID</label>
+              <InputText v-model="form.idp_entity_id" class="w-full" />
+              <small class="hint">The IdP's entity ID/issuer URI. If empty, SSO URL is used.</small>
+            </div>
+            <div class="field">
+              <label>SLO URL</label>
+              <InputText v-model="form.slo_url" class="w-full" />
+              <small class="hint">IdP Single Logout endpoint URL. Leave empty to disable SLO.</small>
+            </div>
           </div>
           <div class="field">
             <label>IdP Certificate (PEM)</label>
             <Textarea v-model="form.certificate" class="w-full" rows="4" />
           </div>
           <div class="field">
+            <label>SP Certificate PEM</label>
+            <Textarea v-model="form.sp_certificate" class="w-full" rows="4" />
+            <small class="hint">SP signing certificate in PEM format (for metadata)</small>
+          </div>
+          <div class="field">
             <label>Group Attribute</label>
             <InputText v-model="form.group_attribute" class="w-full" placeholder="groups" />
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label>Allow IdP-Initiated Login</label>
+              <InputSwitch v-model="form.allow_idp_initiated" />
+              <small class="hint">Accept SAML responses without a prior login request (for IdP portal integration)</small>
+            </div>
+            <div class="field">
+              <label>Sign AuthnRequests</label>
+              <InputSwitch v-model="form.sign_requests" />
+              <small class="hint">Sign SAML authentication requests with SP private key</small>
+            </div>
+          </div>
+
+          <!-- SP Metadata download (edit mode only) -->
+          <div v-if="isEditing && form.id" class="callback-display">
+            <label>SP Metadata</label>
+            <div>
+              <Button
+                label="Download SAML Metadata"
+                icon="pi pi-download"
+                severity="secondary"
+                size="small"
+                as="a"
+                :href="samlMetadataUrl(form.id)"
+                target="_blank"
+              />
+            </div>
           </div>
         </template>
 
@@ -585,6 +654,11 @@ function copyToClipboard(text: string) {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 0.75rem;
   color: var(--p-surface-400);
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--p-surface-500);
 }
 
 .mapping-section {
