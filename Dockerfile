@@ -10,6 +10,8 @@ RUN npm run build
 # ── Stage 2: C++ build ─────────────────────────────────────────────────────
 FROM fedora:43 AS builder
 
+RUN dnf update -y --setopt=install_weak_deps=False && dnf clean all
+
 RUN dnf install -y --setopt=install_weak_deps=False \
   cmake ninja-build gcc-c++ \
   libpqxx-devel openssl-devel libgit2-devel \
@@ -32,6 +34,8 @@ RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_UI=OFF \
 # ── Stage 3: Runtime ───────────────────────────────────────────────────────
 FROM fedora:43 AS runtime
 
+RUN dnf update -y --setopt=install_weak_deps=False && dnf clean all
+
 RUN dnf install -y --setopt=install_weak_deps=False \
   libpq libpqxx openssl-libs libgit2 spdlog fmt \
   git ca-certificates openssh-clients \
@@ -49,6 +53,9 @@ COPY scripts/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENV DNS_UI_DIR=/opt/meridian-dns/ui
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -sf http://localhost:8080/api/v1/health || exit 1
 
 USER meridian-dns
 EXPOSE 8080
