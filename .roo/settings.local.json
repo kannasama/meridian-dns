@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(wc -l /home/mjhill/Projects/Git/dns-orchestrator/tests/unit/*.cpp)"
+      "Bash(wc -l /home/mjhill/Projects/Git/dns-orchestrator/tests/unit/*.cpp)",
+      "WebSearch",
+      "WebFetch(domain:doc.entrouvert.org)"
     ]
   }
 }
