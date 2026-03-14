@@ -26,6 +26,8 @@ target_link_libraries(meridian-core PUBLIC
   Crow::Crow
   httplib::httplib
   PkgConfig::LASSO
+  PkgConfig::GLIB2
+  PkgConfig::GOBJECT
   PkgConfig::JANSSON
   PkgConfig::LIBCURL
   PkgConfig::PCRE2

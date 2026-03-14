@@ -5,19 +5,29 @@
 
 #include <spdlog/spdlog.h>
 
+// lasso C headers
+extern "C" {
+#include <lasso/lasso.h>
+#include <lasso/xml/saml-2.0/saml2_assertion.h>
+#include <lasso/xml/saml-2.0/saml2_attribute.h>
+#include <lasso/xml/saml-2.0/saml2_attribute_statement.h>
+#include <lasso/xml/saml-2.0/saml2_attribute_value.h>
+#include <lasso/xml/saml-2.0/saml2_authn_statement.h>
+#include <lasso/xml/saml-2.0/saml2_name_id.h>
+#include <lasso/xml/saml-2.0/saml2_subject.h>
+#include <lasso/xml/saml-2.0/samlp2_authn_request.h>
+#include <lasso/xml/saml-2.0/samlp2_name_id_policy.h>
+#include <lasso/xml/saml-2.0/samlp2_response.h>
+#include <lasso/xml/saml-2.0/samlp2_status_response.h>
+#include <lasso/xml/misc_text_node.h>
+}
+
 #include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/rand.h>
-#include <openssl/x509.h>
-
-#include <spdlog/spdlog.h>
-
-#include <zlib.h>
 
 #include <algorithm>
-#include <cstring>
 #include <ctime>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #include <vector>
 
@@ -26,60 +36,9 @@ namespace dns::security {
 namespace {
 
 constexpr auto kStateTtl = std::chrono::minutes(10);
+std::once_flag s_lassoInitFlag;
 
-std::string urlEncode(const std::string& sValue) {
-  std::ostringstream oss;
-  for (unsigned char c : sValue) {
-    if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-      oss << c;
-    } else {
-      oss << '%' << std::uppercase << std::hex
-          << static_cast<int>(c >> 4) << static_cast<int>(c & 0x0F);
-    }
-  }
-  return oss.str();
-}
-
-std::string generateRandomHex(int iBytes) {
-  std::vector<unsigned char> vRandom(static_cast<size_t>(iBytes));
-  if (RAND_bytes(vRandom.data(), iBytes) != 1) {
-    throw std::runtime_error("RAND_bytes failed");
-  }
-  std::ostringstream oss;
-  for (unsigned char c : vRandom) {
-    oss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
-  }
-  return oss.str();
-}
-
-/// Deflate (raw, no zlib header) for SAML HTTP-Redirect binding.
-std::vector<unsigned char> deflateRaw(const std::string& sInput) {
-  z_stream zs{};
-  // -MAX_WBITS for raw deflate (no zlib/gzip header)
-  if (deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS, 8,
-                   Z_DEFAULT_STRATEGY) != Z_OK) {
-    throw std::runtime_error("deflateInit2 failed");
-  }
-
-  zs.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(sInput.data()));
-  zs.avail_in = static_cast<uInt>(sInput.size());
-
-  std::vector<unsigned char> vOut(sInput.size() + 128);
-  zs.next_out = vOut.data();
-  zs.avail_out = static_cast<uInt>(vOut.size());
-
-  int iRet = deflate(&zs, Z_FINISH);
-  deflateEnd(&zs);
-
-  if (iRet != Z_STREAM_END) {
-    throw std::runtime_error("deflate failed");
-  }
-
-  vOut.resize(zs.total_out);
-  return vOut;
-}
-
-/// Base64 encode raw bytes.
+/// Base64 encode raw bytes using OpenSSL.
 std::string base64EncodeBytes(const unsigned char* pData, size_t uLen) {
   EVP_ENCODE_CTX* pCtx = EVP_ENCODE_CTX_new();
   EVP_EncodeInit(pCtx);
@@ -100,36 +59,68 @@ std::string base64EncodeBytes(const unsigned char* pData, size_t uLen) {
   return sResult;
 }
 
-/// Base64 decode to string.
-std::string base64DecodeStr(const std::string& sInput) {
-  EVP_ENCODE_CTX* pCtx = EVP_ENCODE_CTX_new();
-  EVP_DecodeInit(pCtx);
+/// Helper: safe null-to-empty-string conversion for C strings.
+std::string safeStr(const char* p) {
+  return p != nullptr ? std::string(p) : std::string();
+}
 
-  std::vector<unsigned char> vOut(sInput.size());
-  int iOutLen = 0;
-  int iTotalLen = 0;
+/// Helper: extract text content from a LassoNode that may be a MiscTextNode.
+std::string extractNodeText(LassoNode* pNode) {
+  if (pNode == nullptr) return "";
 
-  int iRet = EVP_DecodeUpdate(pCtx, vOut.data(), &iOutLen,
-                              reinterpret_cast<const unsigned char*>(sInput.data()),
-                              static_cast<int>(sInput.size()));
-  if (iRet < 0) {
-    EVP_ENCODE_CTX_free(pCtx);
-    throw common::AuthenticationError("invalid_saml", "Failed to decode SAML response");
+  if (LASSO_IS_MISC_TEXT_NODE(pNode)) {
+    auto* pText = LASSO_MISC_TEXT_NODE(pNode);
+    return safeStr(pText->content);
   }
-  iTotalLen += iOutLen;
-  EVP_DecodeFinal(pCtx, vOut.data() + iTotalLen, &iOutLen);
-  iTotalLen += iOutLen;
-  EVP_ENCODE_CTX_free(pCtx);
 
-  return std::string(reinterpret_cast<char*>(vOut.data()), static_cast<size_t>(iTotalLen));
+  // Try to export node to XML and extract text content
+  gchar* pDump = lasso_node_dump(pNode);
+  if (pDump != nullptr) {
+    std::string sDump(pDump);
+    g_free(pDump);
+    // Strip XML tags, return inner text
+    auto iStart = sDump.find('>');
+    if (iStart != std::string::npos) {
+      auto iEnd = sDump.rfind('<');
+      if (iEnd != std::string::npos && iEnd > iStart) {
+        return sDump.substr(iStart + 1, iEnd - iStart - 1);
+      }
+    }
+    return sDump;
+  }
+  return "";
 }
 
 }  // anonymous namespace
 
 // ── SamlService ────────────────────────────────────────────────────────────
 
-SamlService::SamlService(SamlReplayCache& srcCache) : _srcCache(srcCache) {}
-SamlService::~SamlService() = default;
+SamlService::SamlService(SamlReplayCache& srcCache) : _srcCache(srcCache) {
+  initLibrary();
+}
+
+SamlService::~SamlService() {
+  std::lock_guard<std::mutex> lock(_mtxIdps);
+  for (auto& [iId, pServer] : _mServers) {
+    if (pServer != nullptr) {
+      lasso_server_destroy(pServer);
+    }
+  }
+  _mServers.clear();
+}
+
+void SamlService::initLibrary() {
+  std::call_once(s_lassoInitFlag, []() {
+    int iRc = lasso_init();
+    if (iRc != 0) {
+      spdlog::error("lasso_init() failed with code {}", iRc);
+      throw std::runtime_error("Failed to initialize lasso library");
+    }
+    spdlog::info("lasso library initialized");
+  });
+}
+
+// ── Static helpers ─────────────────────────────────────────────────────────
 
 std::string SamlService::base64Encode(const std::string& sInput) {
   return base64EncodeBytes(reinterpret_cast<const unsigned char*>(sInput.data()),
@@ -145,62 +136,421 @@ std::string SamlService::formatIso8601(std::chrono::system_clock::time_point tp)
   return oss.str();
 }
 
-std::chrono::system_clock::time_point SamlService::parseIso8601(const std::string& sTimestamp) {
-  std::tm tmParsed{};
-  std::istringstream iss(sTimestamp);
-  iss >> std::get_time(&tmParsed, "%Y-%m-%dT%H:%M:%S");
-  if (iss.fail()) {
-    throw common::AuthenticationError("invalid_timestamp",
-                                      "Failed to parse SAML timestamp: " + sTimestamp);
+std::string SamlService::stripPemHeaders(const std::string& sPem) {
+  std::string sResult;
+  std::istringstream iss(sPem);
+  std::string sLine;
+  while (std::getline(iss, sLine)) {
+    // Strip CR if present
+    if (!sLine.empty() && sLine.back() == '\r') {
+      sLine.pop_back();
+    }
+    // Skip PEM header/footer lines
+    if (sLine.find("-----BEGIN") != std::string::npos) continue;
+    if (sLine.find("-----END") != std::string::npos) continue;
+    if (sLine.empty()) continue;
+    sResult += sLine;
   }
-  auto tTime = timegm(&tmParsed);
-  return std::chrono::system_clock::from_time_t(tTime);
+  // If input had no PEM headers, it's already bare base64
+  if (sResult.empty()) {
+    // Remove all whitespace from original
+    sResult.reserve(sPem.size());
+    for (char c : sPem) {
+      if (!std::isspace(static_cast<unsigned char>(c))) {
+        sResult += c;
+      }
+    }
+  }
+  return sResult;
 }
 
-// ── Task 6: AuthnRequest generation ────────────────────────────────────────
+// ── Metadata generation ────────────────────────────────────────────────────
 
-std::string SamlService::generateAuthnRequest(const std::string& sSpEntityId,
-                                              const std::string& sAcsUrl,
-                                              const std::string& sIdpSsoUrl) {
-  std::string sId = "_" + generateRandomHex(16);
-  std::string sIssueInstant = formatIso8601(std::chrono::system_clock::now());
-
+std::string SamlService::buildSpMetadata(const std::string& sSpEntityId,
+                                         const std::string& sAcsUrl) {
   std::ostringstream oss;
-  oss << "<samlp:AuthnRequest"
-      << " xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\""
-      << " xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\""
-      << " ID=\"" << sId << "\""
-      << " Version=\"2.0\""
-      << " IssueInstant=\"" << sIssueInstant << "\""
-      << " Destination=\"" << sIdpSsoUrl << "\""
-      << " AssertionConsumerServiceURL=\"" << sAcsUrl << "\""
-      << " ProtocolBinding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\""
-      << ">"
-      << "<saml:Issuer>" << sSpEntityId << "</saml:Issuer>"
-      << "</samlp:AuthnRequest>";
-
+  oss << R"(<?xml version="1.0" encoding="UTF-8"?>)"
+      << R"(<EntityDescriptor entityID=")" << sSpEntityId
+      << R"(" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">)"
+      << R"(<SPSSODescriptor AuthnRequestsSigned="false" )"
+      << R"(protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">)"
+      << R"(<AssertionConsumerService )"
+      << R"(Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" )"
+      << R"(Location=")" << sAcsUrl << R"(" )"
+      << R"(index="0" isDefault="true"/>)"
+      << R"(</SPSSODescriptor>)"
+      << R"(</EntityDescriptor>)";
   return oss.str();
 }
 
-std::string SamlService::buildRedirectUrl(const std::string& sIdpSsoUrl,
-                                          const std::string& sAuthnRequest,
-                                          const std::string& sRelayState) {
-  // Deflate the AuthnRequest
-  auto vDeflated = deflateRaw(sAuthnRequest);
+std::string SamlService::buildIdpMetadata(const std::string& sIdpEntityId,
+                                          const std::string& sIdpSsoUrl,
+                                          const std::string& sIdpCertPem) {
+  std::string sCertBase64 = stripPemHeaders(sIdpCertPem);
 
-  // Base64 encode
-  std::string sEncoded = base64EncodeBytes(vDeflated.data(), vDeflated.size());
-
-  // Build URL
   std::ostringstream oss;
-  oss << sIdpSsoUrl;
-  oss << (sIdpSsoUrl.find('?') != std::string::npos ? "&" : "?");
-  oss << "SAMLRequest=" << urlEncode(sEncoded);
+  oss << R"(<?xml version="1.0" encoding="UTF-8"?>)"
+      << R"(<EntityDescriptor entityID=")" << sIdpEntityId
+      << R"(" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">)"
+      << R"(<IDPSSODescriptor )"
+      << R"(protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">)"
+      << R"(<KeyDescriptor use="signing">)"
+      << R"(<ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">)"
+      << R"(<ds:X509Data>)"
+      << R"(<ds:X509Certificate>)" << sCertBase64 << R"(</ds:X509Certificate>)"
+      << R"(</ds:X509Data>)"
+      << R"(</ds:KeyInfo>)"
+      << R"(</KeyDescriptor>)"
+      << R"(<SingleSignOnService )"
+      << R"(Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" )"
+      << R"(Location=")" << sIdpSsoUrl << R"("/>)"
+      << R"(</IDPSSODescriptor>)"
+      << R"(</EntityDescriptor>)";
+  return oss.str();
+}
+
+// ── IdP registration ───────────────────────────────────────────────────────
+
+void SamlService::registerIdp(int64_t iIdpId,
+                              const std::string& sSpEntityId,
+                              const std::string& sAcsUrl,
+                              const std::string& sIdpEntityId,
+                              const std::string& sIdpSsoUrl,
+                              const std::string& sIdpCertPem,
+                              const std::string& sSpPrivateKeyPem) {
+  std::lock_guard<std::mutex> lock(_mtxIdps);
+
+  // Destroy existing registration if any
+  auto it = _mServers.find(iIdpId);
+  if (it != _mServers.end()) {
+    if (it->second != nullptr) {
+      lasso_server_destroy(it->second);
+    }
+    _mServers.erase(it);
+  }
+
+  // Generate metadata XML
+  std::string sSpMeta = buildSpMetadata(sSpEntityId, sAcsUrl);
+  std::string sIdpMeta = buildIdpMetadata(sIdpEntityId, sIdpSsoUrl, sIdpCertPem);
+
+  spdlog::debug("Registering SAML IdP {} (entity={})", iIdpId, sIdpEntityId);
+
+  // Create lasso server from SP metadata buffer
+  const gchar* pSpPrivKey = sSpPrivateKeyPem.empty() ? nullptr : sSpPrivateKeyPem.c_str();
+  LassoServer* pServer = lasso_server_new_from_buffers(
+      sSpMeta.c_str(),
+      pSpPrivKey,   // private_key_content (optional)
+      nullptr,      // private_key_password
+      nullptr);     // certificate_content
+
+  if (pServer == nullptr) {
+    throw common::AuthenticationError(
+        "saml_server_init",
+        "Failed to create lasso server for IdP " + std::to_string(iIdpId));
+  }
+
+  // Add the IdP provider from metadata buffer
+  int iRc = lasso_server_add_provider_from_buffer(
+      pServer,
+      LASSO_PROVIDER_ROLE_IDP,
+      sIdpMeta.c_str(),
+      nullptr,   // public_key
+      nullptr);  // ca_cert_chain
+
+  if (iRc != 0) {
+    spdlog::error("lasso_server_add_provider_from_buffer failed: {} (code {})",
+                  lasso_strerror(iRc) ? lasso_strerror(iRc) : "unknown", iRc);
+    lasso_server_destroy(pServer);
+    throw common::AuthenticationError(
+        "saml_provider_add",
+        "Failed to add IdP provider for " + std::to_string(iIdpId) +
+            ": code " + std::to_string(iRc));
+  }
+
+  _mServers[iIdpId] = pServer;
+  spdlog::info("SAML IdP {} registered (SP={}, IdP={})", iIdpId, sSpEntityId, sIdpEntityId);
+}
+
+bool SamlService::isIdpRegistered(int64_t iIdpId) const {
+  std::lock_guard<std::mutex> lock(_mtxIdps);
+  return _mServers.contains(iIdpId);
+}
+
+// ── SP-initiated login ─────────────────────────────────────────────────────
+
+SamlLoginResult SamlService::buildLoginUrl(int64_t iIdpId,
+                                           const std::string& sRelayState) {
+  LassoServer* pServer = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(_mtxIdps);
+    auto it = _mServers.find(iIdpId);
+    if (it == _mServers.end() || it->second == nullptr) {
+      throw common::AuthenticationError(
+          "saml_idp_not_registered",
+          "SAML IdP " + std::to_string(iIdpId) + " is not registered");
+    }
+    pServer = it->second;
+  }
+
+  // Create login profile
+  LassoLogin* pLogin = lasso_login_new(pServer);
+  if (pLogin == nullptr) {
+    throw common::AuthenticationError("saml_login_new", "Failed to create lasso login");
+  }
+
+  // Find the IdP entity ID from the server's providers
+  // Use the first (and only) IdP we registered
+  const gchar* pIdpEntityId = nullptr;
+  {
+    auto* pProviders = g_hash_table_get_keys(pServer->providers);
+    if (pProviders != nullptr && pProviders->data != nullptr) {
+      pIdpEntityId = static_cast<const gchar*>(pProviders->data);
+    }
+    g_list_free(pProviders);
+  }
+
+  if (pIdpEntityId == nullptr) {
+    g_object_unref(pLogin);
+    throw common::AuthenticationError("saml_no_idp", "No IdP registered in lasso server");
+  }
+
+  // Initialize the AuthnRequest
+  int iRc = lasso_login_init_authn_request(pLogin, pIdpEntityId,
+                                           LASSO_HTTP_METHOD_REDIRECT);
+  if (iRc != 0) {
+    spdlog::error("lasso_login_init_authn_request: {} (code {})",
+                  lasso_strerror(iRc) ? lasso_strerror(iRc) : "unknown", iRc);
+    g_object_unref(pLogin);
+    throw common::AuthenticationError("saml_init_authn",
+                                      "Failed to init AuthnRequest: code " +
+                                          std::to_string(iRc));
+  }
+
+  // Configure NameIDPolicy
+  auto* pRequest = LASSO_SAMLP2_AUTHN_REQUEST(LASSO_PROFILE(pLogin)->request);
+  if (pRequest != nullptr && pRequest->NameIDPolicy != nullptr) {
+    g_free(pRequest->NameIDPolicy->Format);
+    pRequest->NameIDPolicy->Format =
+        g_strdup(LASSO_SAML2_NAME_IDENTIFIER_FORMAT_UNSPECIFIED);
+    pRequest->NameIDPolicy->AllowCreate = TRUE;
+  }
+
+  // Set relay state on the profile
   if (!sRelayState.empty()) {
-    oss << "&RelayState=" << urlEncode(sRelayState);
+    g_free(LASSO_PROFILE(pLogin)->msg_relayState);
+    LASSO_PROFILE(pLogin)->msg_relayState = g_strdup(sRelayState.c_str());
   }
-  return oss.str();
+
+  // Build the AuthnRequest message (redirect URL)
+  iRc = lasso_login_build_authn_request_msg(pLogin);
+  if (iRc != 0) {
+    spdlog::error("lasso_login_build_authn_request_msg: {} (code {})",
+                  lasso_strerror(iRc) ? lasso_strerror(iRc) : "unknown", iRc);
+    g_object_unref(pLogin);
+    throw common::AuthenticationError("saml_build_authn",
+                                      "Failed to build AuthnRequest: code " +
+                                          std::to_string(iRc));
+  }
+
+  // Extract redirect URL and request ID
+  SamlLoginResult result;
+  result.sRedirectUrl = safeStr(LASSO_PROFILE(pLogin)->msg_url);
+  result.sRequestId = safeStr(
+      LASSO_SAMLP2_REQUEST_ABSTRACT(LASSO_PROFILE(pLogin)->request)->ID);
+
+  spdlog::debug("SAML AuthnRequest built: id={}, url_prefix={}...",
+                result.sRequestId,
+                result.sRedirectUrl.substr(0, std::min(result.sRedirectUrl.size(),
+                                                       static_cast<size_t>(80))));
+
+  g_object_unref(pLogin);
+  return result;
 }
+
+// ── Response validation ────────────────────────────────────────────────────
+
+nlohmann::json SamlService::validateResponse(int64_t iIdpId,
+                                             const std::string& sSamlResponse,
+                                             const std::string& sExpectedRequestId) {
+  LassoServer* pServer = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(_mtxIdps);
+    auto it = _mServers.find(iIdpId);
+    if (it == _mServers.end() || it->second == nullptr) {
+      throw common::AuthenticationError(
+          "saml_idp_not_registered",
+          "SAML IdP " + std::to_string(iIdpId) + " is not registered");
+    }
+    pServer = it->second;
+  }
+
+  // Create login profile for processing the response
+  LassoLogin* pLogin = lasso_login_new(pServer);
+  if (pLogin == nullptr) {
+    throw common::AuthenticationError("saml_login_new",
+                                      "Failed to create lasso login for response");
+  }
+
+  // Process the SAML response (base64-encoded)
+  // lasso handles base64 decoding, XML parsing, signature verification via xmlsec1
+  int iRc = lasso_login_process_authn_response_msg(pLogin,
+                                                   const_cast<gchar*>(sSamlResponse.c_str()));
+  if (iRc != 0) {
+    std::string sErr = safeStr(lasso_strerror(iRc));
+    spdlog::error("lasso_login_process_authn_response_msg: {} (code {})", sErr, iRc);
+    g_object_unref(pLogin);
+    throw common::AuthenticationError(
+        "saml_response_invalid",
+        "Failed to process SAML response: " + sErr + " (code " + std::to_string(iRc) + ")");
+  }
+
+  // Validate InResponseTo if we have an expected request ID
+  if (!sExpectedRequestId.empty()) {
+    auto* pResponse = LASSO_SAMLP2_STATUS_RESPONSE(LASSO_PROFILE(pLogin)->response);
+    if (pResponse != nullptr && pResponse->InResponseTo != nullptr) {
+      std::string sInResponseTo(pResponse->InResponseTo);
+      if (sInResponseTo != sExpectedRequestId) {
+        spdlog::error("SAML InResponseTo mismatch: expected={}, got={}",
+                      sExpectedRequestId, sInResponseTo);
+        g_object_unref(pLogin);
+        throw common::AuthenticationError(
+            "saml_request_id_mismatch",
+            "SAML InResponseTo mismatch: expected " + sExpectedRequestId);
+      }
+    }
+  }
+
+  // Accept SSO — validates conditions (audience, time), creates identity/session
+  iRc = lasso_login_accept_sso(pLogin);
+  if (iRc != 0) {
+    std::string sErr = safeStr(lasso_strerror(iRc));
+    spdlog::error("lasso_login_accept_sso: {} (code {})", sErr, iRc);
+    g_object_unref(pLogin);
+    throw common::AuthenticationError(
+        "saml_accept_sso_failed",
+        "SAML SSO validation failed: " + sErr + " (code " + std::to_string(iRc) + ")");
+  }
+
+  // ── Extract NameID ──────────────────────────────────────────────────────
+  std::string sNameId;
+  auto* pNameIdNode = LASSO_PROFILE(pLogin)->nameIdentifier;
+  if (pNameIdNode != nullptr && LASSO_IS_SAML2_NAME_ID(pNameIdNode)) {
+    auto* pNameId = LASSO_SAML2_NAME_ID(pNameIdNode);
+    sNameId = safeStr(pNameId->content);
+  }
+
+  // ── Extract attributes and session index from assertions ────────────────
+  nlohmann::json jAttributes = nlohmann::json::object();
+  std::string sSessionIndex;
+
+  auto* pResponseNode = LASSO_PROFILE(pLogin)->response;
+  if (pResponseNode != nullptr && LASSO_IS_SAMLP2_RESPONSE(pResponseNode)) {
+    auto* pResponse = LASSO_SAMLP2_RESPONSE(pResponseNode);
+
+    for (GList* pAssertionItem = pResponse->Assertion;
+         pAssertionItem != nullptr;
+         pAssertionItem = g_list_next(pAssertionItem)) {
+      if (!LASSO_IS_SAML2_ASSERTION(pAssertionItem->data)) continue;
+      auto* pAssertion = LASSO_SAML2_ASSERTION(pAssertionItem->data);
+
+      // ── Replay detection ──────────────────────────────────────────────
+      std::string sAssertionId = safeStr(pAssertion->ID);
+      if (!sAssertionId.empty()) {
+        auto tpExpiry = std::chrono::system_clock::now() + std::chrono::hours(1);
+        if (!_srcCache.checkAndInsert(sAssertionId, tpExpiry)) {
+          g_object_unref(pLogin);
+          throw common::AuthenticationError("saml_replay",
+                                            "SAML assertion replay detected");
+        }
+      }
+
+      // ── Session index from AuthnStatement ─────────────────────────────
+      for (GList* pStmtItem = pAssertion->AuthnStatement;
+           pStmtItem != nullptr;
+           pStmtItem = g_list_next(pStmtItem)) {
+        if (!LASSO_IS_SAML2_AUTHN_STATEMENT(pStmtItem->data)) continue;
+        auto* pAuthnStmt = LASSO_SAML2_AUTHN_STATEMENT(pStmtItem->data);
+        if (pAuthnStmt->SessionIndex != nullptr && sSessionIndex.empty()) {
+          sSessionIndex = pAuthnStmt->SessionIndex;
+        }
+      }
+
+      // ── If NameID not found on profile, try the assertion subject ─────
+      if (sNameId.empty() && pAssertion->Subject != nullptr &&
+          pAssertion->Subject->NameID != nullptr) {
+        sNameId = safeStr(pAssertion->Subject->NameID->content);
+      }
+
+      // ── AttributeStatements ───────────────────────────────────────────
+      for (GList* pAttrStmtItem = pAssertion->AttributeStatement;
+           pAttrStmtItem != nullptr;
+           pAttrStmtItem = g_list_next(pAttrStmtItem)) {
+        if (!LASSO_IS_SAML2_ATTRIBUTE_STATEMENT(pAttrStmtItem->data)) continue;
+        auto* pAttrStmt = LASSO_SAML2_ATTRIBUTE_STATEMENT(pAttrStmtItem->data);
+
+        for (GList* pAttrItem = pAttrStmt->Attribute;
+             pAttrItem != nullptr;
+             pAttrItem = g_list_next(pAttrItem)) {
+          if (!LASSO_IS_SAML2_ATTRIBUTE(pAttrItem->data)) continue;
+          auto* pAttr = LASSO_SAML2_ATTRIBUTE(pAttrItem->data);
+
+          std::string sAttrName = safeStr(pAttr->Name);
+          if (sAttrName.empty()) continue;
+
+          nlohmann::json jValues = nlohmann::json::array();
+
+          for (GList* pValItem = pAttr->AttributeValue;
+               pValItem != nullptr;
+               pValItem = g_list_next(pValItem)) {
+            if (pValItem->data == nullptr) continue;
+
+            if (LASSO_IS_SAML2_ATTRIBUTE_VALUE(pValItem->data)) {
+              auto* pAttrVal = LASSO_SAML2_ATTRIBUTE_VALUE(pValItem->data);
+              // Each AttributeValue can contain multiple child nodes
+              for (GList* pAnyItem = pAttrVal->any;
+                   pAnyItem != nullptr;
+                   pAnyItem = g_list_next(pAnyItem)) {
+                if (pAnyItem->data == nullptr) continue;
+                std::string sText = extractNodeText(LASSO_NODE(pAnyItem->data));
+                if (!sText.empty()) {
+                  jValues.push_back(sText);
+                }
+              }
+              // If AttributeValue had no children but may have text content
+              if (pAttrVal->any == nullptr) {
+                std::string sText = extractNodeText(LASSO_NODE(pAttrVal));
+                if (!sText.empty()) {
+                  jValues.push_back(sText);
+                }
+              }
+            } else {
+              // Might be a text node directly
+              std::string sText = extractNodeText(LASSO_NODE(pValItem->data));
+              if (!sText.empty()) {
+                jValues.push_back(sText);
+              }
+            }
+          }
+
+          jAttributes[sAttrName] = jValues;
+        }
+      }
+    }
+  }
+
+  g_object_unref(pLogin);
+
+  spdlog::debug("SAML response validated: name_id={}, session_index={}, attrs={}",
+                sNameId, sSessionIndex, jAttributes.size());
+
+  return {
+      {"name_id", sNameId},
+      {"attributes", jAttributes},
+      {"session_index", sSessionIndex},
+  };
+}
+
+// ── Auth state management ──────────────────────────────────────────────────
 
 void SamlService::storeAuthState(const std::string& sRelayState, SamlAuthState saState) {
   std::lock_guard<std::mutex> lock(_mtxStates);
@@ -231,391 +581,6 @@ void SamlService::evictExpiredStates() {
       ++it;
     }
   }
-}
-
-// ── Task 7: Assertion validation ───────────────────────────────────────────
-
-std::string SamlService::extractElement(const std::string& sXml, const std::string& sTag) {
-  // Find opening tag (may have attributes)
-  std::string sOpenPrefix = "<" + sTag;
-  size_t iSearchFrom = 0;
-  size_t iStart = std::string::npos;
-  while (true) {
-    iStart = sXml.find(sOpenPrefix, iSearchFrom);
-    if (iStart == std::string::npos) return "";
-    // Ensure we matched the exact tag, not a prefix (e.g. "saml:Audience" vs "saml:AudienceRestriction")
-    auto iAfterTag = iStart + sOpenPrefix.size();
-    if (iAfterTag < sXml.size()) {
-      char cNext = sXml[iAfterTag];
-      if (cNext == '>' || cNext == ' ' || cNext == '/' || cNext == '\t' || cNext == '\n' || cNext == '\r') {
-        break;  // Exact match
-      }
-    } else {
-      return "";  // Tag at end of string, malformed
-    }
-    iSearchFrom = iStart + 1;
-  }
-
-  // Find end of opening tag
-  auto iTagEnd = sXml.find('>', iStart);
-  if (iTagEnd == std::string::npos) return "";
-
-  // Check for self-closing tag
-  if (sXml[iTagEnd - 1] == '/') return "";
-
-  auto iContentStart = iTagEnd + 1;
-
-  // Find closing tag
-  std::string sCloseTag = "</" + sTag + ">";
-  auto iEnd = sXml.find(sCloseTag, iContentStart);
-  if (iEnd == std::string::npos) return "";
-
-  return sXml.substr(iContentStart, iEnd - iContentStart);
-}
-
-std::string SamlService::extractAttribute(const std::string& sXml, const std::string& sAttr) {
-  std::string sSearch = sAttr + "=\"";
-  auto iStart = sXml.find(sSearch);
-  if (iStart == std::string::npos) return "";
-
-  auto iValueStart = iStart + sSearch.size();
-  auto iEnd = sXml.find('"', iValueStart);
-  if (iEnd == std::string::npos) return "";
-
-  return sXml.substr(iValueStart, iEnd - iValueStart);
-}
-
-/// Detect the namespace prefix used for SAML assertion elements.
-/// Tries "saml:", "saml2:", and no prefix. Returns the prefix string (e.g. "saml:", "saml2:", "").
-std::string detectAssertionPrefix(const std::string& sXml) {
-  for (const auto& sPrefix : {"saml:", "saml2:", ""}) {
-    std::string sSearch = std::string("<") + sPrefix + "Assertion";
-    auto iPos = sXml.find(sSearch);
-    if (iPos != std::string::npos) {
-      // Verify exact tag match (not a prefix of a longer tag name)
-      auto iAfter = iPos + sSearch.size();
-      if (iAfter < sXml.size()) {
-        char c = sXml[iAfter];
-        if (c == '>' || c == ' ' || c == '/' || c == '\t' || c == '\n' || c == '\r') {
-          return sPrefix;
-        }
-      }
-    }
-  }
-  return "saml:";  // fallback
-}
-
-/// Find the closing tag for an element, trying multiple namespace prefixes.
-/// Returns the position after the closing tag, or npos if not found.
-size_t findClosingTag(const std::string& sXml, const std::string& sLocalName,
-                      const std::string& sPrefix, size_t iFrom) {
-  std::string sClose = "</" + sPrefix + sLocalName + ">";
-  return sXml.find(sClose, iFrom);
-}
-
-std::vector<std::string> SamlService::extractAttributeValues(const std::string& sXml,
-                                                             const std::string& sAttrName) {
-  std::vector<std::string> vValues;
-
-  // Find the Attribute element with the given Name
-  std::string sSearch = "Name=\"" + sAttrName + "\"";
-  auto iAttrStart = sXml.find(sSearch);
-  if (iAttrStart == std::string::npos) return vValues;
-
-  // Detect prefix used in this context
-  std::string sPrefix = detectAssertionPrefix(sXml);
-
-  // Find the end of this Attribute element (try detected prefix, then alternatives)
-  std::string sCloseTag = "</" + sPrefix + "Attribute>";
-  auto iAttrEnd = sXml.find(sCloseTag, iAttrStart);
-  if (iAttrEnd == std::string::npos) {
-    // Try without prefix
-    iAttrEnd = sXml.find("</Attribute>", iAttrStart);
-    if (iAttrEnd == std::string::npos) return vValues;
-  }
-
-  std::string sAttrBlock = sXml.substr(iAttrStart, iAttrEnd - iAttrStart);
-
-  // Extract all AttributeValue elements — try with prefix first, then without
-  // Also handle AttributeValue tags that may have attributes (e.g. xsi:type)
-  size_t iPos = 0;
-  while (true) {
-    // Find opening AttributeValue tag with any prefix
-    size_t iValTagStart = std::string::npos;
-    for (const auto& p : {sPrefix, std::string("")}) {
-      std::string sTag = "<" + p + "AttributeValue";
-      auto iFound = sAttrBlock.find(sTag, iPos);
-      if (iFound != std::string::npos && (iValTagStart == std::string::npos || iFound < iValTagStart)) {
-        iValTagStart = iFound;
-      }
-    }
-    if (iValTagStart == std::string::npos) break;
-
-    // Find end of opening tag (may have attributes like xsi:type)
-    auto iValContentStart = sAttrBlock.find('>', iValTagStart);
-    if (iValContentStart == std::string::npos) break;
-    iValContentStart += 1;
-
-    // Find closing tag
-    size_t iValEnd = std::string::npos;
-    for (const auto& p : {sPrefix, std::string("")}) {
-      std::string sClose = "</" + p + "AttributeValue>";
-      auto iFound = sAttrBlock.find(sClose, iValContentStart);
-      if (iFound != std::string::npos && (iValEnd == std::string::npos || iFound < iValEnd)) {
-        iValEnd = iFound;
-      }
-    }
-    if (iValEnd == std::string::npos) break;
-
-    vValues.push_back(sAttrBlock.substr(iValContentStart, iValEnd - iValContentStart));
-    iPos = iValEnd + 1;
-  }
-
-  return vValues;
-}
-
-nlohmann::json SamlService::validateAssertion(const std::string& sSamlResponse,
-                                              const std::string& sIdpCertPem,
-                                              const std::string& sExpectedAudience,
-                                              const std::string& sExpectedRequestId) {
-  // 1. Base64-decode the SAMLResponse
-  std::string sXml = base64DecodeStr(sSamlResponse);
-
-  // Detect the namespace prefix used for SAML assertion elements
-  std::string sP = detectAssertionPrefix(sXml);
-  spdlog::debug("SAML assertion namespace prefix: '{}'", sP);
-
-  // 2. Check status — the StatusCode Value attribute contains "Success"
-  std::string sStatusCode = extractAttribute(sXml, "Value");
-  if (sStatusCode.find("Success") == std::string::npos) {
-    throw common::AuthenticationError("saml_status_failed",
-                                      "SAML response status is not Success: " + sStatusCode);
-  }
-
-  // 3. Extract assertion (try detected prefix)
-  std::string sAssertion = extractElement(sXml, sP + "Assertion");
-  if (sAssertion.empty()) {
-    spdlog::error("No assertion found with prefix '{}'. XML snippet (first 500 chars): {}",
-                  sP, sXml.substr(0, 500));
-    throw common::AuthenticationError("saml_no_assertion", "No assertion found in SAML response");
-  }
-
-  // 4. Extract assertion ID for replay check
-  // Find the Assertion element to get its ID attribute
-  auto iAssertionStart = sXml.find("<" + sP + "Assertion");
-  std::string sAssertionTag = sXml.substr(iAssertionStart,
-                                          sXml.find('>', iAssertionStart) - iAssertionStart + 1);
-  std::string sAssertionId = extractAttribute(sAssertionTag, "ID");
-
-  // 5. Validate conditions
-  std::string sConditions;
-  std::string sCondTag = sP + "Conditions";
-  auto iCondStart = sAssertion.find("<" + sCondTag);
-  if (iCondStart != std::string::npos) {
-    std::string sCondClose = "</" + sCondTag + ">";
-    auto iCondEnd = sAssertion.find(sCondClose, iCondStart);
-    if (iCondEnd != std::string::npos) {
-      sConditions = sAssertion.substr(iCondStart, iCondEnd - iCondStart + sCondClose.size());
-    }
-  }
-
-  if (!sConditions.empty()) {
-    std::string sNotBefore = extractAttribute(sConditions, "NotBefore");
-    std::string sNotOnOrAfter = extractAttribute(sConditions, "NotOnOrAfter");
-
-    auto tpNow = std::chrono::system_clock::now();
-
-    if (!sNotBefore.empty()) {
-      auto tpNotBefore = parseIso8601(sNotBefore);
-      // Allow 60 seconds clock skew
-      if (tpNow < tpNotBefore - std::chrono::seconds(60)) {
-        throw common::AuthenticationError("saml_not_yet_valid",
-                                          "SAML assertion is not yet valid");
-      }
-    }
-
-    if (!sNotOnOrAfter.empty()) {
-      auto tpNotOnOrAfter = parseIso8601(sNotOnOrAfter);
-      if (tpNow > tpNotOnOrAfter + std::chrono::seconds(60)) {
-        throw common::AuthenticationError("saml_expired", "SAML assertion has expired");
-      }
-    }
-
-    // Validate audience
-    std::string sAudience = extractElement(sConditions, sP + "Audience");
-    if (!sAudience.empty() && sAudience != sExpectedAudience) {
-      throw common::AuthenticationError(
-          "saml_audience_mismatch",
-          "SAML audience mismatch: expected " + sExpectedAudience + ", got " + sAudience);
-    }
-  }
-
-  // 6. Validate InResponseTo
-  if (!sExpectedRequestId.empty()) {
-    std::string sInResponseTo = extractAttribute(sAssertion, "InResponseTo");
-    if (!sInResponseTo.empty() && sInResponseTo != sExpectedRequestId) {
-      throw common::AuthenticationError(
-          "saml_request_id_mismatch",
-          "SAML InResponseTo mismatch: expected " + sExpectedRequestId);
-    }
-  }
-
-  // 7. Verify XML signature (if certificate provided)
-  //
-  // NOTE: Full XML Digital Signature (XMLDSig) verification requires XML
-  // canonicalization (C14N) which needs a dedicated library (xmlsec1/libxml2).
-  // Without C14N, raw SignedInfo comparison will fail for most production IdPs.
-  //
-  // Current security model relies on:
-  //   - TLS transport security (HTTPS between IdP and SP)
-  //   - Relay state validation (one-time-use, tied to IdP ID)
-  //   - Assertion replay detection
-  //   - Audience and time validation
-  //
-  // Signature verification is attempted but logged as a warning on failure
-  // rather than blocking authentication. A future enhancement should integrate
-  // xmlsec1 for proper XMLDSig verification.
-  if (!sIdpCertPem.empty()) {
-    // Extract SignatureValue and SignedInfo for verification
-    std::string sSignatureValue = extractElement(sXml, "ds:SignatureValue");
-    if (sSignatureValue.empty()) {
-      sSignatureValue = extractElement(sXml, "SignatureValue");
-    }
-
-    if (!sSignatureValue.empty()) {
-      // Find SignedInfo element
-      std::string sSignedInfo;
-      auto iSiStart = sXml.find("<ds:SignedInfo");
-      if (iSiStart == std::string::npos) iSiStart = sXml.find("<SignedInfo");
-      if (iSiStart != std::string::npos) {
-        std::string sCloseTag = "</ds:SignedInfo>";
-        auto iSiEnd = sXml.find(sCloseTag, iSiStart);
-        if (iSiEnd == std::string::npos) {
-          sCloseTag = "</SignedInfo>";
-          iSiEnd = sXml.find(sCloseTag, iSiStart);
-        }
-        if (iSiEnd != std::string::npos) {
-          sSignedInfo = sXml.substr(iSiStart, iSiEnd + sCloseTag.size() - iSiStart);
-        }
-      }
-
-      if (!sSignedInfo.empty()) {
-        // Detect signature algorithm from SignatureMethod
-        std::string sAlgorithm = extractAttribute(sSignedInfo, "Algorithm");
-        const EVP_MD* pDigest = EVP_sha256();  // default
-        if (sAlgorithm.find("sha1") != std::string::npos ||
-            sAlgorithm.find("sha-1") != std::string::npos ||
-            sAlgorithm.find("#rsa-sha1") != std::string::npos) {
-          pDigest = EVP_sha1();
-        } else if (sAlgorithm.find("sha384") != std::string::npos) {
-          pDigest = EVP_sha384();
-        } else if (sAlgorithm.find("sha512") != std::string::npos) {
-          pDigest = EVP_sha512();
-        }
-
-        // Load certificate
-        BIO* pBio = BIO_new_mem_buf(sIdpCertPem.data(),
-                                    static_cast<int>(sIdpCertPem.size()));
-        X509* pCert = PEM_read_bio_X509(pBio, nullptr, nullptr, nullptr);
-        BIO_free(pBio);
-
-        if (pCert) {
-          EVP_PKEY* pKey = X509_get_pubkey(pCert);
-
-          // Decode signature from base64
-          std::string sSigClean;
-          for (char c : sSignatureValue) {
-            if (!std::isspace(static_cast<unsigned char>(c))) {
-              sSigClean += c;
-            }
-          }
-          std::string sSigBytes = base64DecodeStr(sSigClean);
-
-          // Attempt verification (may fail without proper C14N)
-          EVP_MD_CTX* pMdCtx = EVP_MD_CTX_new();
-          bool bValid = false;
-
-          if (EVP_DigestVerifyInit(pMdCtx, nullptr, pDigest, nullptr, pKey) == 1) {
-            if (EVP_DigestVerifyUpdate(pMdCtx, sSignedInfo.data(), sSignedInfo.size()) == 1) {
-              bValid = (EVP_DigestVerifyFinal(
-                            pMdCtx,
-                            reinterpret_cast<const unsigned char*>(sSigBytes.data()),
-                            sSigBytes.size()) == 1);
-            }
-          }
-
-          EVP_MD_CTX_free(pMdCtx);
-          EVP_PKEY_free(pKey);
-          X509_free(pCert);
-
-          if (!bValid) {
-            // Log warning but don't block — proper XMLDSig requires C14N
-            spdlog::warn("SAML signature verification failed (C14N not implemented). "
-                         "Algorithm: {}. Proceeding with relay-state and assertion validation.",
-                         sAlgorithm);
-          } else {
-            spdlog::debug("SAML signature verified successfully");
-          }
-        } else {
-          spdlog::warn("Failed to parse IdP certificate for SAML signature verification");
-        }
-      }
-    } else {
-      spdlog::debug("No XML signature found in SAML response");
-    }
-  }
-
-  // 8. Check replay
-  if (!sAssertionId.empty()) {
-    auto tpExpiry = std::chrono::system_clock::now() + std::chrono::hours(1);
-    std::string sNotOnOrAfter = extractAttribute(sAssertion, "NotOnOrAfter");
-    if (!sNotOnOrAfter.empty()) {
-      tpExpiry = parseIso8601(sNotOnOrAfter);
-    }
-    if (!_srcCache.checkAndInsert(sAssertionId, tpExpiry)) {
-      throw common::AuthenticationError("saml_replay", "SAML assertion replay detected");
-    }
-  }
-
-  // 9. Extract NameID and attributes
-  std::string sNameId = extractElement(sAssertion, sP + "NameID");
-
-  nlohmann::json jAttributes = nlohmann::json::object();
-
-  // Find all Attribute elements
-  std::string sAttrStatement = extractElement(sAssertion, sP + "AttributeStatement");
-  if (!sAttrStatement.empty()) {
-    // Find each Attribute Name
-    std::string sAttrOpen = "<" + sP + "Attribute ";
-    size_t iPos = 0;
-    while (true) {
-      auto iAttrStart = sAttrStatement.find(sAttrOpen, iPos);
-      if (iAttrStart == std::string::npos) break;
-
-      auto iAttrTagEnd = sAttrStatement.find('>', iAttrStart);
-      if (iAttrTagEnd == std::string::npos) break;
-
-      std::string sAttrTag = sAttrStatement.substr(iAttrStart,
-                                                    iAttrTagEnd - iAttrStart + 1);
-      std::string sName = extractAttribute(sAttrTag, "Name");
-
-      if (!sName.empty()) {
-        auto vValues = extractAttributeValues(sAttrStatement, sName);
-        nlohmann::json jValues = nlohmann::json::array();
-        for (const auto& sVal : vValues) {
-          jValues.push_back(sVal);
-        }
-        jAttributes[sName] = jValues;
-      }
-
-      iPos = iAttrTagEnd + 1;
-    }
-  }
-
-  return {
-      {"name_id", sNameId},
-      {"attributes", jAttributes},
-  };
 }
 
 }  // namespace dns::security

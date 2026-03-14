@@ -30,36 +30,29 @@ void SamlRoutes::registerRoutes(crow::SimpleApp& app) {
             throw common::NotFoundError("IDP_NOT_FOUND", "SAML identity provider not found");
           }
 
-          std::string sSpEntityId = oIdp->jConfig.value("entity_id", "");
-          std::string sSsoUrl = oIdp->jConfig.value("sso_url", "");
-          std::string sAcsUrl = oIdp->jConfig.value("assertion_consumer_service_url", "");
+          // Lazy registration: ensure IdP is registered with lasso
+          if (!_ssService.isIdpRegistered(iIdpId)) {
+            std::string sSpEntityId = oIdp->jConfig.value("entity_id", "");
+            std::string sSsoUrl = oIdp->jConfig.value("sso_url", "");
+            std::string sAcsUrl = oIdp->jConfig.value("assertion_consumer_service_url", "");
+            std::string sCert = oIdp->jConfig.value("certificate", "");
+            std::string sIdpEntityId = oIdp->jConfig.value("idp_entity_id", sSsoUrl);
 
-          // Generate AuthnRequest
-          std::string sAuthnRequest = _ssService.generateAuthnRequest(
-              sSpEntityId, sAcsUrl, sSsoUrl);
-
-          // Extract request ID from the generated XML (between ID=" and ")
-          std::string sRequestId;
-          auto iIdStart = sAuthnRequest.find("ID=\"");
-          if (iIdStart != std::string::npos) {
-            iIdStart += 4;
-            auto iIdEnd = sAuthnRequest.find('"', iIdStart);
-            if (iIdEnd != std::string::npos) {
-              sRequestId = sAuthnRequest.substr(iIdStart, iIdEnd - iIdStart);
-            }
+            _ssService.registerIdp(iIdpId, sSpEntityId, sAcsUrl,
+                                   sIdpEntityId, sSsoUrl, sCert);
           }
 
-          // Generate relay state and store SAML auth state
+          // Generate relay state and build login URL
           auto sRelayState = dns::security::OidcService::generateState();
+          auto [sUrl, sRequestId] = _ssService.buildLoginUrl(iIdpId, sRelayState);
+
+          // Store SAML auth state for ACS callback
           dns::security::SamlAuthState saState;
           saState.iIdpId = iIdpId;
           saState.sRequestId = sRequestId;
           saState.bIsTestMode = false;
           saState.tpCreatedAt = std::chrono::system_clock::now();
           _ssService.storeAuthState(sRelayState, saState);
-
-          // Build redirect URL
-          std::string sUrl = _ssService.buildRedirectUrl(sSsoUrl, sAuthnRequest, sRelayState);
 
           // Return 302 redirect
           crow::response resp(302);
@@ -136,20 +129,33 @@ void SamlRoutes::registerRoutes(crow::SimpleApp& app) {
                                               "Relay state IdP ID does not match URL");
           }
 
-          // Load IdP
+          // Ensure IdP is registered with lasso (should already be from login)
+          if (!_ssService.isIdpRegistered(iIdpId)) {
+            auto oIdp = _irRepo.findById(iIdpId);
+            if (!oIdp.has_value()) {
+              throw common::NotFoundError("IDP_NOT_FOUND", "Identity provider not found");
+            }
+            std::string sSpEntityId = oIdp->jConfig.value("entity_id", "");
+            std::string sSsoUrl = oIdp->jConfig.value("sso_url", "");
+            std::string sAcsUrl = oIdp->jConfig.value("assertion_consumer_service_url", "");
+            std::string sCert = oIdp->jConfig.value("certificate", "");
+            std::string sIdpEntityId = oIdp->jConfig.value("idp_entity_id", sSsoUrl);
+
+            _ssService.registerIdp(iIdpId, sSpEntityId, sAcsUrl,
+                                   sIdpEntityId, sSsoUrl, sCert);
+          }
+
+          // Validate SAML response via lasso (signature, conditions, audience)
+          auto jResult = _ssService.validateResponse(
+              iIdpId, sSamlResponse, oState->sRequestId);
+
+          // Load IdP for group attribute config
           auto oIdp = _irRepo.findById(iIdpId);
           if (!oIdp.has_value()) {
             throw common::NotFoundError("IDP_NOT_FOUND", "Identity provider not found");
           }
 
-          std::string sCertificate = oIdp->jConfig.value("certificate", "");
-          std::string sSpEntityId = oIdp->jConfig.value("entity_id", "");
           std::string sGroupAttribute = oIdp->jConfig.value("group_attribute", "groups");
-
-          // Validate assertion
-          auto jResult = _ssService.validateAssertion(
-              sSamlResponse, sCertificate, sSpEntityId, oState->sRequestId);
-
           std::string sNameId = jResult.value("name_id", "");
           auto& jAttributes = jResult["attributes"];
 

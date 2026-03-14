@@ -231,21 +231,18 @@ void IdpRoutes::registerRoutes(crow::SimpleApp& app) {
             std::string sSpEntityId = oIdp->jConfig.value("entity_id", "");
             std::string sSsoUrl = oIdp->jConfig.value("sso_url", "");
             std::string sAcsUrl = oIdp->jConfig.value("assertion_consumer_service_url", "");
+            std::string sCert = oIdp->jConfig.value("certificate", "");
+            std::string sIdpEntityId = oIdp->jConfig.value("idp_entity_id", sSsoUrl);
 
-            std::string sAuthnRequest = _ssService.generateAuthnRequest(
-                sSpEntityId, sAcsUrl, sSsoUrl);
-
-            std::string sRequestId;
-            auto iIdStart = sAuthnRequest.find("ID=\"");
-            if (iIdStart != std::string::npos) {
-              iIdStart += 4;
-              auto iIdEnd = sAuthnRequest.find('"', iIdStart);
-              if (iIdEnd != std::string::npos) {
-                sRequestId = sAuthnRequest.substr(iIdStart, iIdEnd - iIdStart);
-              }
+            // Lazy registration with lasso
+            if (!_ssService.isIdpRegistered(iId)) {
+              _ssService.registerIdp(iId, sSpEntityId, sAcsUrl,
+                                     sIdpEntityId, sSsoUrl, sCert);
             }
 
             auto sRelayState = dns::security::OidcService::generateState();
+            auto [sUrl, sRequestId] = _ssService.buildLoginUrl(iId, sRelayState);
+
             dns::security::SamlAuthState saState;
             saState.iIdpId = iId;
             saState.sRequestId = sRequestId;
@@ -253,7 +250,7 @@ void IdpRoutes::registerRoutes(crow::SimpleApp& app) {
             saState.tpCreatedAt = std::chrono::system_clock::now();
             _ssService.storeAuthState(sRelayState, saState);
 
-            sRedirectUrl = _ssService.buildRedirectUrl(sSsoUrl, sAuthnRequest, sRelayState);
+            sRedirectUrl = sUrl;
           } else {
             throw ValidationError("INVALID_TYPE", "Unknown IdP type: " + oIdp->sType);
           }

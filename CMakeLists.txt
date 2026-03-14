@@ -27,6 +27,8 @@ pkg_check_modules(LIBGIT2 REQUIRED IMPORTED_TARGET libgit2)
 
 # ── Auth dependencies (lasso / jansson / libcurl / pcre2 via system pkg-config)
 pkg_check_modules(LASSO   REQUIRED IMPORTED_TARGET lasso)
+pkg_check_modules(GLIB2   REQUIRED IMPORTED_TARGET glib-2.0)
+pkg_check_modules(GOBJECT REQUIRED IMPORTED_TARGET gobject-2.0)
 pkg_check_modules(JANSSON REQUIRED IMPORTED_TARGET jansson)
 pkg_check_modules(LIBCURL REQUIRED IMPORTED_TARGET libcurl)
 pkg_check_modules(PCRE2   REQUIRED IMPORTED_TARGET libpcre2-8)
