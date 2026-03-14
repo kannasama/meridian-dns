@@ -17,6 +17,10 @@ RUN dnf install -y --setopt=install_weak_deps=False \
   asio-devel \
   pkgconf-pkg-config \
   git ca-certificates \
+  lasso-devel libxml2-devel xmlsec1-devel xmlsec1-openssl-devel glib2-devel \
+  jansson-devel libcurl-devel cjose-devel \
+  autoconf automake libtool \
+  httpd-devel pcre2-devel \
   && dnf clean all
 
 WORKDIR /build
@@ -31,6 +35,9 @@ FROM fedora:43 AS runtime
 RUN dnf install -y --setopt=install_weak_deps=False \
   libpq libpqxx openssl-libs libgit2 spdlog fmt \
   git ca-certificates openssh-clients \
+  lasso libxml2 xmlsec1 xmlsec1-openssl glib2 \
+  jansson libcurl cjose \
+  curl \
   && dnf clean all
 
 RUN useradd --system --no-create-home meridian-dns

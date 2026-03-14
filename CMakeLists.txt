@@ -25,6 +25,65 @@ include(FindPkgConfig)
 pkg_check_modules(LIBPQXX REQUIRED IMPORTED_TARGET libpqxx)
 pkg_check_modules(LIBGIT2 REQUIRED IMPORTED_TARGET libgit2)
 
+# ── Auth dependencies (lasso / jansson / libcurl via system pkg-config) ───
+pkg_check_modules(LASSO   REQUIRED IMPORTED_TARGET lasso)
+pkg_check_modules(JANSSON REQUIRED IMPORTED_TARGET jansson)
+pkg_check_modules(LIBCURL REQUIRED IMPORTED_TARGET libcurl)
+
+# ── cjose + liboauth2 (autotools, built from source) ─────────────────────
+include(ExternalProject)
+
+set(EP_INSTALL_DIR "${CMAKE_BINARY_DIR}/ep_install")
+
+ExternalProject_Add(cjose_ep
+  GIT_REPOSITORY https://github.com/OpenIDC/cjose.git
+  GIT_TAG        v0.6.2.3
+  GIT_SHALLOW    TRUE
+  BUILD_IN_SOURCE TRUE
+  CONFIGURE_COMMAND autoreconf -fi
+             COMMAND ./configure --prefix=${EP_INSTALL_DIR} CFLAGS=-fPIC
+  BUILD_COMMAND     make -j4
+  INSTALL_COMMAND   make install
+  BUILD_BYPRODUCTS "${EP_INSTALL_DIR}/lib/libcjose.a"
+)
+
+ExternalProject_Add(liboauth2_ep
+  GIT_REPOSITORY https://github.com/OpenIDC/liboauth2.git
+  GIT_TAG        v2.1.0
+  GIT_SHALLOW    TRUE
+  BUILD_IN_SOURCE TRUE
+  CONFIGURE_COMMAND autoreconf -fi
+             COMMAND ./configure --prefix=${EP_INSTALL_DIR}
+                     PKG_CONFIG_PATH=${EP_INSTALL_DIR}/lib/pkgconfig:${EP_INSTALL_DIR}/lib64/pkgconfig
+                     CFLAGS=-fPIC
+  BUILD_COMMAND     make -j4
+  INSTALL_COMMAND   make install
+  DEPENDS cjose_ep
+  BUILD_BYPRODUCTS "${EP_INSTALL_DIR}/lib/liboauth2.a"
+)
+
+# Pre-create the install include directory so CMake can validate
+# INTERFACE_INCLUDE_DIRECTORIES at generation time (ExternalProject
+# populates it at build time).
+file(MAKE_DIRECTORY "${EP_INSTALL_DIR}/include")
+
+# Imported targets for linking.
+# BUILD_BYPRODUCTS above tells Ninja that the EP step produces these .a
+# files, so the IMPORTED_LOCATION is resolvable in the build graph.
+add_library(cjose STATIC IMPORTED GLOBAL)
+set_target_properties(cjose PROPERTIES
+  IMPORTED_LOCATION "${EP_INSTALL_DIR}/lib/libcjose.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${EP_INSTALL_DIR}/include"
+)
+add_dependencies(cjose cjose_ep)
+
+add_library(oauth2 STATIC IMPORTED GLOBAL)
+set_target_properties(oauth2 PROPERTIES
+  IMPORTED_LOCATION "${EP_INSTALL_DIR}/lib/liboauth2.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${EP_INSTALL_DIR}/include"
+)
+add_dependencies(oauth2 liboauth2_ep)
+
 # ── Crow (HTTP server) ──────────────────────────────────────────────────────
 # Header-only; fetched at configure time — no system package required.
 include(FetchContent)

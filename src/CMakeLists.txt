@@ -25,6 +25,11 @@ target_link_libraries(meridian-core PUBLIC
   PkgConfig::LIBGIT2
   Crow::Crow
   httplib::httplib
+  PkgConfig::LASSO
+  PkgConfig::JANSSON
+  PkgConfig::LIBCURL
+  oauth2
+  cjose
 )
 
 # ── meridian-dns executable ──────────────────────────────────────────────────
