@@ -68,6 +68,26 @@ void SessionRepository::deleteByHash(const std::string& sTokenHash) {
   txn.commit();
 }
 
+void SessionRepository::setSamlSessionIndex(const std::string& sTokenHash,
+                                            const std::string& sSamlSessionIndex) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  txn.exec(
+      "UPDATE sessions SET saml_session_index = $2 WHERE token_hash = $1",
+      pqxx::params{sTokenHash, sSamlSessionIndex});
+  txn.commit();
+}
+
+int SessionRepository::deleteBySamlSessionIndex(const std::string& sSamlSessionIndex) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "DELETE FROM sessions WHERE saml_session_index = $1",
+      pqxx::params{sSamlSessionIndex});
+  txn.commit();
+  return static_cast<int>(result.affected_rows());
+}
+
 int SessionRepository::pruneExpired() {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);

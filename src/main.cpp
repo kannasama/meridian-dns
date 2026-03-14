@@ -448,7 +448,7 @@ int main(int argc, char* argv[]) {
     auto oidcRoutes = std::make_unique<dns::api::routes::OidcRoutes>(
         *idpRepo, *oidcService, *fedAuthService);
     auto samlRoutes = std::make_unique<dns::api::routes::SamlRoutes>(
-        *idpRepo, *samlService, *fedAuthService);
+        *idpRepo, *srRepo, *samlService, *fedAuthService);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(

@@ -34,6 +34,14 @@ class SessionRepository {
   /// Hard-delete a session row by token hash.
   void deleteByHash(const std::string& sTokenHash);
 
+  /// Set SAML session index on an existing session (for SLO support).
+  void setSamlSessionIndex(const std::string& sTokenHash,
+                           const std::string& sSamlSessionIndex);
+
+  /// Delete all sessions matching a SAML session index (IdP-initiated SLO).
+  /// Returns the number of rows deleted.
+  int deleteBySamlSessionIndex(const std::string& sSamlSessionIndex);
+
   /// Delete all sessions where expires_at < NOW(). Returns rows deleted.
   int pruneExpired();
 
