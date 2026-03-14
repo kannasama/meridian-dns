@@ -65,7 +65,12 @@ paru -S --needed \
     openssl \
     libgit2 \
     nlohmann-json \
-    spdlog
+    spdlog \
+    jansson \
+    curl \
+    glib2 \
+    libxml2 \
+    xmlsec
 ```
 
 > **Note:** `postgresql` (the server) is not listed here because this guide assumes an
@@ -82,6 +87,39 @@ paru -S --needed \
 | `libgit2` | `libgit2.so`, `<git2.h>` | GitOps mirror subsystem (`libgit2` native bindings) |
 | `nlohmann-json` | `<nlohmann/json.hpp>` | JSON serialization (header-only) |
 | `spdlog` | `libspdlog.so`, `<spdlog/spdlog.h>` | Structured logging (JSON output, configurable levels) |
+| `jansson` | `libjansson.so`, `<jansson.h>` | JSON parsing for liboauth2 (OIDC JWT handling) |
+| `curl` | `libcurl.so`, `<curl/curl.h>` | HTTP client for liboauth2 (JWKS fetching) |
+| `glib2` | `libglib-2.0.so`, `<glib.h>` | GObject runtime required by lasso |
+| `libxml2` | `libxml2.so`, `<libxml/parser.h>` | XML parsing for SAML (lasso dependency) |
+| `xmlsec` | `libxmlsec1.so` | XMLDSig signature verification (lasso dependency) |
+
+### SAML support (lasso)
+
+SAML 2.0 protocol operations use [lasso](https://lasso.entrouvert.org/) for proper XMLDSig
+signature verification. On Arch Linux, install lasso from the AUR:
+
+```bash
+paru -S lasso
+```
+
+> **Note:** Lasso requires `glib2`, `libxml2`, and `xmlsec` as runtime deps.
+> These are pulled automatically when installing the `lasso` package.
+> The Dockerfile uses Fedora's `lasso-devel` package from the system repos.
+
+### OIDC support (liboauth2 + cjose)
+
+OIDC JWT/JWKS signature verification uses [liboauth2](https://github.com/OpenIDC/liboauth2)
+(with [cjose](https://github.com/OpenIDC/cjose) for JOSE operations). Both libraries are
+**built from source** automatically via CMake `ExternalProject_Add` — no manual installation
+is required.
+
+When you run `cmake -B build`, CMake clones and compiles:
+- **cjose v0.6.2.3** (JOSE/JWK/JWS/JWE library)
+- **liboauth2 v2.1.0** (OAuth 2.0 token verification)
+
+The only system packages needed are their build-time dependencies: `jansson` (JSON),
+`curl` (HTTP), and `openssl` (cryptography). The `autoconf`, `automake`, and `libtool`
+tools are also required (provided by `base-devel`).
 
 ---
 
@@ -313,22 +351,30 @@ set -a && source .env && set +a
 
 ## 10. Package Reference Table
 
-Complete mapping of Dockerfile/Debian package names to their Arch/AUR equivalents.
+Complete mapping of Dockerfile/Fedora package names to their Arch/AUR equivalents.
 
-| Debian Package (Dockerfile) | Arch/AUR Package | Source | Notes |
+| Fedora Package (Dockerfile) | Arch/AUR Package | Source | Notes |
 |-----------------------------|------------------|--------|-------|
 | `cmake` | `cmake` | Official | Build system |
 | `ninja-build` | `ninja` | Official | Build backend |
-| `gcc-12` / `g++-12` | `gcc` | Official | GCC 13+ ships by default; supports C++20 |
-| `libpqxx-dev` | `libpqxx` | Official | C++ PostgreSQL client |
-| `libssl-dev` | `openssl` | Official | OpenSSL 3.x headers + libs |
-| `libgit2-dev` | `libgit2` | Official | libgit2 headers + libs |
+| `gcc-c++` | `gcc` | Official | GCC 13+ ships by default; supports C++20 |
+| `libpqxx-devel` | `libpqxx` | Official | C++ PostgreSQL client |
+| `openssl-devel` | `openssl` | Official | OpenSSL 3.x headers + libs |
+| `libgit2-devel` | `libgit2` | Official | libgit2 headers + libs |
 | *(none)* | *(none)* | FetchContent | Crow HTTP framework (auto-fetched by CMake) |
-| `nlohmann-json3-dev` | `nlohmann-json` | Official | Header-only JSON library |
+| `nlohmann-json-devel` | `nlohmann-json` | Official | Header-only JSON library |
+| `lasso-devel` | `lasso` | AUR | SAML 2.0 protocol (lasso + xmlsec1) |
+| `libxml2-devel` | `libxml2` | Official | XML parsing (lasso dependency) |
+| `xmlsec1-devel` | `xmlsec` | Official | XMLDSig verification (lasso dependency) |
+| `glib2-devel` | `glib2` | Official | GObject runtime (lasso dependency) |
+| `jansson-devel` | `jansson` | Official | JSON parsing (liboauth2 dependency) |
+| `libcurl-devel` | `curl` | Official | HTTP client (liboauth2 dependency) |
+| `cjose-devel` | *(built from source)* | ExternalProject | JOSE library — auto-built by CMake |
+| *(none)* | *(built from source)* | ExternalProject | liboauth2 — auto-built by CMake |
 | `postgresql` (runtime) | `postgresql` | Official | PostgreSQL 15+ server — **assumed pre-installed** |
 | `libpq5` (runtime) | `postgresql-libs` | Official | PostgreSQL runtime client library |
-| `libssl3` (runtime) | `openssl` | Official | OpenSSL 3.x runtime |
-| `libgit2-1.5` (runtime) | `libgit2` | Official | libgit2 runtime |
+| `openssl` (runtime) | `openssl` | Official | OpenSSL 3.x runtime |
+| `libgit2` (runtime) | `libgit2` | Official | libgit2 runtime |
 
 ---
 
@@ -338,33 +384,37 @@ Complete mapping of Dockerfile/Debian package names to their Arch/AUR equivalent
 # 1. System update
 paru -Syu
 
-# 2. All dependencies in one shot
+# 2. All dependencies in one shot (official repos)
 paru -S --needed \
     base-devel git cmake ninja gcc \
     postgresql-libs libpqxx \
     openssl libgit2 nlohmann-json \
-    spdlog
+    spdlog jansson curl \
+    glib2 libxml2 xmlsec
 
-# 3. Provision database on existing PostgreSQL 15+ instance
+# 3. SAML support (from AUR)
+paru -S lasso
+
+# 4. Provision database on existing PostgreSQL 15+ instance
 # (adjust connection method if your instance uses TCP/IP auth instead of peer auth)
 sudo -u postgres psql -c "CREATE USER dns WITH PASSWORD 'dns';"
 sudo -u postgres psql -c "CREATE DATABASE meridian_dns OWNER dns;"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE meridian_dns TO dns;"
 # Verify: psql postgresql://dns:dns@localhost:5432/meridian_dns -c "SELECT version();"
 
-# 4. Clone and initialize submodules
+# 5. Clone and initialize submodules
 git clone <repository-url> meridian-dns && cd meridian-dns
 git submodule update --init --recursive
 
-# 5. Build
+# 6. Build (liboauth2 + cjose are auto-built from source)
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=20
 cmake --build build --parallel
 
-# 6. Run migrations
+# 7. Run migrations
 psql postgresql://dns:dns@localhost:5432/meridian_dns -f scripts/db/001_initial_schema.sql
 psql postgresql://dns:dns@localhost:5432/meridian_dns -f scripts/db/002_add_indexes.sql
 
-# 7. Start
+# 8. Start
 export DNS_DB_URL="postgresql://dns:dns@localhost:5432/meridian_dns"
 export DNS_MASTER_KEY="$(openssl rand -hex 32)"
 export DNS_JWT_SECRET="$(openssl rand -hex 32)"
