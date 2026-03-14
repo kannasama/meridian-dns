@@ -25,10 +25,11 @@ include(FindPkgConfig)
 pkg_check_modules(LIBPQXX REQUIRED IMPORTED_TARGET libpqxx)
 pkg_check_modules(LIBGIT2 REQUIRED IMPORTED_TARGET libgit2)
 
-# ── Auth dependencies (lasso / jansson / libcurl via system pkg-config) ───
+# ── Auth dependencies (lasso / jansson / libcurl / pcre2 via system pkg-config)
 pkg_check_modules(LASSO   REQUIRED IMPORTED_TARGET lasso)
 pkg_check_modules(JANSSON REQUIRED IMPORTED_TARGET jansson)
 pkg_check_modules(LIBCURL REQUIRED IMPORTED_TARGET libcurl)
+pkg_check_modules(PCRE2   REQUIRED IMPORTED_TARGET libpcre2-8)
 
 # ── cjose + liboauth2 (autotools, built from source) ─────────────────────
 include(ExternalProject)

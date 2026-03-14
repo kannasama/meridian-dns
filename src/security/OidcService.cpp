@@ -2,17 +2,20 @@
 
 #include "common/Errors.hpp"
 
-#include <openssl/bn.h>
-#include <openssl/core_names.h>
 #include <openssl/evp.h>
-#include <openssl/param_build.h>
 #include <openssl/rand.h>
 
 #include <httplib.h>
 #include <spdlog/spdlog.h>
 
+// liboauth2 C headers
+extern "C" {
+#include <oauth2/jose.h>
+#include <oauth2/mem.h>
+#include <oauth2/oauth2.h>
+}
+
 #include <algorithm>
-#include <cstring>
 #include <sstream>
 #include <vector>
 
@@ -20,7 +23,7 @@ namespace dns::security {
 
 namespace {
 
-// ── Base64url helpers (same pattern as HmacJwtSigner) ──────────────────────
+// ── Base64url / SHA-256 helpers (used by PKCE and state generation) ─────────
 
 std::string base64UrlEncode(const unsigned char* pData, size_t uLen) {
   EVP_ENCODE_CTX* pCtx = EVP_ENCODE_CTX_new();
@@ -49,43 +52,6 @@ std::string base64UrlEncode(const unsigned char* pData, size_t uLen) {
   return sB64;
 }
 
-std::string base64UrlDecode(const std::string& sInput) {
-  std::string sB64 = sInput;
-  for (auto& c : sB64) {
-    if (c == '-') c = '+';
-    else if (c == '_') c = '/';
-  }
-  while (sB64.size() % 4 != 0) {
-    sB64 += '=';
-  }
-
-  EVP_ENCODE_CTX* pCtx = EVP_ENCODE_CTX_new();
-  EVP_DecodeInit(pCtx);
-
-  std::vector<unsigned char> vOut(sB64.size());
-  int iOutLen = 0;
-  int iTotalLen = 0;
-
-  int iRet = EVP_DecodeUpdate(pCtx, vOut.data(), &iOutLen,
-                              reinterpret_cast<const unsigned char*>(sB64.data()),
-                              static_cast<int>(sB64.size()));
-  if (iRet < 0) {
-    EVP_ENCODE_CTX_free(pCtx);
-    throw common::AuthenticationError("invalid_token", "Failed to decode base64url segment");
-  }
-  iTotalLen += iOutLen;
-  EVP_DecodeFinal(pCtx, vOut.data() + iTotalLen, &iOutLen);
-  iTotalLen += iOutLen;
-  EVP_ENCODE_CTX_free(pCtx);
-
-  return std::string(reinterpret_cast<char*>(vOut.data()), static_cast<size_t>(iTotalLen));
-}
-
-std::vector<unsigned char> base64UrlDecodeBytes(const std::string& sInput) {
-  std::string sDecoded = base64UrlDecode(sInput);
-  return std::vector<unsigned char>(sDecoded.begin(), sDecoded.end());
-}
-
 std::string sha256Raw(const std::string& sInput) {
   unsigned char vHash[EVP_MAX_MD_SIZE];
   unsigned int uHashLen = 0;
@@ -98,6 +64,8 @@ std::string sha256Raw(const std::string& sInput) {
 
   return std::string(reinterpret_cast<char*>(vHash), uHashLen);
 }
+
+// ── URL helpers (used by buildAuthorizationUrl, discover, exchangeCode) ─────
 
 std::string urlEncode(const std::string& sValue) {
   std::ostringstream oss;
@@ -114,7 +82,6 @@ std::string urlEncode(const std::string& sValue) {
 
 /// Parse a URL into scheme+host and path components.
 std::pair<std::string, std::string> parseUrl(const std::string& sUrl) {
-  // Find scheme
   auto iSchemeEnd = sUrl.find("://");
   if (iSchemeEnd == std::string::npos) {
     throw common::ValidationError("INVALID_URL", "Invalid URL: " + sUrl);
@@ -126,6 +93,51 @@ std::pair<std::string, std::string> parseUrl(const std::string& sUrl) {
   return {sUrl.substr(0, iPathStart), sUrl.substr(iPathStart)};
 }
 
+// ── liboauth2 log sink → spdlog bridge ─────────────────────────────────────
+
+void oauth2SpdlogSink(oauth2_log_sink_t* /*pSink*/, const char* /*sFilename*/,
+                      unsigned long /*uLine*/, const char* sFunction,
+                      oauth2_log_level_t eLevel, const char* sMsg) {
+  switch (eLevel) {
+    case OAUTH2_LOG_ERROR:
+      spdlog::error("[liboauth2] {}: {}", sFunction, sMsg);
+      break;
+    case OAUTH2_LOG_WARN:
+      spdlog::warn("[liboauth2] {}: {}", sFunction, sMsg);
+      break;
+    case OAUTH2_LOG_NOTICE:
+    case OAUTH2_LOG_INFO:
+      spdlog::info("[liboauth2] {}: {}", sFunction, sMsg);
+      break;
+    case OAUTH2_LOG_DEBUG:
+      spdlog::debug("[liboauth2] {}: {}", sFunction, sMsg);
+      break;
+    default:  // TRACE1, TRACE2
+      spdlog::trace("[liboauth2] {}: {}", sFunction, sMsg);
+      break;
+  }
+}
+
+// ── Helper: convert jansson json_t* to nlohmann::json ───────────────────────
+
+nlohmann::json janssonToNlohmann(json_t* pJson) {
+  char* sStr = json_dumps(pJson, JSON_COMPACT | JSON_ENCODE_ANY);
+  if (!sStr) {
+    throw common::AuthenticationError("invalid_id_token",
+                                      "Failed to serialize JWT payload from liboauth2");
+  }
+  nlohmann::json jResult;
+  try {
+    jResult = nlohmann::json::parse(sStr);
+  } catch (...) {
+    free(sStr);  // NOLINT — jansson uses malloc
+    throw common::AuthenticationError("invalid_id_token",
+                                      "Failed to parse JWT payload JSON");
+  }
+  free(sStr);  // NOLINT — jansson uses malloc
+  return jResult;
+}
+
 constexpr auto kStateTtl = std::chrono::minutes(10);
 constexpr auto kDiscoveryCacheTtl = std::chrono::hours(1);
 
@@ -133,8 +145,19 @@ constexpr auto kDiscoveryCacheTtl = std::chrono::hours(1);
 
 // ── OidcService ────────────────────────────────────────────────────────────
 
-OidcService::OidcService() = default;
-OidcService::~OidcService() = default;
+OidcService::OidcService() {
+  // Create a custom log sink that routes liboauth2 messages through spdlog
+  oauth2_log_sink_t* pSink =
+      oauth2_log_sink_create(OAUTH2_LOG_DEBUG, oauth2SpdlogSink, nullptr);
+  _pLog = oauth2_log_init(OAUTH2_LOG_DEBUG, pSink);
+}
+
+OidcService::~OidcService() {
+  if (_pLog) {
+    oauth2_log_free(_pLog);
+    _pLog = nullptr;
+  }
+}
 
 std::pair<std::string, std::string> OidcService::generatePkce() {
   // Generate 32 random bytes for verifier
@@ -263,7 +286,7 @@ OidcDiscovery OidcService::discover(const std::string& sIssuerUrl) {
   return odDiscovery;
 }
 
-// ── Task 5: Token Exchange & JWT Validation ────────────────────────────────
+// ── Token Exchange & JWT Validation (liboauth2) ────────────────────────────
 
 nlohmann::json OidcService::exchangeCode(const std::string& sTokenEndpoint,
                                          const std::string& sCode,
@@ -306,164 +329,49 @@ nlohmann::json OidcService::validateIdToken(const std::string& sIdToken,
                                             const std::string& sJwksUri,
                                             const std::string& sExpectedIssuer,
                                             const std::string& sExpectedAudience) {
-  // Split JWT into header.payload.signature
-  auto iDot1 = sIdToken.find('.');
-  if (iDot1 == std::string::npos) {
-    throw common::AuthenticationError("invalid_id_token", "Invalid JWT format");
-  }
-  auto iDot2 = sIdToken.find('.', iDot1 + 1);
-  if (iDot2 == std::string::npos) {
-    throw common::AuthenticationError("invalid_id_token", "Invalid JWT format");
-  }
+  // Configure a liboauth2 token verifier for the given JWKS URI.
+  // Skip exp/iat/iss validation in liboauth2 — our validateIdTokenClaims()
+  // handles those with application-specific error messages.
+  oauth2_cfg_token_verify_t* pVerify = nullptr;
+  char* sErr = oauth2_cfg_token_verify_add_options(
+      _pLog, &pVerify, "jwks_uri", sJwksUri.c_str(),
+      "verify.exp=skip&verify.iat=skip&verify.iss=skip");
 
-  std::string sHeaderB64 = sIdToken.substr(0, iDot1);
-  std::string sPayloadB64 = sIdToken.substr(iDot1 + 1, iDot2 - iDot1 - 1);
-  std::string sSignatureB64 = sIdToken.substr(iDot2 + 1);
-
-  // Decode header to get kid and alg
-  auto jHeader = nlohmann::json::parse(base64UrlDecode(sHeaderB64));
-  std::string sAlg = jHeader.value("alg", "");
-  std::string sKid = jHeader.value("kid", "");
-
-  // Fetch JWKS
-  auto [sHost, sPath] = parseUrl(sJwksUri);
-  httplib::Client client(sHost);
-  client.set_connection_timeout(10);
-  client.set_read_timeout(10);
-
-  auto res = client.Get(sPath);
-  if (!res || res->status != 200) {
-    throw common::AuthenticationError("jwks_fetch_failed", "Failed to fetch JWKS");
-  }
-
-  auto jJwks = nlohmann::json::parse(res->body);
-  auto& jKeys = jJwks["keys"];
-
-  // Find matching key
-  nlohmann::json jMatchingKey;
-  for (const auto& jKey : jKeys) {
-    if (!sKid.empty() && jKey.value("kid", "") == sKid) {
-      jMatchingKey = jKey;
-      break;
+  if (sErr != nullptr) {
+    std::string sErrMsg(sErr);
+    oauth2_mem_free(sErr);
+    if (pVerify) {
+      oauth2_cfg_token_verify_free(_pLog, pVerify);
     }
-    if (sKid.empty() && jKey.value("alg", "") == sAlg) {
-      jMatchingKey = jKey;
-      break;
+    throw common::AuthenticationError(
+        "jwt_verify_config_failed",
+        "Failed to configure JWT verifier: " + sErrMsg);
+  }
+
+  // Verify JWT signature via liboauth2/cjose — this handles:
+  //   - JWKS fetching (with internal caching)
+  //   - Key matching by kid
+  //   - RS256, RS384, RS512, ES256, ES384, ES512, PS256, etc.
+  //   - Signature verification
+  json_t* pJsonPayload = nullptr;
+  bool bOk = oauth2_token_verify(
+      _pLog, nullptr, pVerify, sIdToken.c_str(), &pJsonPayload);
+
+  oauth2_cfg_token_verify_free(_pLog, pVerify);
+
+  if (!bOk || pJsonPayload == nullptr) {
+    if (pJsonPayload) {
+      json_decref(pJsonPayload);
     }
+    throw common::AuthenticationError(
+        "invalid_signature", "ID token signature verification failed");
   }
 
-  if (jMatchingKey.is_null()) {
-    throw common::AuthenticationError("jwks_key_not_found",
-                                      "No matching key found in JWKS for kid=" + sKid);
-  }
+  // Convert jansson json_t* payload to nlohmann::json
+  nlohmann::json jPayload = janssonToNlohmann(pJsonPayload);
+  json_decref(pJsonPayload);
 
-  // Verify signature
-  std::string sSigningInput = sHeaderB64 + "." + sPayloadB64;
-  auto vSignature = base64UrlDecodeBytes(sSignatureB64);
-
-  EVP_PKEY* pKey = nullptr;
-
-  if (sAlg == "RS256") {
-    // Construct RSA public key from JWK n and e using OpenSSL 3.0 API
-    auto vN = base64UrlDecodeBytes(jMatchingKey["n"].get<std::string>());
-    auto vE = base64UrlDecodeBytes(jMatchingKey["e"].get<std::string>());
-
-    BIGNUM* pBnN = BN_bin2bn(vN.data(), static_cast<int>(vN.size()), nullptr);
-    BIGNUM* pBnE = BN_bin2bn(vE.data(), static_cast<int>(vE.size()), nullptr);
-
-    OSSL_PARAM_BLD* pBld = OSSL_PARAM_BLD_new();
-    OSSL_PARAM_BLD_push_BN(pBld, OSSL_PKEY_PARAM_RSA_N, pBnN);
-    OSSL_PARAM_BLD_push_BN(pBld, OSSL_PKEY_PARAM_RSA_E, pBnE);
-    OSSL_PARAM* pParams = OSSL_PARAM_BLD_to_param(pBld);
-
-    EVP_PKEY_CTX* pCtx = EVP_PKEY_CTX_new_from_name(nullptr, "RSA", nullptr);
-    EVP_PKEY_fromdata_init(pCtx);
-    EVP_PKEY_fromdata(pCtx, &pKey, EVP_PKEY_PUBLIC_KEY, pParams);
-
-    EVP_PKEY_CTX_free(pCtx);
-    OSSL_PARAM_free(pParams);
-    OSSL_PARAM_BLD_free(pBld);
-    BN_free(pBnN);
-    BN_free(pBnE);
-
-  } else if (sAlg == "ES256") {
-    // Construct EC public key from JWK x and y using OpenSSL 3.0 API
-    auto vX = base64UrlDecodeBytes(jMatchingKey["x"].get<std::string>());
-    auto vY = base64UrlDecodeBytes(jMatchingKey["y"].get<std::string>());
-
-    // Build uncompressed point: 0x04 || x || y
-    std::vector<unsigned char> vPub;
-    vPub.reserve(1 + vX.size() + vY.size());
-    vPub.push_back(0x04);
-    vPub.insert(vPub.end(), vX.begin(), vX.end());
-    vPub.insert(vPub.end(), vY.begin(), vY.end());
-
-    OSSL_PARAM_BLD* pBld = OSSL_PARAM_BLD_new();
-    OSSL_PARAM_BLD_push_utf8_string(pBld, OSSL_PKEY_PARAM_GROUP_NAME,
-                                    "prime256v1", 0);
-    OSSL_PARAM_BLD_push_octet_string(pBld, OSSL_PKEY_PARAM_PUB_KEY,
-                                     vPub.data(), vPub.size());
-    OSSL_PARAM* pParams = OSSL_PARAM_BLD_to_param(pBld);
-
-    EVP_PKEY_CTX* pCtx = EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr);
-    EVP_PKEY_fromdata_init(pCtx);
-    EVP_PKEY_fromdata(pCtx, &pKey, EVP_PKEY_PUBLIC_KEY, pParams);
-
-    EVP_PKEY_CTX_free(pCtx);
-    OSSL_PARAM_free(pParams);
-    OSSL_PARAM_BLD_free(pBld);
-
-    // ES256 signature is r||s (64 bytes), need to convert to DER for OpenSSL
-    if (vSignature.size() == 64) {
-      // Manually build DER-encoded ECDSA signature
-      // SEQUENCE { INTEGER r, INTEGER s }
-      auto buildDerInt = [](const unsigned char* pData, size_t uLen) {
-        std::vector<unsigned char> vInt;
-        // Skip leading zeros but keep at least one byte
-        size_t uStart = 0;
-        while (uStart < uLen - 1 && pData[uStart] == 0) ++uStart;
-        bool bNeedPad = (pData[uStart] & 0x80) != 0;
-        vInt.push_back(0x02);  // INTEGER tag
-        vInt.push_back(static_cast<unsigned char>(uLen - uStart + (bNeedPad ? 1 : 0)));
-        if (bNeedPad) vInt.push_back(0x00);
-        vInt.insert(vInt.end(), pData + uStart, pData + uLen);
-        return vInt;
-      };
-
-      auto vR = buildDerInt(vSignature.data(), 32);
-      auto vS = buildDerInt(vSignature.data() + 32, 32);
-
-      std::vector<unsigned char> vDer;
-      vDer.push_back(0x30);  // SEQUENCE tag
-      vDer.push_back(static_cast<unsigned char>(vR.size() + vS.size()));
-      vDer.insert(vDer.end(), vR.begin(), vR.end());
-      vDer.insert(vDer.end(), vS.begin(), vS.end());
-      vSignature = std::move(vDer);
-    }
-  } else {
-    throw common::AuthenticationError("unsupported_alg",
-                                      "Unsupported JWT algorithm: " + sAlg);
-  }
-
-  // Verify with EVP_DigestVerify
-  EVP_MD_CTX* pMdCtx = EVP_MD_CTX_new();
-  bool bValid = false;
-
-  if (EVP_DigestVerifyInit(pMdCtx, nullptr, EVP_sha256(), nullptr, pKey) == 1) {
-    if (EVP_DigestVerifyUpdate(pMdCtx, sSigningInput.data(), sSigningInput.size()) == 1) {
-      bValid = (EVP_DigestVerifyFinal(pMdCtx, vSignature.data(), vSignature.size()) == 1);
-    }
-  }
-
-  EVP_MD_CTX_free(pMdCtx);
-  EVP_PKEY_free(pKey);
-
-  if (!bValid) {
-    throw common::AuthenticationError("invalid_signature", "ID token signature verification failed");
-  }
-
-  // Decode and validate payload claims
-  auto jPayload = nlohmann::json::parse(base64UrlDecode(sPayloadB64));
+  // Validate claims (issuer, audience, expiry) with our error messages
   validateIdTokenClaims(jPayload, sExpectedIssuer, sExpectedAudience);
 
   return jPayload;

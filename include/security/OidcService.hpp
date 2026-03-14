@@ -9,6 +9,9 @@
 
 #include <nlohmann/json.hpp>
 
+// Forward declarations for liboauth2 types (C library)
+struct oauth2_log_t;
+
 namespace dns::security {
 
 /// State stored during OIDC authorization flow (between redirect and callback).
@@ -29,11 +32,16 @@ struct OidcDiscovery {
 };
 
 /// Handles OIDC protocol operations: discovery, PKCE, token exchange, JWT validation.
+/// JWT/JWKS signature verification is delegated to liboauth2 (via cjose).
 /// Class abbreviation: os
 class OidcService {
  public:
   OidcService();
   ~OidcService();
+
+  // Non-copyable (owns liboauth2 log resource)
+  OidcService(const OidcService&) = delete;
+  OidcService& operator=(const OidcService&) = delete;
 
   /// Generate PKCE code_verifier and code_challenge (S256).
   /// Returns {verifier, challenge}.
@@ -67,6 +75,7 @@ class OidcService {
                               const std::string& sCodeVerifier);
 
   /// Validate an ID token JWT: verify signature against JWKS, validate claims.
+  /// Signature verification uses liboauth2/cjose.
   /// Returns the decoded payload JSON.
   nlohmann::json validateIdToken(const std::string& sIdToken,
                                  const std::string& sJwksUri,
@@ -81,6 +90,8 @@ class OidcService {
 
  private:
   void evictExpiredStates();
+
+  oauth2_log_t* _pLog = nullptr;
 
   std::mutex _mtxStates;
   std::unordered_map<std::string, OidcAuthState> _mAuthStates;

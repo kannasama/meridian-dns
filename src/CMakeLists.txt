@@ -28,6 +28,7 @@ target_link_libraries(meridian-core PUBLIC
   PkgConfig::LASSO
   PkgConfig::JANSSON
   PkgConfig::LIBCURL
+  PkgConfig::PCRE2
   oauth2
   cjose
 )
