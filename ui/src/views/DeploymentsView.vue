@@ -499,7 +499,6 @@ onMounted(async () => {
         dataKey="id"
       >
         <Column expander style="width: 3rem" />
-        <Column field="seq" header="#" sortable style="width: 4rem" />
         <Column header="Timestamp" sortable field="deployed_at">
           <template #body="{ data }">
             {{ formatTimestamp(data.deployed_at) }}
