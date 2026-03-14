@@ -2,12 +2,15 @@
 
 #include "common/Errors.hpp"
 
+#include <openssl/bio.h>
 #include <openssl/core_names.h>
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
 #include <openssl/params.h>
+#include <openssl/pem.h>
 #include <openssl/rand.h>
+#include <openssl/x509.h>
 
 #include <cstdio>
 #include <iomanip>
@@ -494,6 +497,83 @@ bool CryptoService::verifyPassword(const std::string& sPassword, const std::stri
 
   // Constant-time comparison
   return CRYPTO_memcmp(vDerived.data(), vStoredHash.data(), vStoredHash.size()) == 0;
+}
+
+// ── SP Key Pair Generation ─────────────────────────────────────────────────
+
+std::pair<std::string, std::string> CryptoService::generateSpKeyPair(
+    const std::string& sCommonName) {
+  // Generate RSA-2048 key pair
+  EVP_PKEY_CTX* pKeyCtx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
+  if (!pKeyCtx) {
+    throw std::runtime_error("Failed to create EVP_PKEY_CTX for RSA");
+  }
+
+  if (EVP_PKEY_keygen_init(pKeyCtx) != 1) {
+    EVP_PKEY_CTX_free(pKeyCtx);
+    throw std::runtime_error("Failed to initialize RSA key generation");
+  }
+
+  if (EVP_PKEY_CTX_set_rsa_keygen_bits(pKeyCtx, 2048) != 1) {
+    EVP_PKEY_CTX_free(pKeyCtx);
+    throw std::runtime_error("Failed to set RSA key size");
+  }
+
+  EVP_PKEY* pKey = nullptr;
+  if (EVP_PKEY_keygen(pKeyCtx, &pKey) != 1) {
+    EVP_PKEY_CTX_free(pKeyCtx);
+    throw std::runtime_error("RSA key generation failed");
+  }
+  EVP_PKEY_CTX_free(pKeyCtx);
+
+  // Create self-signed X.509 certificate (10-year validity)
+  X509* pCert = X509_new();
+  if (!pCert) {
+    EVP_PKEY_free(pKey);
+    throw std::runtime_error("Failed to create X509 certificate");
+  }
+
+  X509_set_version(pCert, 2);  // v3
+  ASN1_INTEGER_set(X509_get_serialNumber(pCert), 1);
+  X509_gmtime_adj(X509_getm_notBefore(pCert), 0);
+  X509_gmtime_adj(X509_getm_notAfter(pCert), 10L * 365 * 24 * 3600);
+  X509_set_pubkey(pCert, pKey);
+
+  // Set subject/issuer CN
+  X509_NAME* pName = X509_get_subject_name(pCert);
+  std::string sCn = sCommonName.empty() ? "Meridian DNS SP" : sCommonName;
+  X509_NAME_add_entry_by_txt(pName, "CN", MBSTRING_UTF8,
+                             reinterpret_cast<const unsigned char*>(sCn.c_str()),
+                             -1, -1, 0);
+  X509_set_issuer_name(pCert, pName);
+
+  // Self-sign with SHA-256
+  if (X509_sign(pCert, pKey, EVP_sha256()) == 0) {
+    X509_free(pCert);
+    EVP_PKEY_free(pKey);
+    throw std::runtime_error("Failed to sign X509 certificate");
+  }
+
+  // Write private key to PEM string
+  BIO* pKeyBio = BIO_new(BIO_s_mem());
+  PEM_write_bio_PrivateKey(pKeyBio, pKey, nullptr, nullptr, 0, nullptr, nullptr);
+  char* pKeyData = nullptr;
+  long iKeyLen = BIO_get_mem_data(pKeyBio, &pKeyData);
+  std::string sPrivateKeyPem(pKeyData, static_cast<size_t>(iKeyLen));
+  BIO_free(pKeyBio);
+
+  // Write certificate to PEM string
+  BIO* pCertBio = BIO_new(BIO_s_mem());
+  PEM_write_bio_X509(pCertBio, pCert);
+  char* pCertData = nullptr;
+  long iCertLen = BIO_get_mem_data(pCertBio, &pCertData);
+  std::string sCertPem(pCertData, static_cast<size_t>(iCertLen));
+  BIO_free(pCertBio);
+
+  X509_free(pCert);
+  EVP_PKEY_free(pKey);
+
+  return {sPrivateKeyPem, sCertPem};
 }
 
 }  // namespace dns::security

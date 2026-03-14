@@ -35,6 +35,11 @@ class CryptoService {
   /// Used to hash JWTs for session table lookups.
   static std::string sha256Hex(const std::string& sInput);
 
+  /// Generate an RSA-2048 key pair and self-signed X.509 certificate for SAML SP signing.
+  /// Returns {private_key_pem, certificate_pem}.
+  static std::pair<std::string, std::string> generateSpKeyPair(
+      const std::string& sCommonName);
+
   /// Hash a password with Argon2id → PHC-formatted string.
   /// Format: $argon2id$v=19$m=65536,t=3,p=1$<base64_salt>$<base64_hash>
   static std::string hashPassword(const std::string& sPassword);

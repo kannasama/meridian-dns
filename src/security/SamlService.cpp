@@ -318,6 +318,7 @@ bool SamlService::isIdpRegistered(int64_t iIdpId) const {
 SamlLoginResult SamlService::buildLoginUrl(int64_t iIdpId,
                                            const std::string& sRelayState) {
   LassoServer* pServer = nullptr;
+  bool bHasPrivateKey = false;
   {
     std::lock_guard<std::mutex> lock(_mtxIdps);
     auto it = _mServers.find(iIdpId);
@@ -327,12 +328,23 @@ SamlLoginResult SamlService::buildLoginUrl(int64_t iIdpId,
           "SAML IdP " + std::to_string(iIdpId) + " is not registered");
     }
     pServer = it->second;
+
+    auto itCfg = _mSpConfigs.find(iIdpId);
+    if (itCfg != _mSpConfigs.end()) {
+      bHasPrivateKey = !itCfg->second.sSpPrivateKeyPem.empty();
+    }
   }
 
   // Create login profile
   LassoLogin* pLogin = lasso_login_new(pServer);
   if (pLogin == nullptr) {
     throw common::AuthenticationError("saml_login_new", "Failed to create lasso login");
+  }
+
+  // If no SP private key is configured, forbid signing to avoid -106 errors
+  if (!bHasPrivateKey) {
+    lasso_profile_set_signature_hint(LASSO_PROFILE(pLogin),
+                                     LASSO_PROFILE_SIGNATURE_HINT_FORBID);
   }
 
   // Find the IdP entity ID from the server's providers
@@ -652,6 +664,7 @@ std::string SamlService::initiateSlo(int64_t iIdpId, const std::string& sNameId,
                                      const std::string& sSessionIndex) {
   LassoServer* pServer = nullptr;
   std::string sIdpSloUrl;
+  bool bHasPrivateKey = false;
   {
     std::lock_guard<std::mutex> lock(_mtxIdps);
     auto it = _mServers.find(iIdpId);
@@ -665,6 +678,7 @@ std::string SamlService::initiateSlo(int64_t iIdpId, const std::string& sNameId,
     auto itCfg = _mSpConfigs.find(iIdpId);
     if (itCfg != _mSpConfigs.end()) {
       sIdpSloUrl = itCfg->second.sIdpSloUrl;
+      bHasPrivateKey = !itCfg->second.sSpPrivateKeyPem.empty();
     }
   }
 
@@ -678,6 +692,12 @@ std::string SamlService::initiateSlo(int64_t iIdpId, const std::string& sNameId,
   if (pLogout == nullptr) {
     throw common::AuthenticationError("saml_logout_new",
                                       "Failed to create lasso logout profile");
+  }
+
+  // If no SP private key is configured, forbid signing
+  if (!bHasPrivateKey) {
+    lasso_profile_set_signature_hint(LASSO_PROFILE(pLogout),
+                                     LASSO_PROFILE_SIGNATURE_HINT_FORBID);
   }
 
   // Set the NameID on the profile so lasso can build the LogoutRequest
@@ -748,6 +768,7 @@ std::string SamlService::initiateSlo(int64_t iIdpId, const std::string& sNameId,
 std::string SamlService::processSloRequest(int64_t iIdpId,
                                            const std::string& sSloRequest) {
   LassoServer* pServer = nullptr;
+  bool bHasPrivateKey = false;
   {
     std::lock_guard<std::mutex> lock(_mtxIdps);
     auto it = _mServers.find(iIdpId);
@@ -757,6 +778,11 @@ std::string SamlService::processSloRequest(int64_t iIdpId,
           "SAML IdP " + std::to_string(iIdpId) + " is not registered");
     }
     pServer = it->second;
+
+    auto itCfg = _mSpConfigs.find(iIdpId);
+    if (itCfg != _mSpConfigs.end()) {
+      bHasPrivateKey = !itCfg->second.sSpPrivateKeyPem.empty();
+    }
   }
 
   // Create logout profile for processing the incoming request
@@ -764,6 +790,12 @@ std::string SamlService::processSloRequest(int64_t iIdpId,
   if (pLogout == nullptr) {
     throw common::AuthenticationError("saml_logout_new",
                                       "Failed to create lasso logout for SLO request");
+  }
+
+  // If no SP private key is configured, forbid signing
+  if (!bHasPrivateKey) {
+    lasso_profile_set_signature_hint(LASSO_PROFILE(pLogout),
+                                     LASSO_PROFILE_SIGNATURE_HINT_FORBID);
   }
 
   // Process the incoming SLO request

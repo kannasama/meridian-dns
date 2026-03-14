@@ -36,6 +36,10 @@ export function testIdentityProvider(id: number): Promise<IdpTestResult> {
   return get(`/identity-providers/${id}/test`)
 }
 
+export function generateSpKeyPair(entityId: string): Promise<{ private_key: string; certificate: string }> {
+  return post('/identity-providers/generate-sp-keypair', { entity_id: entityId })
+}
+
 export function listEnabledIdps(): Promise<EnabledIdp[]> {
   return get('/auth/identity-providers')
 }

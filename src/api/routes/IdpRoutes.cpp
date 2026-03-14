@@ -5,6 +5,7 @@
 #include "common/Errors.hpp"
 #include "common/Permissions.hpp"
 #include "dal/IdpRepository.hpp"
+#include "security/CryptoService.hpp"
 #include "security/OidcService.hpp"
 #include "security/SamlService.hpp"
 
@@ -233,11 +234,15 @@ void IdpRoutes::registerRoutes(crow::SimpleApp& app) {
             std::string sAcsUrl = oIdp->jConfig.value("assertion_consumer_service_url", "");
             std::string sCert = oIdp->jConfig.value("certificate", "");
             std::string sIdpEntityId = oIdp->jConfig.value("idp_entity_id", sSsoUrl);
+            std::string sSpPrivateKey = oIdp->jConfig.value("sp_private_key", "");
+            std::string sIdpSloUrl = oIdp->jConfig.value("slo_url", "");
+            std::string sSpSloUrl = oIdp->jConfig.value("sp_slo_url", "");
 
-            // Lazy registration with lasso
+            // Lazy registration with lasso (include all config for consistency)
             if (!_ssService.isIdpRegistered(iId)) {
               _ssService.registerIdp(iId, sSpEntityId, sAcsUrl,
-                                     sIdpEntityId, sSsoUrl, sCert);
+                                     sIdpEntityId, sSsoUrl, sCert,
+                                     sSpPrivateKey, sIdpSloUrl, sSpSloUrl);
             }
 
             auto sRelayState = dns::security::OidcService::generateState();
@@ -256,10 +261,41 @@ void IdpRoutes::registerRoutes(crow::SimpleApp& app) {
           }
 
           return jsonResponse(200, {{"redirect_url", sRedirectUrl}});
+        } catch (const common::AuthenticationError& e) {
+          // SAML/OIDC protocol errors throw AuthenticationError (401), but in the
+          // test endpoint context this is a config/protocol issue, not a session
+          // issue. Re-surface as 502 to avoid triggering frontend sign-out.
+          spdlog::error("IdP test failed: {}", e.what());
+          return jsonResponse(502, {{"error", e._sErrorCode},
+                                    {"message", e.what()}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
         }
       });
+
+  // POST /api/v1/identity-providers/generate-sp-keypair — generate SAML SP key pair
+  CROW_ROUTE(app, "/api/v1/identity-providers/generate-sp-keypair")
+      .methods("POST"_method)(
+          [this](const crow::request& req) -> crow::response {
+            try {
+              auto rcCtx = authenticate(_amMiddleware, req);
+              requirePermission(rcCtx, Permissions::kSettingsEdit);
+
+              auto jBody = nlohmann::json::parse(req.body, nullptr, false);
+              std::string sEntityId;
+              if (!jBody.is_discarded()) {
+                sEntityId = jBody.value("entity_id", "");
+              }
+
+              auto [sPrivateKey, sCertificate] =
+                  dns::security::CryptoService::generateSpKeyPair(sEntityId);
+
+              return jsonResponse(200, {{"private_key", sPrivateKey},
+                                        {"certificate", sCertificate}});
+            } catch (const common::AppError& e) {
+              return errorResponse(e);
+            }
+          });
 }
 
 }  // namespace dns::api::routes

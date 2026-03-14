@@ -74,6 +74,7 @@ const form = ref({
   sign_requests: false,
   idp_entity_id: '',
   slo_url: '',
+  sp_private_key: '',
   sp_certificate: '',
   // Group mappings
   mappingRules: [] as GroupMappingRule[],
@@ -136,6 +137,7 @@ function openCreate() {
     sign_requests: false,
     idp_entity_id: '',
     slo_url: '',
+    sp_private_key: '',
     sp_certificate: '',
     mappingRules: [],
     default_group_id: null,
@@ -167,6 +169,7 @@ function openEdit(idp: IdentityProvider) {
     sign_requests: (cfg.sign_requests as boolean) ?? false,
     idp_entity_id: (cfg.idp_entity_id as string) ?? '',
     slo_url: (cfg.slo_url as string) ?? '',
+    sp_private_key: (cfg.sp_private_key as string) ?? '',
     sp_certificate: (cfg.sp_certificate as string) ?? '',
     mappingRules: idp.group_mappings?.rules ?? [],
     default_group_id: idp.default_group_id,
@@ -195,6 +198,7 @@ function buildConfig() {
     sign_requests: form.value.sign_requests,
     idp_entity_id: form.value.idp_entity_id || undefined,
     slo_url: form.value.slo_url || undefined,
+    sp_private_key: form.value.sp_private_key || undefined,
     sp_certificate: form.value.sp_certificate || undefined,
   }
 }
@@ -244,6 +248,22 @@ async function handleDelete(idp: IdentityProvider) {
       await fetchData()
     },
   )
+}
+
+const generatingKeyPair = ref(false)
+
+async function handleGenerateKeyPair() {
+  try {
+    generatingKeyPair.value = true
+    const result = await idpApi.generateSpKeyPair(form.value.entity_id)
+    form.value.sp_private_key = result.private_key
+    form.value.sp_certificate = result.certificate
+    notify.success('SP key pair generated')
+  } catch (err: unknown) {
+    notify.error((err as Error).message || 'Failed to generate key pair')
+  } finally {
+    generatingKeyPair.value = false
+  }
 }
 
 async function handleTest(idp: IdentityProvider) {
@@ -472,10 +492,33 @@ function copyToClipboard(text: string) {
             <label>IdP Certificate (PEM)</label>
             <Textarea v-model="form.certificate" class="w-full" rows="4" />
           </div>
-          <div class="field">
-            <label>SP Certificate PEM</label>
-            <Textarea v-model="form.sp_certificate" class="w-full" rows="4" />
-            <small class="hint">SP signing certificate in PEM format (for metadata)</small>
+
+          <div class="sp-signing-section">
+            <div class="flex items-center justify-between mb-2">
+              <label class="font-semibold">SP Signing Key Pair</label>
+              <Button
+                label="Generate Key Pair"
+                icon="pi pi-key"
+                size="small"
+                severity="secondary"
+                :loading="generatingKeyPair"
+                @click="handleGenerateKeyPair"
+              />
+            </div>
+            <small class="hint mb-2" style="display: block">
+              Required when "Sign AuthnRequests" is enabled. The private key signs
+              outgoing requests; the certificate is included in SP metadata for the IdP.
+            </small>
+            <div class="field">
+              <label>SP Private Key (PEM)</label>
+              <Textarea v-model="form.sp_private_key" class="w-full" rows="4"
+                placeholder="-----BEGIN PRIVATE KEY-----" />
+            </div>
+            <div class="field">
+              <label>SP Certificate (PEM)</label>
+              <Textarea v-model="form.sp_certificate" class="w-full" rows="4"
+                placeholder="-----BEGIN CERTIFICATE-----" />
+            </div>
           </div>
           <div class="field">
             <label>Group Attribute</label>
@@ -659,6 +702,19 @@ function copyToClipboard(text: string) {
 .hint {
   font-size: 0.75rem;
   color: var(--p-surface-500);
+}
+
+.sp-signing-section {
+  border: 1px solid var(--p-surface-700);
+  border-radius: 0.375rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+:root:not(.app-dark) .sp-signing-section {
+  border-color: var(--p-surface-200);
 }
 
 .mapping-section {
