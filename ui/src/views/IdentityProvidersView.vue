@@ -76,6 +76,10 @@ const form = ref({
   slo_url: '',
   sp_private_key: '',
   sp_certificate: '',
+  // Attribute mapping
+  attr_username: '',
+  attr_email: '',
+  attr_display_name: '',
   // Group mappings
   mappingRules: [] as GroupMappingRule[],
   default_group_id: null as number | null,
@@ -139,6 +143,9 @@ function openCreate() {
     slo_url: '',
     sp_private_key: '',
     sp_certificate: '',
+    attr_username: '',
+    attr_email: '',
+    attr_display_name: '',
     mappingRules: [],
     default_group_id: null,
   }
@@ -171,13 +178,27 @@ function openEdit(idp: IdentityProvider) {
     slo_url: (cfg.slo_url as string) ?? '',
     sp_private_key: (cfg.sp_private_key as string) ?? '',
     sp_certificate: (cfg.sp_certificate as string) ?? '',
+    attr_username: '',
+    attr_email: '',
+    attr_display_name: '',
     mappingRules: idp.group_mappings?.rules ?? [],
     default_group_id: idp.default_group_id,
   }
+  const attrMapping = (cfg.attribute_mapping as Record<string, string>) ?? {}
+  form.value.attr_username = attrMapping.username ?? ''
+  form.value.attr_email = attrMapping.email ?? ''
+  form.value.attr_display_name = attrMapping.display_name ?? ''
   dialogVisible.value = true
 }
 
 function buildConfig() {
+  const attrMapping: Record<string, string> = {}
+  if (form.value.attr_username) attrMapping.username = form.value.attr_username
+  if (form.value.attr_email) attrMapping.email = form.value.attr_email
+  if (form.value.attr_display_name) attrMapping.display_name = form.value.attr_display_name
+
+  const mapping = Object.keys(attrMapping).length > 0 ? { attribute_mapping: attrMapping } : {}
+
   if (form.value.type === 'oidc') {
     return {
       issuer_url: form.value.issuer_url,
@@ -185,6 +206,7 @@ function buildConfig() {
       redirect_uri: oidcRedirectUri(form.value.id),
       scopes: form.value.scopes.split(/\s+/).filter(Boolean),
       groups_claim: form.value.groups_claim,
+      ...mapping,
     }
   }
   return {
@@ -200,6 +222,7 @@ function buildConfig() {
     slo_url: form.value.slo_url || undefined,
     sp_private_key: form.value.sp_private_key || undefined,
     sp_certificate: form.value.sp_certificate || undefined,
+    ...mapping,
   }
 }
 
@@ -555,6 +578,39 @@ function copyToClipboard(text: string) {
           </div>
         </template>
 
+        <!-- Attribute Mapping -->
+        <h4 class="form-section-title">Attribute Mapping</h4>
+        <p class="section-hint">
+          Map your IdP's claim/attribute names to Meridian fields.
+          Leave empty to use defaults{{ form.type === 'oidc' ? ' (preferred_username, email, name)' : ' (NameID, email, displayName)' }}.
+        </p>
+        <div class="form-grid">
+          <div class="field">
+            <label>Username {{ form.type === 'oidc' ? 'Claim' : 'Attribute' }}</label>
+            <InputText
+              v-model="form.attr_username"
+              class="w-full"
+              :placeholder="form.type === 'oidc' ? 'preferred_username' : '(uses NameID)'"
+            />
+          </div>
+          <div class="field">
+            <label>Email {{ form.type === 'oidc' ? 'Claim' : 'Attribute' }}</label>
+            <InputText
+              v-model="form.attr_email"
+              class="w-full"
+              placeholder="email"
+            />
+          </div>
+          <div class="field">
+            <label>Display Name {{ form.type === 'oidc' ? 'Claim' : 'Attribute' }}</label>
+            <InputText
+              v-model="form.attr_display_name"
+              class="w-full"
+              :placeholder="form.type === 'oidc' ? 'name' : 'displayName'"
+            />
+          </div>
+        </div>
+
         <!-- Group Mapping Rules -->
         <div class="mapping-section">
           <div class="flex items-center justify-between mb-2">
@@ -725,5 +781,11 @@ function copyToClipboard(text: string) {
 
 :root:not(.app-dark) .mapping-section {
   border-color: var(--p-surface-200);
+}
+
+.section-hint {
+  color: var(--p-surface-400);
+  font-size: 0.8rem;
+  margin: 0 0 0.75rem;
 }
 </style>
