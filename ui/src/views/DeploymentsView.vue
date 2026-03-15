@@ -504,6 +504,28 @@ onMounted(async () => {
             {{ formatTimestamp(data.deployed_at) }}
           </template>
         </Column>
+        <Column header="Type" style="width: 8rem">
+          <template #body="{ data }">
+            <Tag
+              v-if="data.snapshot?.generated_by === 'auto-capture'"
+              value="Baseline"
+              severity="info"
+              icon="pi pi-history"
+            />
+            <Tag
+              v-else-if="data.snapshot?.generated_by === 'manual-capture'"
+              value="Captured"
+              severity="info"
+              icon="pi pi-camera"
+            />
+            <Tag
+              v-else
+              value="Deployed"
+              severity="success"
+              icon="pi pi-play"
+            />
+          </template>
+        </Column>
         <Column header="Zone">
           <template #body="{ data }">
             <span class="font-mono">{{ zoneName(data.zone_id) }}</span>
