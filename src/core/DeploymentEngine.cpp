@@ -100,6 +100,43 @@ nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
   };
 }
 
+nlohmann::json DeploymentEngine::buildCaptureSnapshot(
+    int64_t iZoneId,
+    const std::vector<common::DnsRecord>& vLiveRecords,
+    const std::string& sActor,
+    const std::string& sGeneratedBy) const {
+  auto oZone = _zrRepo.findById(iZoneId);
+  std::string sZoneName = oZone ? oZone->sName : "unknown";
+
+  auto oView = oZone ? _vrRepo.findById(oZone->iViewId) : std::nullopt;
+  std::string sViewName = oView ? oView->sName : "unknown";
+
+  nlohmann::json jRecords = nlohmann::json::array();
+  for (const auto& rec : vLiveRecords) {
+    jRecords.push_back({
+        {"name", rec.sName},
+        {"type", rec.sType},
+        {"value", rec.sValue},
+        {"ttl", rec.uTtl},
+        {"priority", rec.iPriority},
+    });
+  }
+
+  auto tpNow = std::chrono::system_clock::now();
+  auto ttNow = std::chrono::system_clock::to_time_t(tpNow);
+  std::ostringstream oss;
+  oss << std::put_time(std::gmtime(&ttNow), "%FT%TZ");
+
+  return {
+      {"zone", sZoneName},
+      {"view", sViewName},
+      {"captured_at", oss.str()},
+      {"generated_by", sGeneratedBy},
+      {"record_count", static_cast<int>(vLiveRecords.size())},
+      {"records", jRecords},
+  };
+}
+
 void DeploymentEngine::push(int64_t iZoneId,
                             const std::vector<common::DriftAction>& vDriftActions,
                             int64_t iActorUserId, const std::string& sActor) {
@@ -286,6 +323,53 @@ void DeploymentEngine::push(int64_t iZoneId,
 
   spLog->info("DeploymentEngine: zone '{}' pushed successfully by {}", prResult.sZoneName,
               sActor);
+}
+
+int64_t DeploymentEngine::capture(int64_t iZoneId, int64_t iActorUserId,
+                                  const std::string& sActor,
+                                  const std::string& sGeneratedBy) {
+  auto spLog = common::Logger::get();
+
+  // 1. Acquire per-zone mutex
+  auto& mtxZone = zoneMutex(iZoneId);
+  if (!mtxZone.try_lock()) {
+    throw common::DeploymentLockedError(
+        "ZONE_LOCKED", "Zone " + std::to_string(iZoneId) + " is currently being deployed");
+  }
+  std::lock_guard lock(mtxZone, std::adopt_lock);
+
+  // 2. Fetch live records from all providers
+  auto vLiveRecords = _deEngine.fetchLiveRecords(iZoneId);
+
+  auto oZone = _zrRepo.findById(iZoneId);
+  std::string sZoneName = oZone ? oZone->sName : "unknown";
+
+  spLog->info("DeploymentEngine: capturing {} live records for zone '{}'",
+              vLiveRecords.size(), sZoneName);
+
+  // 3. Build capture snapshot
+  auto jSnapshot = buildCaptureSnapshot(iZoneId, vLiveRecords, sActor, sGeneratedBy);
+
+  // 4. Create deployment record
+  int64_t iDeploymentId = _drRepo.create(iZoneId, iActorUserId, jSnapshot);
+
+  // 5. GitOps commit (non-fatal)
+  if (_pGitRepoManager) {
+    _pGitRepoManager->commitZoneSnapshot(iZoneId, sActor);
+  }
+
+  // 6. Audit log
+  nlohmann::json jAuditDetail = {
+      {"generated_by", sGeneratedBy},
+      {"record_count", static_cast<int>(vLiveRecords.size())},
+  };
+  _arRepo.insert("zone", iZoneId, "zone.capture", std::nullopt, jAuditDetail,
+                 sActor, std::nullopt, std::nullopt);
+
+  spLog->info("DeploymentEngine: captured zone '{}' ({} records, deployment #{})",
+              sZoneName, vLiveRecords.size(), iDeploymentId);
+
+  return iDeploymentId;
 }
 
 }  // namespace dns::core
