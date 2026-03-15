@@ -359,6 +359,23 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         }
       });
 
+  // POST /api/v1/zones/<int>/capture
+  CROW_ROUTE(app, "/api/v1/zones/<int>/capture").methods("POST"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requirePermission(rcCtx, Permissions::kZonesDeploy);
+
+          int64_t iDeploymentId =
+              _depEngine.capture(iZoneId, rcCtx.iUserId, rcCtx.sUsername, "manual-capture");
+
+          return jsonResponse(201, {{"message", "Current state captured successfully"},
+                                    {"deployment_id", iDeploymentId}});
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
   // POST /api/v1/zones/<int>/records/batch
   CROW_ROUTE(app, "/api/v1/zones/<int>/records/batch").methods("POST"_method)(
       [this](const crow::request& req, int iZoneId) -> crow::response {
