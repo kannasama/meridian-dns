@@ -1386,6 +1386,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /zones/{id}/capture:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Capture current provider state as baseline snapshot
+      tags: [Deployment]
+      description: >
+        Required permission: zones.deploy. Pulls current records from the
+        provider and creates a baseline deployment snapshot. No diff computation
+        or push — records captured as-is. Useful for establishing a GitOps
+        baseline for zones not yet deployed through Meridian.
+      responses:
+        "201":
+          description: State captured successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Current state captured successfully
+                  deployment_id:
+                    type: integer
+                    format: int64
+        "404":
+          description: Zone not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Zone is currently being deployed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /variables:
     get:
       summary: List variables
