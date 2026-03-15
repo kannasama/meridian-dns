@@ -21,6 +21,7 @@ import { useNotificationStore } from '../stores/notification'
 import { ApiRequestError } from '../api/client'
 import * as zoneApi from '../api/zones'
 import * as recordApi from '../api/records'
+import { downloadZoneExport } from '../api/backup'
 import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
 import { useVariableAutocomplete } from '../composables/useVariableAutocomplete'
@@ -371,6 +372,15 @@ function goToDeploy() {
   router.push({ name: 'deployments', query: { zones: String(zoneId.value) } })
 }
 
+async function doExportZone() {
+  try {
+    await downloadZoneExport(zoneId.value)
+    notify.success('Zone exported')
+  } catch (e: unknown) {
+    notify.error((e as Error).message || 'Zone export failed')
+  }
+}
+
 const showPriority = computed(() => form.value.type === 'MX' || form.value.type === 'SRV')
 
 const hasPriorityRecords = computed(() =>
@@ -428,6 +438,13 @@ onMounted(fetchData)
           icon="pi pi-play"
           severity="success"
           @click="goToDeploy"
+          class="mr-2"
+        />
+        <Button
+          label="Export"
+          icon="pi pi-upload"
+          severity="secondary"
+          @click="doExportZone"
           class="mr-2"
         />
         <Button
