@@ -105,7 +105,8 @@ TEST_F(RollbackEngineTest, FullRestore) {
 
   // Rollback to the snapshot (full restore)
   dns::core::RollbackEngine reEngine(*_drRepo, *_rrRepo, *_arRepo);
-  reEngine.apply(_iZoneId, iDeployId, {}, _iUserId, "alice");
+  dns::common::AuditContext acTest{"alice", "local", "127.0.0.1"};
+  reEngine.apply(_iZoneId, iDeployId, {}, _iUserId, acTest);
 
   // Verify records match snapshot
   auto vRecords = _rrRepo->listByZoneId(_iZoneId);
@@ -147,7 +148,8 @@ TEST_F(RollbackEngineTest, CherryPickRestore) {
 
   // Cherry-pick restore only iRec1
   dns::core::RollbackEngine reEngine(*_drRepo, *_rrRepo, *_arRepo);
-  reEngine.apply(_iZoneId, iDeployId, {iRec1}, _iUserId, "alice");
+  dns::common::AuditContext acTest{"alice", "local", "127.0.0.1"};
+  reEngine.apply(_iZoneId, iDeployId, {iRec1}, _iUserId, acTest);
 
   // www should be restored, mail should keep its modified value
   auto oRec1 = _rrRepo->findById(iRec1);
@@ -163,7 +165,8 @@ TEST_F(RollbackEngineTest, CherryPickRestore) {
 
 TEST_F(RollbackEngineTest, RollbackNonexistentDeploymentThrows) {
   dns::core::RollbackEngine reEngine(*_drRepo, *_rrRepo, *_arRepo);
-  EXPECT_THROW(reEngine.apply(_iZoneId, 99999, {}, _iUserId, "alice"),
+  dns::common::AuditContext acTest{"alice", "local", "127.0.0.1"};
+  EXPECT_THROW(reEngine.apply(_iZoneId, 99999, {}, _iUserId, acTest),
                dns::common::NotFoundError);
 }
 
@@ -177,7 +180,8 @@ TEST_F(RollbackEngineTest, RollbackCreatesAuditEntry) {
   int64_t iDeployId = _drRepo->create(_iZoneId, _iUserId, jSnapshot);
 
   dns::core::RollbackEngine reEngine(*_drRepo, *_rrRepo, *_arRepo);
-  reEngine.apply(_iZoneId, iDeployId, {}, _iUserId, "alice");
+  dns::common::AuditContext acTest{"alice", "local", "127.0.0.1"};
+  reEngine.apply(_iZoneId, iDeployId, {}, _iUserId, acTest);
 
   auto vAudit = _arRepo->query(std::string("zone"), std::nullopt, std::string("alice"),
                                std::nullopt, std::nullopt, 10);

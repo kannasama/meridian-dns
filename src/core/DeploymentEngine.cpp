@@ -57,7 +57,7 @@ std::mutex& DeploymentEngine::zoneMutex(int64_t iZoneId) {
 }
 
 nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
-                                               const std::string& sActor) const {
+                                               const std::string& sIdentity) const {
   auto oZone = _zrRepo.findById(iZoneId);
   std::string sZoneName = oZone ? oZone->sName : "unknown";
 
@@ -95,7 +95,7 @@ nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
       {"zone", sZoneName},
       {"view", sViewName},
       {"deployed_at", oss.str()},
-      {"deployed_by", sActor},
+      {"deployed_by", sIdentity},
       {"records", jRecords},
   };
 }
@@ -103,7 +103,7 @@ nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
 nlohmann::json DeploymentEngine::buildCaptureSnapshot(
     int64_t iZoneId,
     const std::vector<common::DnsRecord>& vLiveRecords,
-    const std::string& sActor,
+    const std::string& sIdentity,
     const std::string& sGeneratedBy) const {
   auto oZone = _zrRepo.findById(iZoneId);
   std::string sZoneName = oZone ? oZone->sName : "unknown";
@@ -131,7 +131,7 @@ nlohmann::json DeploymentEngine::buildCaptureSnapshot(
       {"zone", sZoneName},
       {"view", sViewName},
       {"captured_at", oss.str()},
-      {"captured_by", sActor},
+      {"captured_by", sIdentity},
       {"generated_by", sGeneratedBy},
       {"record_count", static_cast<int>(vLiveRecords.size())},
       {"records", jRecords},
@@ -140,7 +140,7 @@ nlohmann::json DeploymentEngine::buildCaptureSnapshot(
 
 void DeploymentEngine::push(int64_t iZoneId,
                             const std::vector<common::DriftAction>& vDriftActions,
-                            int64_t iActorUserId, const std::string& sActor) {
+                            int64_t iActorUserId, const common::AuditContext& acCtx) {
   auto spLog = common::Logger::get();
 
   // 1. Acquire per-zone mutex (non-blocking try_lock)
@@ -293,11 +293,11 @@ void DeploymentEngine::push(int64_t iZoneId,
         {"priority", diff.iPriority},
     });
   }
-  _arRepo.insert("zone", iZoneId, "push", std::nullopt, jDiffs, sActor,
-                 std::nullopt, std::nullopt);
+  _arRepo.insert("zone", iZoneId, "push", std::nullopt, jDiffs, acCtx.sIdentity,
+                 acCtx.sAuthMethod, acCtx.sIpAddress);
 
   // 6. Create deployment snapshot
-  auto jSnapshot = buildSnapshot(iZoneId, sActor);
+  auto jSnapshot = buildSnapshot(iZoneId, acCtx.sIdentity);
   _drRepo.create(iZoneId, iActorUserId, jSnapshot);
 
   // 7. Prune old snapshots
@@ -309,7 +309,7 @@ void DeploymentEngine::push(int64_t iZoneId,
 
   // 8. GitOps mirror commit (non-fatal)
   if (_pGitRepoManager) {
-    _pGitRepoManager->commitZoneSnapshot(iZoneId, sActor);
+    _pGitRepoManager->commitZoneSnapshot(iZoneId, acCtx.sIdentity);
   }
 
   // 9. Hard-delete pending-delete records after successful push
@@ -323,11 +323,11 @@ void DeploymentEngine::push(int64_t iZoneId,
   _zrRepo.updateSyncStatus(iZoneId, "in_sync");
 
   spLog->info("DeploymentEngine: zone '{}' pushed successfully by {}", prResult.sZoneName,
-              sActor);
+              acCtx.sIdentity);
 }
 
 int64_t DeploymentEngine::capture(int64_t iZoneId, int64_t iActorUserId,
-                                  const std::string& sActor,
+                                  const common::AuditContext& acCtx,
                                   const std::string& sGeneratedBy) {
   auto spLog = common::Logger::get();
 
@@ -349,14 +349,14 @@ int64_t DeploymentEngine::capture(int64_t iZoneId, int64_t iActorUserId,
               vLiveRecords.size(), sZoneName);
 
   // 3. Build capture snapshot
-  auto jSnapshot = buildCaptureSnapshot(iZoneId, vLiveRecords, sActor, sGeneratedBy);
+  auto jSnapshot = buildCaptureSnapshot(iZoneId, vLiveRecords, acCtx.sIdentity, sGeneratedBy);
 
   // 4. Create deployment record
   int64_t iDeploymentId = _drRepo.create(iZoneId, iActorUserId, jSnapshot);
 
   // 5. GitOps commit (non-fatal)
   if (_pGitRepoManager) {
-    _pGitRepoManager->commitZoneSnapshot(iZoneId, sActor);
+    _pGitRepoManager->commitZoneSnapshot(iZoneId, acCtx.sIdentity);
   }
 
   // 6. Audit log
@@ -365,7 +365,7 @@ int64_t DeploymentEngine::capture(int64_t iZoneId, int64_t iActorUserId,
       {"record_count", static_cast<int>(vLiveRecords.size())},
   };
   _arRepo.insert("zone", iZoneId, "zone.capture", std::nullopt, jAuditDetail,
-                 sActor, std::nullopt, std::nullopt);
+                 acCtx.sIdentity, acCtx.sAuthMethod, acCtx.sIpAddress);
 
   spLog->info("DeploymentEngine: captured zone '{}' ({} records, deployment #{})",
               sZoneName, vLiveRecords.size(), iDeploymentId);

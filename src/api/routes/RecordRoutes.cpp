@@ -114,7 +114,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
               {"value_template", sValueTemplate}, {"priority", iPriority},
           };
           _arRepo.insert("record", iId, "create", std::nullopt, jNewValue,
-                         rcCtx.sUsername, std::nullopt, std::nullopt);
+                         formatAuditIdentity(rcCtx), rcCtx.sAuthMethod, rcCtx.sIpAddress);
 
           auto oCreated = _rrRepo.findById(iId);
           return jsonResponse(201, recordRowToJson(*oCreated));
@@ -186,7 +186,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
               {"value_template", sValueTemplate}, {"priority", iPriority},
           };
           _arRepo.insert("record", iRecordId, "update", jOldValue, jNewValue,
-                         rcCtx.sUsername, std::nullopt, std::nullopt);
+                         formatAuditIdentity(rcCtx), rcCtx.sAuthMethod, rcCtx.sIpAddress);
 
           auto oUpdated = _rrRepo.findById(iRecordId);
           return jsonResponse(200, recordRowToJson(*oUpdated));
@@ -220,7 +220,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
 
           // Audit trail
           _arRepo.insert("record", iRecordId, "delete", jOldValue, std::nullopt,
-                         rcCtx.sUsername, std::nullopt, std::nullopt);
+                         formatAuditIdentity(rcCtx), rcCtx.sAuthMethod, rcCtx.sIpAddress);
 
           return jsonResponse(200, {{"message", "Record marked for deletion"}});
         } catch (const common::AppError& e) {
@@ -249,7 +249,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
             };
           }
           _arRepo.insert("record", iRecordId, "restore", std::nullopt, jNewValue,
-                         rcCtx.sUsername, std::nullopt, std::nullopt);
+                         formatAuditIdentity(rcCtx), rcCtx.sAuthMethod, rcCtx.sIpAddress);
 
           return jsonResponse(200, recordRowToJson(*oRestored));
         } catch (const common::AppError& e) {
@@ -352,7 +352,8 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
             }
           }
 
-          _depEngine.push(iZoneId, vDriftActions, rcCtx.iUserId, rcCtx.sUsername);
+          auto acCtx = buildAuditContext(rcCtx);
+          _depEngine.push(iZoneId, vDriftActions, rcCtx.iUserId, acCtx);
           return jsonResponse(200, {{"message", "Push completed successfully"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
@@ -366,8 +367,9 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kZonesDeploy);
 
+          auto acCtx = buildAuditContext(rcCtx);
           int64_t iDeploymentId =
-              _depEngine.capture(iZoneId, rcCtx.iUserId, rcCtx.sUsername, "manual-capture");
+              _depEngine.capture(iZoneId, rcCtx.iUserId, acCtx, "manual-capture");
 
           return jsonResponse(201, {{"message", "Current state captured successfully"},
                                     {"deployment_id", iDeploymentId}});
@@ -522,7 +524,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
               {"deletes", jAuditDeletes},
           };
           _arRepo.insert("record", iZoneId, "batch_update", std::nullopt, jNewValue,
-                         rcCtx.sUsername, std::nullopt, std::nullopt);
+                         formatAuditIdentity(rcCtx), rcCtx.sAuthMethod, rcCtx.sIpAddress);
 
           // Return updated records list
           auto vRows = _rrRepo.listByZoneId(iZoneId);

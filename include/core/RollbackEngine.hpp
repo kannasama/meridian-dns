@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "common/Types.hpp"
+
 namespace dns::dal {
 class AuditRepository;
 class DeploymentRepository;
@@ -27,7 +29,7 @@ class RollbackEngine {
   /// Does NOT push to providers — operator must preview + push afterward.
   void apply(int64_t iZoneId, int64_t iDeploymentId,
              const std::vector<int64_t>& vCherryPickIds,
-             int64_t iActorUserId, const std::string& sActor);
+             int64_t iActorUserId, const common::AuditContext& acCtx);
 
  private:
   dns::dal::DeploymentRepository& _drRepo;

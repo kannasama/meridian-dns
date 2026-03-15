@@ -413,7 +413,8 @@ int main(int argc, char* argv[]) {
                 try {
                   auto vDeps = drRepo.listByZoneId(zone.iId, 1);
                   if (vDeps.empty()) {
-                    depEngine.capture(zone.iId, 1, "system/auto-capture", "auto-capture");
+                    dns::common::AuditContext acSystem{"system", "system", ""};
+                    depEngine.capture(zone.iId, 1, acSystem, "auto-capture");
                     ++iCaptured;
                     spLog->info("Auto-captured baseline for zone '{}'", zone.sName);
                   }

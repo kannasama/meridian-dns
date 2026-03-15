@@ -175,8 +175,9 @@ void DeploymentRoutes::registerRoutes(crow::SimpleApp& app) {
             }
           }
 
+          auto acCtx = buildAuditContext(rcCtx);
           _reEngine.apply(iZoneId, iDeployId, vCherryPickIds,
-                          rcCtx.iUserId, rcCtx.sUsername);
+                          rcCtx.iUserId, acCtx);
 
           return jsonResponse(200, {{"message", "Rollback applied — preview and push to deploy"}});
         } catch (const common::AppError& e) {

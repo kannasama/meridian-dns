@@ -21,7 +21,7 @@ RollbackEngine::~RollbackEngine() = default;
 
 void RollbackEngine::apply(int64_t iZoneId, int64_t iDeploymentId,
                            const std::vector<int64_t>& vCherryPickIds,
-                           int64_t /*iActorUserId*/, const std::string& sActor) {
+                           int64_t /*iActorUserId*/, const common::AuditContext& acCtx) {
   auto spLog = common::Logger::get();
 
   // 1. Fetch the deployment snapshot
@@ -92,8 +92,8 @@ void RollbackEngine::apply(int64_t iZoneId, int64_t iDeploymentId,
       {"deployment_id", iDeploymentId},
       {"cherry_pick_ids", vCherryPickIds},
   };
-  _arRepo.insert("zone", iZoneId, "rollback", std::nullopt, jNewValue, sActor,
-                 std::nullopt, std::nullopt);
+  _arRepo.insert("zone", iZoneId, "rollback", std::nullopt, jNewValue, acCtx.sIdentity,
+                 acCtx.sAuthMethod, acCtx.sIpAddress);
 }
 
 }  // namespace dns::core
