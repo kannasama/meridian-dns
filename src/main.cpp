@@ -9,6 +9,7 @@
 
 #include "api/ApiServer.hpp"
 #include "api/AuthMiddleware.hpp"
+#include "api/routes/BackupRoutes.hpp"
 #include "api/StaticFileHandler.hpp"
 #include "api/routes/ApiKeyRoutes.hpp"
 #include "api/routes/AuthRoutes.hpp"
@@ -32,6 +33,7 @@
 #include "common/Logger.hpp"
 #include "api/routes/AuditRoutes.hpp"
 #include "api/routes/DeploymentRoutes.hpp"
+#include "core/BackupService.hpp"
 #include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
 #include "core/MaintenanceScheduler.hpp"
@@ -408,6 +410,32 @@ int main(int argc, char* argv[]) {
           });
     }
 
+    // ── BackupService (requires all repositories) ────────────────────────
+    auto backupService = std::make_unique<dns::core::BackupService>(
+        *cpPool, *settingsRepo, *roleRepo, *grRepo, *urRepo, *idpRepo,
+        *gitRepoRepo, *prRepo, *vrRepo, *zrRepo, *rrRepo, *varRepo);
+    spLog->info("BackupService initialized");
+
+    // Optional scheduled config backup to git
+    {
+      int iBackupInterval = settingsRepo->getInt("backup.auto_interval_seconds", 0);
+      if (iBackupInterval > 0) {
+        msScheduler->schedule("config-backup",
+            std::chrono::seconds(iBackupInterval),
+            [&bsService = *backupService, &stRepo = *settingsRepo,
+             &grmgr = *upGitRepoManager]() {
+              auto sRepoId = stRepo.getValue("backup.git_repo_id", "");
+              if (sRepoId.empty()) return;
+              auto jExport = bsService.exportSystem("system/scheduled");
+              auto sPath = stRepo.getValue("backup.git_path",
+                                           "_system/config-backup.json");
+              grmgr.writeAndCommit(std::stoll(sRepoId), sPath,
+                                   jExport.dump(2), "Scheduled config backup");
+            });
+        spLog->info("Scheduled config backup every {}s", iBackupInterval);
+      }
+    }
+
     // ── Step 10: Construct auth layer + route handlers ────────────────────
     auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
         *upSigner, *srRepo, *akrRepo, *urRepo, *roleRepo,
@@ -449,6 +477,8 @@ int main(int argc, char* argv[]) {
         *idpRepo, *oidcService, *fedAuthService);
     auto samlRoutes = std::make_unique<dns::api::routes::SamlRoutes>(
         *idpRepo, *srRepo, *samlService, *fedAuthService);
+    auto backupRoutes = std::make_unique<dns::api::routes::BackupRoutes>(
+        *backupService, *settingsRepo, *amMiddleware, upGitRepoManager.get());
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
@@ -467,6 +497,7 @@ int main(int argc, char* argv[]) {
     idpRoutes->registerRoutes(crowApp);
     oidcRoutes->registerRoutes(crowApp);
     samlRoutes->registerRoutes(crowApp);
+    backupRoutes->registerRoutes(crowApp);
 
     // Serve static UI files (SPA fallback) — must be registered after API routes
     auto sfhHandler = std::make_unique<dns::api::StaticFileHandler>(cfgApp.sUiDir);
