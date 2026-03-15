@@ -91,4 +91,12 @@ struct RequestContext {
   std::unordered_set<std::string> vPermissions;  // Effective permissions for this request
 };
 
+/// Lightweight audit metadata passed to engine methods.
+/// Class abbreviation: ac
+struct AuditContext {
+  std::string sIdentity;     // Formatted "Display Name (username)" or just "username"
+  std::string sAuthMethod;
+  std::string sIpAddress;
+};
+
 }  // namespace dns::common

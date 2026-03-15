@@ -29,4 +29,11 @@ crow::response errorResponse(const common::AppError& e);
 /// Build an error response for invalid JSON parse failures.
 crow::response invalidJsonResponse();
 
+/// Format a display identity for audit logging.
+/// Returns "Display Name (username)" when display_name is set, otherwise just "username".
+std::string formatAuditIdentity(const common::RequestContext& rcCtx);
+
+/// Build an AuditContext from a RequestContext.
+common::AuditContext buildAuditContext(const common::RequestContext& rcCtx);
+
 }  // namespace dns::api

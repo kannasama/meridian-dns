@@ -13,8 +13,23 @@ void applySecurityHeaders(crow::response& resp) {
 
 common::RequestContext authenticate(const AuthMiddleware& amMiddleware,
                                     const crow::request& req) {
-  return amMiddleware.authenticate(req.get_header_value("Authorization"),
-                                   req.get_header_value("X-API-Key"));
+  auto rcCtx = amMiddleware.authenticate(req.get_header_value("Authorization"),
+                                          req.get_header_value("X-API-Key"));
+
+  // Populate client IP with X-Forwarded-For awareness
+  std::string sIp = req.get_header_value("X-Forwarded-For");
+  if (!sIp.empty()) {
+    auto pos = sIp.find(',');
+    if (pos != std::string::npos) sIp = sIp.substr(0, pos);
+    auto start = sIp.find_first_not_of(' ');
+    auto end = sIp.find_last_not_of(' ');
+    if (start != std::string::npos) sIp = sIp.substr(start, end - start + 1);
+  } else {
+    sIp = req.remote_ip_address;
+  }
+  rcCtx.sIpAddress = sIp;
+
+  return rcCtx;
 }
 
 void requirePermission(const common::RequestContext& rcCtx, std::string_view svPermission) {
@@ -47,6 +62,19 @@ crow::response invalidJsonResponse() {
   resp.set_header("Content-Type", "application/json");
   applySecurityHeaders(resp);
   return resp;
+}
+
+std::string formatAuditIdentity(const common::RequestContext& rcCtx) {
+  if (rcCtx.sDisplayName.empty()) return rcCtx.sUsername;
+  return rcCtx.sDisplayName + " (" + rcCtx.sUsername + ")";
+}
+
+common::AuditContext buildAuditContext(const common::RequestContext& rcCtx) {
+  common::AuditContext ac;
+  ac.sIdentity = formatAuditIdentity(rcCtx);
+  ac.sAuthMethod = rcCtx.sAuthMethod;
+  ac.sIpAddress = rcCtx.sIpAddress;
+  return ac;
 }
 
 }  // namespace dns::api
