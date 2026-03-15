@@ -391,10 +391,12 @@ int main(int argc, char* argv[]) {
     if (cfgApp.iSyncCheckInterval > 0) {
       msScheduler->schedule("sync-check",
           std::chrono::seconds(cfgApp.iSyncCheckInterval),
-          [&zrRepo = *zrRepo, &deEngine = *deEngine]() {
+          [&zrRepo = *zrRepo, &deEngine = *deEngine, &drRepo = *drRepo,
+           &depEngine = *depEngine]() {
             auto spLog = dns::common::Logger::get();
             auto vZones = zrRepo.listAll();
             int iChecked = 0;
+            int iCaptured = 0;
             for (const auto& zone : vZones) {
               std::string sStatus = "in_sync";
               try {
@@ -405,8 +407,23 @@ int main(int argc, char* argv[]) {
               }
               zrRepo.updateSyncStatus(zone.iId, sStatus);
               ++iChecked;
+
+              // Auto-capture: if in_sync, has git repo, and no deployments exist
+              if (sStatus == "in_sync" && zone.oGitRepoId.has_value()) {
+                try {
+                  auto vDeps = drRepo.listByZoneId(zone.iId, 1);
+                  if (vDeps.empty()) {
+                    depEngine.capture(zone.iId, 1, "system/auto-capture", "auto-capture");
+                    ++iCaptured;
+                    spLog->info("Auto-captured baseline for zone '{}'", zone.sName);
+                  }
+                } catch (const std::exception& ex) {
+                  spLog->warn("Auto-capture failed for zone '{}': {}", zone.sName, ex.what());
+                }
+              }
             }
-            spLog->info("Sync check complete: {} zones checked", iChecked);
+            spLog->info("Sync check complete: {} zones checked, {} auto-captured",
+                        iChecked, iCaptured);
           });
     }
 
