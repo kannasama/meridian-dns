@@ -60,6 +60,13 @@ class GitRepoManager {
   /// Build the zone snapshot JSON (same format as GitOpsMirror::buildSnapshotJson).
   std::string buildSnapshotJson(int64_t iZoneId, const std::string& sActor) const;
 
+  /// Read a file from a mirror's working directory.
+  std::string readFile(int64_t iRepoId, const std::string& sRelativePath);
+
+  /// Write a file and commit+push via the mirror.
+  void writeAndCommit(int64_t iRepoId, const std::string& sRelativePath,
+                      const std::string& sContent, const std::string& sCommitMessage);
+
  private:
   GitRepoMirror* findMirror(int64_t iRepoId);
 

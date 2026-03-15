@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 
@@ -263,6 +264,39 @@ std::string GitRepoManager::testConnection(int64_t iRepoId) {
     std::filesystem::remove_all(sTmpDir);
     return ex.what();
   }
+}
+
+std::string GitRepoManager::readFile(int64_t iRepoId, const std::string& sRelativePath) {
+  auto oRepo = _grRepo.findById(iRepoId);
+  if (!oRepo) {
+    throw common::NotFoundError("REPO_NOT_FOUND",
+                                "Git repo " + std::to_string(iRepoId) + " not found");
+  }
+
+  auto sLocalPath = computeLocalPath(_sBasePath, oRepo->iId, oRepo->sLocalPath);
+  auto sFullPath = std::filesystem::path(sLocalPath) / sRelativePath;
+
+  std::ifstream ifs(sFullPath);
+  if (!ifs.is_open()) {
+    throw common::NotFoundError("FILE_NOT_FOUND",
+                                "File not found in git repo: " + sRelativePath);
+  }
+
+  return std::string(std::istreambuf_iterator<char>(ifs),
+                     std::istreambuf_iterator<char>());
+}
+
+void GitRepoManager::writeAndCommit(int64_t iRepoId, const std::string& sRelativePath,
+                                    const std::string& sContent,
+                                    const std::string& sCommitMessage) {
+  std::lock_guard lock(_mtx);
+  auto* pMirror = findMirror(iRepoId);
+  if (!pMirror) {
+    throw common::NotFoundError("MIRROR_NOT_FOUND",
+                                "No active mirror for git repo " + std::to_string(iRepoId));
+  }
+
+  pMirror->commitSnapshot(sRelativePath, sContent, sCommitMessage);
 }
 
 }  // namespace dns::gitops
