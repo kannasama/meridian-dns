@@ -196,8 +196,8 @@ onMounted(fetchAudit)
             <pre class="font-mono detail-json">{{ JSON.stringify(data.new_value, null, 2) }}</pre>
           </div>
           <div class="detail-meta">
-            <span>Auth: {{ data.auth_method }}</span>
-            <span>IP: {{ data.ip_address }}</span>
+            <span>Auth: {{ data.auth_method || '—' }}</span>
+            <span>IP: {{ data.ip_address || '—' }}</span>
             <span v-if="data.variable_used">Variable: {{ data.variable_used }}</span>
           </div>
         </div>
