@@ -106,6 +106,11 @@ const router = createRouter({
           name: 'admin-settings',
           component: () => import('../views/SettingsView.vue'),
         },
+        {
+          path: 'admin/backup',
+          name: 'admin-backup',
+          component: () => import('../views/BackupRestoreView.vue'),
+        },
 
         // ─── Backward-compatible redirects ───
         {
