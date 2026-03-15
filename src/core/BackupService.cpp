@@ -647,9 +647,511 @@ RestoreResult BackupService::previewRestore(const nlohmann::json& jBackup) const
   return result;
 }
 
-RestoreResult BackupService::applyRestore(const nlohmann::json& /*jBackup*/) {
-  // TODO: Implement in Task 7
-  return {};
+RestoreResult BackupService::applyRestore(const nlohmann::json& jBackup) {
+  validateBackupFormat(jBackup);
+
+  RestoreResult result;
+  result.bApplied = true;
+
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  // ── 1. Settings ────────────────────────────────────────────────────────
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "settings";
+
+    for (const auto& jItem : jBackup["settings"]) {
+      auto sKey = jItem["key"].get<std::string>();
+      auto sVal = jItem["value"].get<std::string>();
+
+      auto rExisting = txn.exec(
+          "SELECT value FROM system_config WHERE key = $1", pqxx::params{sKey});
+
+      if (rExisting.empty()) {
+        txn.exec("INSERT INTO system_config (key, value) VALUES ($1, $2)",
+                 pqxx::params{sKey, sVal});
+        ++summary.iCreated;
+      } else if (rExisting[0][0].as<std::string>() != sVal) {
+        txn.exec("UPDATE system_config SET value = $1 WHERE key = $2",
+                 pqxx::params{sVal, sKey});
+        ++summary.iUpdated;
+      } else {
+        ++summary.iSkipped;
+      }
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 2. Roles ───────────────────────────────────────────────────────────
+  std::unordered_map<std::string, int64_t> mRoleIds;
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "roles";
+
+    for (const auto& jItem : jBackup["roles"]) {
+      auto sName = jItem["name"].get<std::string>();
+      auto sDesc = jItem.value("description", "");
+      bool bIsSystem = jItem.value("is_system", false);
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM roles WHERE name = $1", pqxx::params{sName});
+
+      int64_t iRoleId = 0;
+      if (!rExisting.empty()) {
+        iRoleId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE roles SET description = $1 WHERE id = $2",
+                 pqxx::params{sDesc, iRoleId});
+        ++summary.iUpdated;
+      } else {
+        auto rNew = txn.exec(
+            "INSERT INTO roles (name, description, is_system) "
+            "VALUES ($1, $2, $3) RETURNING id",
+            pqxx::params{sName, sDesc, bIsSystem});
+        iRoleId = rNew[0][0].as<int64_t>();
+        ++summary.iCreated;
+      }
+      mRoleIds[sName] = iRoleId;
+
+      // Set permissions: delete existing + insert from backup
+      if (jItem.contains("permissions") && jItem["permissions"].is_array()) {
+        txn.exec("DELETE FROM role_permissions WHERE role_id = $1",
+                 pqxx::params{iRoleId});
+        for (const auto& jPerm : jItem["permissions"]) {
+          txn.exec(
+              "INSERT INTO role_permissions (role_id, permission) VALUES ($1, $2)",
+              pqxx::params{iRoleId, jPerm.get<std::string>()});
+        }
+      }
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 3. Groups ──────────────────────────────────────────────────────────
+  std::unordered_map<std::string, int64_t> mGroupIds;
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "groups";
+
+    for (const auto& jItem : jBackup["groups"]) {
+      auto sName = jItem["name"].get<std::string>();
+      auto sDesc = jItem.value("description", "");
+      auto sRoleName = jItem.value("role_name", "Viewer");
+
+      int64_t iRoleId = 0;
+      auto itRole = mRoleIds.find(sRoleName);
+      if (itRole != mRoleIds.end()) {
+        iRoleId = itRole->second;
+      } else {
+        auto rRole = txn.exec(
+            "SELECT id FROM roles WHERE name = $1", pqxx::params{sRoleName});
+        if (!rRole.empty()) iRoleId = rRole[0][0].as<int64_t>();
+      }
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM groups WHERE name = $1", pqxx::params{sName});
+
+      int64_t iGroupId = 0;
+      if (!rExisting.empty()) {
+        iGroupId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE groups SET description = $1, role_id = $2 WHERE id = $3",
+                 pqxx::params{sDesc, iRoleId, iGroupId});
+        ++summary.iUpdated;
+      } else {
+        auto rNew = txn.exec(
+            "INSERT INTO groups (name, description, role_id) "
+            "VALUES ($1, $2, $3) RETURNING id",
+            pqxx::params{sName, sDesc, iRoleId});
+        iGroupId = rNew[0][0].as<int64_t>();
+        ++summary.iCreated;
+      }
+      mGroupIds[sName] = iGroupId;
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 4. Users ───────────────────────────────────────────────────────────
+  std::unordered_map<std::string, int64_t> mUserIds;
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "users";
+
+    for (const auto& jItem : jBackup["users"]) {
+      auto sUsername = jItem["username"].get<std::string>();
+      auto sEmail = jItem.value("email", "");
+      auto sAuthMethod = jItem.value("auth_method", "local");
+      bool bIsActive = jItem.value("is_active", true);
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM users WHERE username = $1", pqxx::params{sUsername});
+
+      int64_t iUserId = 0;
+      if (!rExisting.empty()) {
+        iUserId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE users SET email = $1, is_active = $2, "
+                 "auth_method = $3::auth_method WHERE id = $4",
+                 pqxx::params{sEmail, bIsActive, sAuthMethod, iUserId});
+        ++summary.iUpdated;
+      } else {
+        auto rNew = txn.exec(
+            "INSERT INTO users (username, email, auth_method, is_active, "
+            "force_password_change) "
+            "VALUES ($1, $2, $3::auth_method, $4, true) RETURNING id",
+            pqxx::params{sUsername, sEmail, sAuthMethod, bIsActive});
+        iUserId = rNew[0][0].as<int64_t>();
+        ++summary.iCreated;
+      }
+      mUserIds[sUsername] = iUserId;
+
+      // Restore group memberships
+      if (jItem.contains("groups") && jItem["groups"].is_array()) {
+        txn.exec("DELETE FROM group_members WHERE user_id = $1",
+                 pqxx::params{iUserId});
+        for (const auto& jGroup : jItem["groups"]) {
+          auto sGroupName = jGroup.get<std::string>();
+          auto itGr = mGroupIds.find(sGroupName);
+          if (itGr != mGroupIds.end()) {
+            txn.exec(
+                "INSERT INTO group_members (user_id, group_id) "
+                "VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                pqxx::params{iUserId, itGr->second});
+          }
+        }
+      }
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 5. Providers ───────────────────────────────────────────────────────
+  std::unordered_map<std::string, int64_t> mProviderIds;
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "providers";
+
+    for (const auto& jItem : jBackup["providers"]) {
+      auto sName = jItem["name"].get<std::string>();
+      auto sType = jItem.value("type", "powerdns");
+      auto sApiEndpoint = jItem.value("api_endpoint", "");
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM providers WHERE name = $1", pqxx::params{sName});
+
+      int64_t iProviderId = 0;
+      if (!rExisting.empty()) {
+        iProviderId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE providers SET api_endpoint = $1 WHERE id = $2",
+                 pqxx::params{sApiEndpoint, iProviderId});
+        ++summary.iUpdated;
+      } else {
+        auto rNew = txn.exec(
+            "INSERT INTO providers (name, type, api_endpoint, encrypted_token) "
+            "VALUES ($1, $2::provider_type, $3, '') RETURNING id",
+            pqxx::params{sName, sType, sApiEndpoint});
+        iProviderId = rNew[0][0].as<int64_t>();
+        ++summary.iCreated;
+        result.vCredentialWarnings.push_back("provider:" + sName);
+      }
+      mProviderIds[sName] = iProviderId;
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 6. Git Repos ───────────────────────────────────────────────────────
+  std::unordered_map<std::string, int64_t> mGitRepoIds;
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "git_repos";
+
+    for (const auto& jItem : jBackup["git_repos"]) {
+      auto sName = jItem["name"].get<std::string>();
+      auto sRemoteUrl = jItem.value("remote_url", "");
+      auto sAuthType = jItem.value("auth_type", "none");
+      auto sDefaultBranch = jItem.value("default_branch", "main");
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM git_repos WHERE name = $1", pqxx::params{sName});
+
+      int64_t iRepoId = 0;
+      if (!rExisting.empty()) {
+        iRepoId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE git_repos SET remote_url = $1, auth_type = $2, "
+                 "default_branch = $3 WHERE id = $4",
+                 pqxx::params{sRemoteUrl, sAuthType, sDefaultBranch, iRepoId});
+        ++summary.iUpdated;
+      } else {
+        auto rNew = txn.exec(
+            "INSERT INTO git_repos (name, remote_url, auth_type, default_branch) "
+            "VALUES ($1, $2, $3, $4) RETURNING id",
+            pqxx::params{sName, sRemoteUrl, sAuthType, sDefaultBranch});
+        iRepoId = rNew[0][0].as<int64_t>();
+        ++summary.iCreated;
+        result.vCredentialWarnings.push_back("git_repo:" + sName);
+      }
+      mGitRepoIds[sName] = iRepoId;
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 7. Identity Providers ──────────────────────────────────────────────
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "identity_providers";
+
+    for (const auto& jItem : jBackup["identity_providers"]) {
+      auto sName = jItem["name"].get<std::string>();
+      auto sType = jItem.value("type", "oidc");
+      bool bIsEnabled = jItem.value("is_enabled", true);
+      auto jConfig = jItem.value("config", nlohmann::json::object());
+      auto jGroupMappings = jItem.value("group_mappings", nlohmann::json(nullptr));
+      auto sDefaultGroupName = jItem.value("default_group_name", "");
+
+      // Resolve default group
+      std::optional<int64_t> oDefaultGroupId;
+      if (!sDefaultGroupName.empty()) {
+        auto itGr = mGroupIds.find(sDefaultGroupName);
+        if (itGr != mGroupIds.end()) {
+          oDefaultGroupId = itGr->second;
+        } else {
+          auto rGr = txn.exec(
+              "SELECT id FROM groups WHERE name = $1",
+              pqxx::params{sDefaultGroupName});
+          if (!rGr.empty()) oDefaultGroupId = rGr[0][0].as<int64_t>();
+        }
+      }
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM identity_providers WHERE name = $1",
+          pqxx::params{sName});
+
+      if (!rExisting.empty()) {
+        auto iIdpId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE identity_providers SET type = $1, is_enabled = $2, "
+                 "config = $3::jsonb, group_mappings = $4::jsonb, "
+                 "default_group_id = $5 WHERE id = $6",
+                 pqxx::params{sType, bIsEnabled, jConfig.dump(),
+                              jGroupMappings.dump(), oDefaultGroupId, iIdpId});
+        ++summary.iUpdated;
+      } else {
+        txn.exec("INSERT INTO identity_providers "
+                 "(name, type, is_enabled, config, group_mappings, default_group_id) "
+                 "VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)",
+                 pqxx::params{sName, sType, bIsEnabled, jConfig.dump(),
+                              jGroupMappings.dump(), oDefaultGroupId});
+        ++summary.iCreated;
+        result.vCredentialWarnings.push_back("identity_provider:" + sName);
+      }
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 8. Views ───────────────────────────────────────────────────────────
+  std::unordered_map<std::string, int64_t> mViewIds;
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "views";
+
+    for (const auto& jItem : jBackup["views"]) {
+      auto sName = jItem["name"].get<std::string>();
+      auto sDesc = jItem.value("description", "");
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM views WHERE name = $1", pqxx::params{sName});
+
+      int64_t iViewId = 0;
+      if (!rExisting.empty()) {
+        iViewId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE views SET description = $1 WHERE id = $2",
+                 pqxx::params{sDesc, iViewId});
+        ++summary.iUpdated;
+      } else {
+        auto rNew = txn.exec(
+            "INSERT INTO views (name, description) VALUES ($1, $2) RETURNING id",
+            pqxx::params{sName, sDesc});
+        iViewId = rNew[0][0].as<int64_t>();
+        ++summary.iCreated;
+      }
+      mViewIds[sName] = iViewId;
+
+      // Restore provider attachments
+      if (jItem.contains("provider_names") && jItem["provider_names"].is_array()) {
+        txn.exec("DELETE FROM view_providers WHERE view_id = $1",
+                 pqxx::params{iViewId});
+        for (const auto& jPn : jItem["provider_names"]) {
+          auto sPn = jPn.get<std::string>();
+          auto itPr = mProviderIds.find(sPn);
+          if (itPr != mProviderIds.end()) {
+            txn.exec(
+                "INSERT INTO view_providers (view_id, provider_id) "
+                "VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                pqxx::params{iViewId, itPr->second});
+          }
+        }
+      }
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 9. Zones ───────────────────────────────────────────────────────────
+  std::unordered_map<std::string, int64_t> mRestoreZoneIds;
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "zones";
+
+    for (const auto& jItem : jBackup["zones"]) {
+      auto sName = jItem["name"].get<std::string>();
+      auto sViewName = jItem.value("view_name", "");
+      bool bManageSoa = jItem.value("manage_soa", false);
+      bool bManageNs = jItem.value("manage_ns", false);
+
+      int64_t iViewId = 0;
+      auto itView = mViewIds.find(sViewName);
+      if (itView != mViewIds.end()) {
+        iViewId = itView->second;
+      } else {
+        auto rView = txn.exec(
+            "SELECT id FROM views WHERE name = $1", pqxx::params{sViewName});
+        if (!rView.empty()) iViewId = rView[0][0].as<int64_t>();
+      }
+
+      // Resolve optional git_repo_name → ID
+      std::optional<int64_t> oGitRepoId;
+      if (jItem.contains("git_repo_name") && jItem["git_repo_name"].is_string()) {
+        auto sGrName = jItem["git_repo_name"].get<std::string>();
+        auto itGr = mGitRepoIds.find(sGrName);
+        if (itGr != mGitRepoIds.end()) oGitRepoId = itGr->second;
+      }
+
+      std::optional<std::string> oGitBranch;
+      if (jItem.contains("git_branch") && jItem["git_branch"].is_string()) {
+        oGitBranch = jItem["git_branch"].get<std::string>();
+      }
+
+      std::optional<int> oRetention;
+      if (jItem.contains("deployment_retention") &&
+          jItem["deployment_retention"].is_number_integer()) {
+        oRetention = jItem["deployment_retention"].get<int>();
+      }
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM zones WHERE name = $1 AND view_id = $2",
+          pqxx::params{sName, iViewId});
+
+      int64_t iZoneId = 0;
+      if (!rExisting.empty()) {
+        iZoneId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE zones SET manage_soa = $1, manage_ns = $2, "
+                 "deployment_retention = $3, git_repo_id = $4, git_branch = $5 "
+                 "WHERE id = $6",
+                 pqxx::params{bManageSoa, bManageNs, oRetention,
+                              oGitRepoId, oGitBranch, iZoneId});
+        ++summary.iUpdated;
+      } else {
+        auto rNew = txn.exec(
+            "INSERT INTO zones (name, view_id, manage_soa, manage_ns, "
+            "deployment_retention, git_repo_id, git_branch) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+            pqxx::params{sName, iViewId, bManageSoa, bManageNs,
+                         oRetention, oGitRepoId, oGitBranch});
+        iZoneId = rNew[0][0].as<int64_t>();
+        ++summary.iCreated;
+      }
+      mRestoreZoneIds[sName] = iZoneId;
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 10. Records ────────────────────────────────────────────────────────
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "records";
+
+    for (const auto& jItem : jBackup["records"]) {
+      auto sZoneName = jItem["zone_name"].get<std::string>();
+      auto sName = jItem["name"].get<std::string>();
+      auto sType = jItem["type"].get<std::string>();
+      int iTtl = jItem.value("ttl", 300);
+      auto sValueTemplate = jItem.value("value_template", "");
+      int iPriority = jItem.value("priority", 0);
+
+      auto itZone = mRestoreZoneIds.find(sZoneName);
+      if (itZone == mRestoreZoneIds.end()) continue;
+      int64_t iZoneId = itZone->second;
+
+      auto rExisting = txn.exec(
+          "SELECT id FROM records WHERE zone_id = $1 AND name = $2 "
+          "AND type = $3 AND pending_delete = false",
+          pqxx::params{iZoneId, sName, sType});
+
+      if (!rExisting.empty()) {
+        auto iRecordId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE records SET ttl = $1, value_template = $2, "
+                 "priority = $3 WHERE id = $4",
+                 pqxx::params{iTtl, sValueTemplate, iPriority, iRecordId});
+        ++summary.iUpdated;
+      } else {
+        txn.exec("INSERT INTO records (zone_id, name, type, ttl, "
+                 "value_template, priority) "
+                 "VALUES ($1, $2, $3, $4, $5, $6)",
+                 pqxx::params{iZoneId, sName, sType, iTtl,
+                              sValueTemplate, iPriority});
+        ++summary.iCreated;
+      }
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  // ── 11. Variables ──────────────────────────────────────────────────────
+  {
+    RestoreSummary summary;
+    summary.sEntityType = "variables";
+
+    for (const auto& jItem : jBackup["variables"]) {
+      auto sName = jItem["name"].get<std::string>();
+      auto sValue = jItem["value"].get<std::string>();
+      auto sType = jItem.value("type", "string");
+      auto sScope = jItem.value("scope", "global");
+
+      std::optional<int64_t> oZoneId;
+      if (jItem.contains("zone_name") && jItem["zone_name"].is_string()) {
+        auto sZoneName = jItem["zone_name"].get<std::string>();
+        auto itZone = mRestoreZoneIds.find(sZoneName);
+        if (itZone != mRestoreZoneIds.end()) oZoneId = itZone->second;
+      }
+
+      pqxx::result rExisting;
+      if (oZoneId) {
+        rExisting = txn.exec(
+            "SELECT id FROM variables WHERE name = $1 AND zone_id = $2",
+            pqxx::params{sName, *oZoneId});
+      } else {
+        rExisting = txn.exec(
+            "SELECT id FROM variables WHERE name = $1 AND zone_id IS NULL",
+            pqxx::params{sName});
+      }
+
+      if (!rExisting.empty()) {
+        auto iVarId = rExisting[0][0].as<int64_t>();
+        txn.exec("UPDATE variables SET value = $1 WHERE id = $2",
+                 pqxx::params{sValue, iVarId});
+        ++summary.iUpdated;
+      } else {
+        if (oZoneId) {
+          txn.exec("INSERT INTO variables (name, value, type, scope, zone_id) "
+                   "VALUES ($1, $2, $3::variable_type, $4::variable_scope, $5)",
+                   pqxx::params{sName, sValue, sType, sScope, *oZoneId});
+        } else {
+          txn.exec("INSERT INTO variables (name, value, type, scope) "
+                   "VALUES ($1, $2, $3::variable_type, $4::variable_scope)",
+                   pqxx::params{sName, sValue, sType, sScope});
+        }
+        ++summary.iCreated;
+      }
+    }
+    result.vSummaries.push_back(summary);
+  }
+
+  txn.commit();
+  return result;
 }
 
 void BackupService::validateBackupFormat(const nlohmann::json& jBackup) const {
