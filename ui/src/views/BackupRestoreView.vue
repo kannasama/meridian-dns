@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
+import Select from 'primevue/select'
 import PageHeader from '../components/shared/PageHeader.vue'
 import { useNotificationStore } from '../stores/notification'
 import {
@@ -13,8 +14,32 @@ import {
   restoreFromRepo,
 } from '../api/backup'
 import type { RestoreResult, RestoreSummary } from '../api/backup'
+import { listGitRepos } from '../api/gitRepos'
+import { listSettings, updateSettings } from '../api/settings'
+import type { GitRepo, SystemSetting } from '../types'
 
 const notify = useNotificationStore()
+
+// Backup settings
+const repos = ref<GitRepo[]>([])
+const selectedRepoId = ref<number | null>(null)
+const autoInterval = ref(0)
+const settingsLoading = ref(false)
+const settingsSaving = ref(false)
+
+const repoOptions = computed(() => [
+  { label: 'None', value: null },
+  ...repos.value.filter(r => r.is_enabled).map(r => ({ label: r.name, value: r.id })),
+])
+
+const intervalOptions = [
+  { label: 'Disabled', value: 0 },
+  { label: 'Every 6 hours', value: 21600 },
+  { label: 'Every 12 hours', value: 43200 },
+  { label: 'Every 24 hours', value: 86400 },
+]
+
+const hasBackupRepo = computed(() => selectedRepoId.value !== null && selectedRepoId.value > 0)
 
 // Export section
 const exporting = ref(false)
@@ -109,6 +134,44 @@ async function doRepoRestore() {
 function totalChanges(summaries: RestoreSummary[]): number {
   return summaries.reduce((sum, s) => sum + s.created + s.updated, 0)
 }
+
+onMounted(async () => {
+  settingsLoading.value = true
+  try {
+    const [allRepos, settings] = await Promise.all([
+      listGitRepos(),
+      listSettings(),
+    ])
+    repos.value = allRepos
+
+    const repoSetting = settings.find((s: SystemSetting) => s.key === 'backup.git_repo_id')
+    if (repoSetting && repoSetting.value) {
+      selectedRepoId.value = parseInt(repoSetting.value, 10) || null
+    }
+
+    const intervalSetting = settings.find((s: SystemSetting) => s.key === 'backup.auto_interval_seconds')
+    if (intervalSetting && intervalSetting.value) {
+      autoInterval.value = parseInt(intervalSetting.value, 10) || 0
+    }
+  } catch { /* ignore */ } finally {
+    settingsLoading.value = false
+  }
+})
+
+async function saveBackupSettings() {
+  settingsSaving.value = true
+  try {
+    await updateSettings({
+      'backup.git_repo_id': selectedRepoId.value?.toString() ?? '0',
+      'backup.auto_interval_seconds': autoInterval.value.toString(),
+    })
+    notify.success('Backup settings saved')
+  } catch (e: unknown) {
+    notify.error((e as Error).message || 'Failed to save settings')
+  } finally {
+    settingsSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -116,6 +179,46 @@ function totalChanges(summaries: RestoreSummary[]): number {
     <PageHeader title="Backup & Restore" icon="pi pi-download" />
 
     <div class="sections-grid">
+      <!-- Backup Settings -->
+      <div class="section-card">
+        <div class="section-header">
+          <i class="pi pi-cog" />
+          <h3>Backup Settings</h3>
+        </div>
+        <div class="settings-form">
+          <div class="settings-field">
+            <label>Git Repository</label>
+            <Select
+              v-model="selectedRepoId"
+              :options="repoOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Select repository..."
+              class="w-full"
+              :loading="settingsLoading"
+            />
+            <small class="field-hint">Backup files are committed here on export.</small>
+          </div>
+          <div class="settings-field">
+            <label>Auto-Backup</label>
+            <Select
+              v-model="autoInterval"
+              :options="intervalOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+          </div>
+          <Button
+            label="Save Settings"
+            icon="pi pi-save"
+            :loading="settingsSaving"
+            @click="saveBackupSettings"
+            class="align-self-start"
+          />
+        </div>
+      </div>
+
       <!-- Export Section -->
       <div class="section-card">
         <div class="section-header">
@@ -128,8 +231,16 @@ function totalChanges(summaries: RestoreSummary[]): number {
         </p>
         <div class="section-actions">
           <div class="checkbox-row">
-            <Checkbox v-model="commitToGit" :binary="true" input-id="commit-git" />
-            <label for="commit-git">Commit to GitOps repository</label>
+            <Checkbox
+              v-model="commitToGit"
+              :binary="true"
+              input-id="commit-git"
+              :disabled="!hasBackupRepo"
+            />
+            <label for="commit-git">
+              Commit to GitOps repository
+              <small v-if="!hasBackupRepo" class="field-hint"> — select a backup repository above</small>
+            </label>
           </div>
           <Button
             label="Export Configuration"
@@ -203,52 +314,59 @@ function totalChanges(summaries: RestoreSummary[]): number {
           <i class="pi pi-github" />
           <h3>Restore from Git Repository</h3>
         </div>
-        <p class="section-desc">
-          Pull the latest backup from the configured GitOps repository and restore.
-        </p>
-        <div class="section-actions">
-          <Button
-            label="Preview from Repo"
-            icon="pi pi-eye"
-            :loading="repoLoading"
-            @click="doRepoPreview"
-          />
-        </div>
-
-        <template v-if="repoPreview">
-          <div class="preview-section">
-            <h4>Preview ({{ totalChanges(repoPreview.summaries) }} changes)</h4>
-            <DataTable :value="repoPreview.summaries" size="small" striped-rows>
-              <Column field="entity_type" header="Entity Type" />
-              <Column field="created" header="Create" />
-              <Column field="updated" header="Update" />
-              <Column field="skipped" header="Skip" />
-            </DataTable>
-
-            <div v-if="repoPreview.credential_warnings.length" class="credential-warnings">
-              <Message severity="warn" :closable="false">
-                Entities requiring credential re-entry:
-              </Message>
-              <ul>
-                <li v-for="w in repoPreview.credential_warnings" :key="w">{{ w }}</li>
-              </ul>
-            </div>
-
+        <template v-if="hasBackupRepo">
+          <p class="section-desc">
+            Pull the latest backup from the configured GitOps repository and restore.
+          </p>
+          <div class="section-actions">
             <Button
-              label="Apply Restore"
-              icon="pi pi-check"
-              severity="warning"
+              label="Preview from Repo"
+              icon="pi pi-eye"
               :loading="repoLoading"
-              class="mt-3"
-              @click="doRepoRestore"
+              @click="doRepoPreview"
             />
           </div>
-        </template>
 
-        <template v-if="repoApplyResult">
-          <Message severity="success" :closable="false" class="mt-3">
-            Restore applied: {{ totalChanges(repoApplyResult.summaries) }} changes
-          </Message>
+          <template v-if="repoPreview">
+            <div class="preview-section">
+              <h4>Preview ({{ totalChanges(repoPreview.summaries) }} changes)</h4>
+              <DataTable :value="repoPreview.summaries" size="small" striped-rows>
+                <Column field="entity_type" header="Entity Type" />
+                <Column field="created" header="Create" />
+                <Column field="updated" header="Update" />
+                <Column field="skipped" header="Skip" />
+              </DataTable>
+
+              <div v-if="repoPreview.credential_warnings.length" class="credential-warnings">
+                <Message severity="warn" :closable="false">
+                  Entities requiring credential re-entry:
+                </Message>
+                <ul>
+                  <li v-for="w in repoPreview.credential_warnings" :key="w">{{ w }}</li>
+                </ul>
+              </div>
+
+              <Button
+                label="Apply Restore"
+                icon="pi pi-check"
+                severity="warning"
+                :loading="repoLoading"
+                class="mt-3"
+                @click="doRepoRestore"
+              />
+            </div>
+          </template>
+
+          <template v-if="repoApplyResult">
+            <Message severity="success" :closable="false" class="mt-3">
+              Restore applied: {{ totalChanges(repoApplyResult.summaries) }} changes
+            </Message>
+          </template>
+        </template>
+        <template v-else>
+          <p class="section-desc">
+            Configure a backup repository in Backup Settings above to enable restore from Git.
+          </p>
         </template>
       </div>
     </div>
@@ -372,5 +490,36 @@ function totalChanges(summaries: RestoreSummary[]): number {
 
 .mt-3 {
   margin-top: 0.75rem;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 24rem;
+}
+
+.settings-field label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.field-hint {
+  color: var(--p-surface-400);
+  font-size: 0.8rem;
+}
+
+:root:not(.app-dark) .field-hint {
+  color: var(--p-surface-500);
+}
+
+.align-self-start {
+  align-self: flex-start;
 }
 </style>
