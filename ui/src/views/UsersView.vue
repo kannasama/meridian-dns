@@ -155,6 +155,7 @@ onMounted(fetchAll)
           <span class="font-mono">{{ data.username }}</span>
         </template>
       </Column>
+      <Column field="display_name" header="Display Name" sortable />
       <Column field="email" header="Email" sortable />
       <Column field="auth_method" header="Auth" sortable>
         <template #body="{ data }">

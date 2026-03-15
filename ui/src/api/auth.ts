@@ -13,7 +13,7 @@ export function me(): Promise<User> {
   return get('/auth/me')
 }
 
-export function updateProfile(data: { email: string }): Promise<{ message: string }> {
+export function updateProfile(data: { email: string; display_name?: string }): Promise<{ message: string }> {
   return put('/auth/profile', data)
 }
 

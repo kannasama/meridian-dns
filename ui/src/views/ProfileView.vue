@@ -59,6 +59,7 @@ const notify = useNotificationStore()
 const { confirmDelete } = useConfirmAction()
 
 const email = ref('')
+const displayName = ref('')
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmNewPassword = ref('')
@@ -72,6 +73,7 @@ onMounted(async () => {
   try {
     const user = await me()
     email.value = user.email ?? ''
+    displayName.value = user.display_name ?? ''
   } catch { /* ignore */ }
   await fetchApiKeys()
 })
@@ -84,8 +86,12 @@ async function fetchApiKeys() {
 
 async function handleProfileSave() {
   try {
-    await updateProfile({ email: email.value })
+    await updateProfile({
+      email: email.value,
+      display_name: displayName.value || undefined,
+    })
     notify.success('Profile updated')
+    await auth.hydrate()
   } catch (e: any) {
     notify.error(e.message || 'Failed to update profile')
   }
@@ -161,6 +167,10 @@ function copyKey() {
             <div class="field">
               <label>Username</label>
               <InputText :modelValue="auth.user?.username" disabled class="w-full" />
+            </div>
+            <div class="field">
+              <label>Display Name</label>
+              <InputText v-model="displayName" class="w-full" placeholder="How your name appears to others" />
             </div>
             <div class="field">
               <label>Email</label>

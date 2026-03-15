@@ -179,6 +179,7 @@ export interface User {
   user_id: number
   username: string
   email: string
+  display_name: string | null
   role: string
   permissions: string[]
   auth_method: string
@@ -199,6 +200,7 @@ export interface UserDetail {
   id: number
   username: string
   email: string
+  display_name: string | null
   auth_method: string
   is_active: boolean
   force_password_change: boolean

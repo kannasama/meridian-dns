@@ -15,7 +15,7 @@ const userMenu = ref()
 
 const userMenuItems = ref([
   {
-    label: auth.user?.username ?? '',
+    label: auth.user?.display_name || auth.user?.username || '',
     items: [
       {
         label: 'Profile',
@@ -61,7 +61,7 @@ function toggleUserMenu(event: Event) {
         aria-label="User menu"
         @click="toggleUserMenu"
       >
-        <span class="app-user-label">{{ auth.user?.username }}</span>
+        <span class="app-user-label">{{ auth.user?.display_name || auth.user?.username }}</span>
         <Tag :value="auth.role" severity="secondary" class="ml-2" />
       </Button>
       <Menu ref="userMenu" :model="userMenuItems" :popup="true" />
