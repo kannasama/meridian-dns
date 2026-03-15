@@ -82,6 +82,7 @@ FederatedAuthService::LoginResult FederatedAuthService::processFederatedLogin(
     const std::string& sFederatedId,
     const std::string& sUsername,
     const std::string& sEmail,
+    const std::string& sDisplayName,
     const std::vector<std::string>& vIdpGroups,
     const nlohmann::json& jGroupMappings,
     int64_t iDefaultGroupId) {
@@ -99,13 +100,16 @@ FederatedAuthService::LoginResult FederatedAuthService::processFederatedLogin(
   }
 
   // 2. Create or update user
+  std::optional<std::string> osDisplayName =
+      sDisplayName.empty() ? std::nullopt : std::optional<std::string>(sDisplayName);
+
   if (!oUser.has_value()) {
     // Create new federated user
     std::string sOidcSub = (sAuthMethod == "oidc") ? sFederatedId : "";
     std::string sSamlNameId = (sAuthMethod == "saml") ? sFederatedId : "";
 
     int64_t iUserId = _urRepo.createFederated(sUsername, sEmail, sAuthMethod,
-                                               sOidcSub, sSamlNameId);
+                                               sOidcSub, sSamlNameId, osDisplayName);
     oUser = _urRepo.findById(iUserId);
     lr.bNewUser = true;
     spdlog::info("Created federated user: {} ({})", sUsername, sAuthMethod);
@@ -113,6 +117,12 @@ FederatedAuthService::LoginResult FederatedAuthService::processFederatedLogin(
     // Update email if changed
     if (!sEmail.empty() && oUser->sEmail != sEmail) {
       _urRepo.updateFederatedEmail(oUser->iId, sEmail);
+    }
+
+    // Update display_name if changed
+    if (!sDisplayName.empty() &&
+        (!oUser->osDisplayName.has_value() || oUser->osDisplayName.value() != sDisplayName)) {
+      _urRepo.updateFederatedDisplayName(oUser->iId, sDisplayName);
     }
   }
 

@@ -43,6 +43,7 @@ class FederatedAuthService {
       const std::string& sFederatedId,
       const std::string& sUsername,
       const std::string& sEmail,
+      const std::string& sDisplayName,
       const std::vector<std::string>& vIdpGroups,
       const nlohmann::json& jGroupMappings,
       int64_t iDefaultGroupId);
