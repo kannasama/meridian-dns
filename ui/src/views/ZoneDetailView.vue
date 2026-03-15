@@ -22,6 +22,7 @@ import { ApiRequestError } from '../api/client'
 import * as zoneApi from '../api/zones'
 import * as recordApi from '../api/records'
 import { downloadZoneExport } from '../api/backup'
+import { captureCurrentState } from '../api/deployments'
 import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
 import { useVariableAutocomplete } from '../composables/useVariableAutocomplete'
@@ -42,6 +43,7 @@ const loading = ref(true)
 const viewProviders = ref<Provider[]>([])
 const proxied = ref(false)
 const autoTtl = ref(true)
+const capturing = ref(false)
 const selectedRecords = ref<DnsRecord[]>([])
 const bulkTtlDialogVisible = ref(false)
 const bulkTtlValue = ref(300)
@@ -372,6 +374,19 @@ function goToDeploy() {
   router.push({ name: 'deployments', query: { zones: String(zoneId.value) } })
 }
 
+async function doCapture() {
+  capturing.value = true
+  try {
+    const result = await captureCurrentState(zoneId.value)
+    notify.success(result.message)
+    await fetchData()
+  } catch (e: unknown) {
+    notify.error((e as Error).message || 'Capture failed')
+  } finally {
+    capturing.value = false
+  }
+}
+
 async function doExportZone() {
   try {
     await downloadZoneExport(zoneId.value)
@@ -445,6 +460,15 @@ onMounted(fetchData)
           icon="pi pi-upload"
           severity="secondary"
           @click="doExportZone"
+          class="mr-2"
+        />
+        <Button
+          v-if="isOperator && zone?.git_repo_id"
+          label="Capture State"
+          icon="pi pi-camera"
+          severity="secondary"
+          :loading="capturing"
+          @click="doCapture"
           class="mr-2"
         />
         <Button
