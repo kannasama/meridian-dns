@@ -96,22 +96,25 @@ TEST_F(SamlServiceTest, ValidateResponseThrowsForUnregisteredIdp) {
 TEST_F(SamlServiceTest, RegisterIdpAndBuildLoginUrl) {
   // Use a self-signed test certificate (base64 DER, no PEM headers)
   // This is a minimal RSA cert for testing lasso metadata parsing
+  // Validity: 2026-03-15 to 2036-03-12 (10-year self-signed)
   static const char* kTestCert =
-      "MIICpDCCAYwCCQDU+pQRHkTCbDANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAls"
-      "b2NhbGhvc3QwHhcNMjQwMTAxMDAwMDAwWhcNMjUwMTAxMDAwMDAwWjAUMRIwEAYD"
-      "VQQDDAlsb2NhbGhvc3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7"
-      "o4qne60TB3pOYaBy/YCbSiTO6HMmcGq2KkMSx9J0oVEMOC0Ij2je6sEBP4E9JE5"
-      "e4HjBKMjHfLUHPBQGVAMqHF1VKFLhIHlSgOFEPH/HjTqdjXKo+nGEcuJOEN8WT+"
-      "sJlMSHfhmB06CihDouKy8nB2MnQW0CHMLhDAqlLX8Eh+b6aJJl5u3UKuJlFMpPjj"
-      "e+GDjz2JOPlaSmkQwvbJpOAqaZdVUMlvICFwP1kkOmLqsP5Y8PVYb9aYLQVU33/b"
-      "vSFGu8rQnJgUPMC9vaMFkQ0F50UAy5DrlCJlVnTwTvEXThwnJMkBF10MS8xrQzgy"
-      "QCt+833tGRnUVbZ3e7LxAgMBAAEwDQYJKoZIhvcNAQELBQADggEBABq03tjNPHFh"
-      "fVYBjJbnsiNHSt5u6dYLB74S7IfYLlzVR/Yb0ItOEGC/GjvmXaV7PXHV7NwFCXt"
-      "zl6HZJALPODCfFnGOSKYEExrs0nZJ+N/gTqGK+y0d0ECwGm4HBCaYr5jJk4pg5V3"
-      "rYBH6JWA0NYEdeO9CdJ43wOQqj5sN4NJjQ3z3DOh+5j4WZSHphFBp8a7mgKPJva0"
-      "ESbTBBGJmVSP8VIz7FYGNaIx2CMmW/FNfcX3VDSrvF8kHtX7aSBitfFnLShAzEpT"
-      "7mdu0Aq6p2sR6NqKlhIVOoDAIuKznbk7BIJbHPqXNslQZj3VNZlwE8Y7p7IbjGaP"
-      "aCFPEtIL0i0=";
+      "MIIDCTCCAfGgAwIBAgIUd+SbZjQ0+3T4amUvPOCN8YvJHYswDQYJKoZIhvcNAQEL"
+      "BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDMxNTIzMTk0MVoXDTM2MDMx"
+      "MjIzMTk0MVowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF"
+      "AAOCAQ8AMIIBCgKCAQEAlzgJUJssOwGhq8mbyW0HgxWfo7At/6llYVKgcllccCJD"
+      "bBIhWO/jpehxZ7whgnk9sIa4cZY/rPxKaamzFs8HCfG8vwVQTggNcuv469DtX5c7"
+      "UG0+G6Ls57ubC50n1sOp6jVaLtbAuyRhOvxFgFawy79MgEIivmmaNYPKBEghdHCF"
+      "klBBA9atj3H2+o8pXGl7yqFLO5FqyVtiC0q4IDXmr7C4pXi/hddsxmj9otlE8Zod"
+      "diKVODP0Dh5E4g2Oaa6Lt/folXn/yyFCE/F+y2UDkRUy6njYflTPgW27g/iBQ/Vf"
+      "TQwmYT+9m5KGJVVLrEMA8qfCSkpbpKFU3QlucUdqSQIDAQABo1MwUTAdBgNVHQ4E"
+      "FgQUhLYBuqpR6sztX4IuXx0z6X06ccAwHwYDVR0jBBgwFoAUhLYBuqpR6sztX4Iu"
+      "Xx0z6X06ccAwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEABuBS"
+      "D0IrutAzX5N4MzpxKcDL8ZUTevI2u6S9eNDtewuiVW62tGX+HWDx14QjjP7uBRYb"
+      "CQv7boRMztjN3Hh3QTJEkbAAlgAvMF/hO2s2OAcPiXTOPXwgI9WdsSABKraLMgXy"
+      "zeVnK5GmOKxlBzfS38vF3mJrWedSyJTXJG52u7kzGX1C+wVy488nYPltVQjClZfP"
+      "ysk2JjposprkAGmwxWRZu5Tqs5nSOkiwlLngGSWJrW2X3RFN/Mi3mN7ZB3BJVkBW"
+      "q5MNgfQyW0F59juD88a3SCZ+GbqbwV61S+L80g565CRXKpazHdOaN1kmLODZhpDH"
+      "LVo2a3+yOwoSQS4wTA==";
 
   // Register a test IdP
   _upService->registerIdp(
