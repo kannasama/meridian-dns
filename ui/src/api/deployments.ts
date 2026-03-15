@@ -1,5 +1,5 @@
 import { get, post } from './client'
-import type { PreviewResult, DeploymentSnapshot, DeploymentDiff, DriftAction } from '../types'
+import type { PreviewResult, DeploymentSnapshot, DeploymentDiff, DriftAction, CaptureResult } from '../types'
 
 export function previewZone(zoneId: number): Promise<PreviewResult> {
   return post(`/zones/${zoneId}/preview`)
@@ -41,4 +41,8 @@ export function rollback(
   cherryPickIds?: number[],
 ): Promise<{ message: string }> {
   return post(`/zones/${zoneId}/deployments/${deploymentId}/rollback`, cherryPickIds ? { cherry_pick_ids: cherryPickIds } : {})
+}
+
+export function captureCurrentState(zoneId: number): Promise<CaptureResult> {
+  return post(`/zones/${zoneId}/capture`)
 }

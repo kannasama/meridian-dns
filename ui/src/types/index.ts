@@ -145,6 +145,11 @@ export interface DeploymentSnapshot {
   snapshot: Record<string, unknown>
 }
 
+export interface CaptureResult {
+  message: string
+  deployment_id: number
+}
+
 export interface DeploymentDiff {
   deployment_id: number
   zone_id: number
