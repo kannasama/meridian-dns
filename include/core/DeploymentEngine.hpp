@@ -51,9 +51,21 @@ class DeploymentEngine {
             const std::vector<common::DriftAction>& vDriftActions,
             int64_t iActorUserId, const std::string& sActor);
 
+  /// Capture current provider state as a baseline snapshot.
+  /// No diff/push — records captured as-is from the provider.
+  /// Returns the new deployment ID.
+  int64_t capture(int64_t iZoneId, int64_t iActorUserId,
+                  const std::string& sActor, const std::string& sGeneratedBy);
+
  private:
   /// Build the deployment snapshot JSON from current records.
   nlohmann::json buildSnapshot(int64_t iZoneId, const std::string& sActor) const;
+
+  /// Build a capture snapshot from live provider records (no diff/push).
+  nlohmann::json buildCaptureSnapshot(int64_t iZoneId,
+                                      const std::vector<common::DnsRecord>& vLiveRecords,
+                                      const std::string& sActor,
+                                      const std::string& sGeneratedBy) const;
 
   /// Get or create a per-zone mutex.
   std::mutex& zoneMutex(int64_t iZoneId);
