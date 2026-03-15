@@ -146,10 +146,17 @@ void OidcRoutes::registerRoutes(crow::SimpleApp& app) {
           auto jPayload = _osService.validateIdToken(
               sIdToken, odDiscovery.sJwksUri, odDiscovery.sIssuer, sClientId);
 
-          // Extract claims
+          // Read attribute mapping from IdP config
+          auto jMapping = oIdp->jConfig.value("attribute_mapping", nlohmann::json::object());
+          std::string sEmailClaim = jMapping.value("email", "email");
+          std::string sUsernameClaim = jMapping.value("username", "preferred_username");
+          std::string sDisplayNameClaim = jMapping.value("display_name", "name");
+
+          // Extract claims using configurable mapping
           std::string sSub = jPayload.value("sub", "");
-          std::string sEmail = jPayload.value("email", "");
-          std::string sUsername = jPayload.value("preferred_username", "");
+          std::string sEmail = jPayload.value(sEmailClaim, "");
+          std::string sUsername = jPayload.value(sUsernameClaim, "");
+          std::string sDisplayName = jPayload.value(sDisplayNameClaim, "");
           if (sUsername.empty()) {
             sUsername = jPayload.value("email", sSub);
           }
@@ -168,6 +175,7 @@ void OidcRoutes::registerRoutes(crow::SimpleApp& app) {
                 {"subject", sSub},
                 {"email", sEmail},
                 {"username", sUsername},
+                {"display_name", sDisplayName},
                 {"groups", vGroups},
                 {"all_claims", jPayload},
             };
@@ -176,7 +184,7 @@ void OidcRoutes::registerRoutes(crow::SimpleApp& app) {
 
           // Process federated login
           auto lr = _fasService.processFederatedLogin(
-              "oidc", sSub, sUsername, sEmail, vGroups,
+              "oidc", sSub, sUsername, sEmail, sDisplayName, vGroups,
               oIdp->jGroupMappings, oIdp->iDefaultGroupId);
 
           // Redirect to SPA with token

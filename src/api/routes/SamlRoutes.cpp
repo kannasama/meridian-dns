@@ -179,15 +179,33 @@ void SamlRoutes::registerRoutes(crow::SimpleApp& app) {
             }
           }
 
-          // Extract email
+          // Read attribute mapping from IdP config
+          auto jMapping = oIdp->jConfig.value("attribute_mapping", nlohmann::json::object());
+          std::string sEmailAttr = jMapping.value("email", "email");
+          std::string sUsernameAttr = jMapping.value("username", "");  // empty = use NameID
+          std::string sDisplayNameAttr = jMapping.value("display_name", "displayName");
+
+          // Extract email using configurable mapping
           std::string sEmail;
-          if (jAttributes.contains("email") && jAttributes["email"].is_array() &&
-              !jAttributes["email"].empty()) {
-            sEmail = jAttributes["email"][0].get<std::string>();
+          if (jAttributes.contains(sEmailAttr) && jAttributes[sEmailAttr].is_array() &&
+              !jAttributes[sEmailAttr].empty()) {
+            sEmail = jAttributes[sEmailAttr][0].get<std::string>();
           }
 
-          // Username from NameID or email
-          std::string sUsername = sNameId;
+          // Extract display name
+          std::string sDisplayName;
+          if (jAttributes.contains(sDisplayNameAttr) && jAttributes[sDisplayNameAttr].is_array() &&
+              !jAttributes[sDisplayNameAttr].empty()) {
+            sDisplayName = jAttributes[sDisplayNameAttr][0].get<std::string>();
+          }
+
+          // Username from mapping, then NameID, then email
+          std::string sUsername;
+          if (!sUsernameAttr.empty() && jAttributes.contains(sUsernameAttr) &&
+              jAttributes[sUsernameAttr].is_array() && !jAttributes[sUsernameAttr].empty()) {
+            sUsername = jAttributes[sUsernameAttr][0].get<std::string>();
+          }
+          if (sUsername.empty()) sUsername = sNameId;
           if (sUsername.empty()) sUsername = sEmail;
 
           // Test mode: return HTML page displaying raw attributes
@@ -196,6 +214,7 @@ void SamlRoutes::registerRoutes(crow::SimpleApp& app) {
                 {"subject", sNameId},
                 {"email", sEmail},
                 {"username", sUsername},
+                {"display_name", sDisplayName},
                 {"groups", vGroups},
                 {"all_claims", jAttributes},
             };
@@ -214,7 +233,7 @@ void SamlRoutes::registerRoutes(crow::SimpleApp& app) {
 
           // Process federated login
           auto lr = _fasService.processFederatedLogin(
-              "saml", sNameId, sUsername, sEmail, vGroups,
+              "saml", sNameId, sUsername, sEmail, sDisplayName, vGroups,
               oIdp->jGroupMappings, oIdp->iDefaultGroupId);
 
           // Store SAML session index on the session for SLO support
