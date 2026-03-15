@@ -131,6 +131,7 @@ nlohmann::json DeploymentEngine::buildCaptureSnapshot(
       {"zone", sZoneName},
       {"view", sViewName},
       {"captured_at", oss.str()},
+      {"captured_by", sActor},
       {"generated_by", sGeneratedBy},
       {"record_count", static_cast<int>(vLiveRecords.size())},
       {"records", jRecords},
