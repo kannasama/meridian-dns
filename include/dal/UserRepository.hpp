@@ -19,6 +19,7 @@ struct UserRow {
   std::string sAuthMethod;
   bool bIsActive = true;
   bool bForcePasswordChange = false;
+  std::optional<std::string> osDisplayName;
 };
 
 /// Manages users + groups + group_members.
@@ -36,13 +37,15 @@ class UserRepository {
 
   /// Create a local user. Returns the new user ID.
   int64_t create(const std::string& sUsername, const std::string& sEmail,
-                 const std::string& sPasswordHash);
+                 const std::string& sPasswordHash,
+                 const std::optional<std::string>& osDisplayName = std::nullopt);
 
   /// List all users.
   std::vector<UserRow> listAll();
 
   /// Update a user's email and active status.
-  void update(int64_t iUserId, const std::string& sEmail, bool bIsActive);
+  void update(int64_t iUserId, const std::string& sEmail, bool bIsActive,
+              const std::optional<std::string>& osDisplayName = std::nullopt);
 
   /// Deactivate a user (set is_active = false).
   void deactivate(int64_t iUserId);
@@ -71,10 +74,17 @@ class UserRepository {
   /// Create a federated user (no password hash). Returns the new user ID.
   int64_t createFederated(const std::string& sUsername, const std::string& sEmail,
                           const std::string& sAuthMethod,
-                          const std::string& sOidcSub, const std::string& sSamlNameId);
+                          const std::string& sOidcSub, const std::string& sSamlNameId,
+                          const std::optional<std::string>& osDisplayName = std::nullopt);
 
   /// Update a federated user's email address.
   void updateFederatedEmail(int64_t iUserId, const std::string& sEmail);
+
+  /// Update a user's display name (nullable).
+  void updateDisplayName(int64_t iUserId, const std::optional<std::string>& osDisplayName);
+
+  /// Update a federated user's display name.
+  void updateFederatedDisplayName(int64_t iUserId, const std::string& sDisplayName);
 
  private:
   ConnectionPool& _cpPool;

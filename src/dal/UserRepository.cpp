@@ -15,7 +15,8 @@ std::optional<UserRow> UserRepository::findByUsername(const std::string& sUserna
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, username, COALESCE(email, ''), COALESCE(password_hash, ''), "
-      "auth_method::text, is_active, COALESCE(force_password_change, false) "
+      "auth_method::text, is_active, COALESCE(force_password_change, false), "
+      "display_name "
       "FROM users WHERE username = $1",
       pqxx::params{sUsername});
   txn.commit();
@@ -23,7 +24,7 @@ std::optional<UserRow> UserRepository::findByUsername(const std::string& sUserna
   if (result.empty()) return std::nullopt;
 
   auto row = result[0];
-  return UserRow{
+  UserRow ur{
       row[0].as<int64_t>(),
       row[1].as<std::string>(),
       row[2].as<std::string>(),
@@ -32,6 +33,10 @@ std::optional<UserRow> UserRepository::findByUsername(const std::string& sUserna
       row[5].as<bool>(),
       row[6].as<bool>(),
   };
+  if (!row[7].is_null()) {
+    ur.osDisplayName = row[7].as<std::string>();
+  }
+  return ur;
 }
 
 std::optional<UserRow> UserRepository::findById(int64_t iUserId) {
@@ -39,7 +44,8 @@ std::optional<UserRow> UserRepository::findById(int64_t iUserId) {
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, username, COALESCE(email, ''), COALESCE(password_hash, ''), "
-      "auth_method::text, is_active, COALESCE(force_password_change, false) "
+      "auth_method::text, is_active, COALESCE(force_password_change, false), "
+      "display_name "
       "FROM users WHERE id = $1",
       pqxx::params{iUserId});
   txn.commit();
@@ -47,7 +53,7 @@ std::optional<UserRow> UserRepository::findById(int64_t iUserId) {
   if (result.empty()) return std::nullopt;
 
   auto row = result[0];
-  return UserRow{
+  UserRow ur{
       row[0].as<int64_t>(),
       row[1].as<std::string>(),
       row[2].as<std::string>(),
@@ -56,16 +62,31 @@ std::optional<UserRow> UserRepository::findById(int64_t iUserId) {
       row[5].as<bool>(),
       row[6].as<bool>(),
   };
+  if (!row[7].is_null()) {
+    ur.osDisplayName = row[7].as<std::string>();
+  }
+  return ur;
 }
 
 int64_t UserRepository::create(const std::string& sUsername, const std::string& sEmail,
-                               const std::string& sPasswordHash) {
+                               const std::string& sPasswordHash,
+                               const std::optional<std::string>& osDisplayName) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec(
-      "INSERT INTO users (username, email, password_hash, auth_method) "
-      "VALUES ($1, $2, $3, 'local') RETURNING id",
-      pqxx::params{sUsername, sEmail, sPasswordHash});
+
+  pqxx::result result;
+  if (osDisplayName.has_value()) {
+    result = txn.exec(
+        "INSERT INTO users (username, email, password_hash, auth_method, display_name) "
+        "VALUES ($1, $2, $3, 'local', $4) RETURNING id",
+        pqxx::params{sUsername, sEmail, sPasswordHash, osDisplayName.value()});
+  } else {
+    result = txn.exec(
+        "INSERT INTO users (username, email, password_hash, auth_method) "
+        "VALUES ($1, $2, $3, 'local') RETURNING id",
+        pqxx::params{sUsername, sEmail, sPasswordHash});
+  }
+
   txn.commit();
   return result.one_row()[0].as<int64_t>();
 }
@@ -75,7 +96,8 @@ std::vector<UserRow> UserRepository::listAll() {
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, username, COALESCE(email, ''), COALESCE(password_hash, ''), "
-      "auth_method::text, is_active, COALESCE(force_password_change, false) "
+      "auth_method::text, is_active, COALESCE(force_password_change, false), "
+      "display_name "
       "FROM users ORDER BY username");
   txn.commit();
 
@@ -90,17 +112,31 @@ std::vector<UserRow> UserRepository::listAll() {
     ur.sAuthMethod = row[4].as<std::string>();
     ur.bIsActive = row[5].as<bool>();
     ur.bForcePasswordChange = row[6].as<bool>();
+    if (!row[7].is_null()) {
+      ur.osDisplayName = row[7].as<std::string>();
+    }
     vRows.push_back(std::move(ur));
   }
   return vRows;
 }
 
-void UserRepository::update(int64_t iUserId, const std::string& sEmail, bool bIsActive) {
+void UserRepository::update(int64_t iUserId, const std::string& sEmail, bool bIsActive,
+                            const std::optional<std::string>& osDisplayName) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec(
-      "UPDATE users SET email = $2, is_active = $3, updated_at = NOW() WHERE id = $1",
-      pqxx::params{iUserId, sEmail, bIsActive});
+
+  pqxx::result result;
+  if (osDisplayName.has_value()) {
+    result = txn.exec(
+        "UPDATE users SET email = $2, is_active = $3, display_name = $4, "
+        "updated_at = NOW() WHERE id = $1",
+        pqxx::params{iUserId, sEmail, bIsActive, osDisplayName.value()});
+  } else {
+    result = txn.exec(
+        "UPDATE users SET email = $2, is_active = $3, updated_at = NOW() WHERE id = $1",
+        pqxx::params{iUserId, sEmail, bIsActive});
+  }
+
   txn.commit();
 
   if (result.affected_rows() == 0) {
@@ -201,7 +237,8 @@ std::optional<UserRow> UserRepository::findByOidcSub(const std::string& sOidcSub
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, username, COALESCE(email, ''), COALESCE(password_hash, ''), "
-      "auth_method::text, is_active, COALESCE(force_password_change, false) "
+      "auth_method::text, is_active, COALESCE(force_password_change, false), "
+      "display_name "
       "FROM users WHERE oidc_sub = $1",
       pqxx::params{sOidcSub});
   txn.commit();
@@ -209,7 +246,7 @@ std::optional<UserRow> UserRepository::findByOidcSub(const std::string& sOidcSub
   if (result.empty()) return std::nullopt;
 
   auto row = result[0];
-  return UserRow{
+  UserRow ur{
       row[0].as<int64_t>(),
       row[1].as<std::string>(),
       row[2].as<std::string>(),
@@ -218,6 +255,10 @@ std::optional<UserRow> UserRepository::findByOidcSub(const std::string& sOidcSub
       row[5].as<bool>(),
       row[6].as<bool>(),
   };
+  if (!row[7].is_null()) {
+    ur.osDisplayName = row[7].as<std::string>();
+  }
+  return ur;
 }
 
 std::optional<UserRow> UserRepository::findBySamlNameId(const std::string& sSamlNameId) {
@@ -225,7 +266,8 @@ std::optional<UserRow> UserRepository::findBySamlNameId(const std::string& sSaml
   pqxx::work txn(*cg);
   auto result = txn.exec(
       "SELECT id, username, COALESCE(email, ''), COALESCE(password_hash, ''), "
-      "auth_method::text, is_active, COALESCE(force_password_change, false) "
+      "auth_method::text, is_active, COALESCE(force_password_change, false), "
+      "display_name "
       "FROM users WHERE saml_name_id = $1",
       pqxx::params{sSamlNameId});
   txn.commit();
@@ -233,7 +275,7 @@ std::optional<UserRow> UserRepository::findBySamlNameId(const std::string& sSaml
   if (result.empty()) return std::nullopt;
 
   auto row = result[0];
-  return UserRow{
+  UserRow ur{
       row[0].as<int64_t>(),
       row[1].as<std::string>(),
       row[2].as<std::string>(),
@@ -242,18 +284,34 @@ std::optional<UserRow> UserRepository::findBySamlNameId(const std::string& sSaml
       row[5].as<bool>(),
       row[6].as<bool>(),
   };
+  if (!row[7].is_null()) {
+    ur.osDisplayName = row[7].as<std::string>();
+  }
+  return ur;
 }
 
 int64_t UserRepository::createFederated(const std::string& sUsername, const std::string& sEmail,
                                         const std::string& sAuthMethod,
                                         const std::string& sOidcSub,
-                                        const std::string& sSamlNameId) {
+                                        const std::string& sSamlNameId,
+                                        const std::optional<std::string>& osDisplayName) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec(
-      "INSERT INTO users (username, email, auth_method, oidc_sub, saml_name_id) "
-      "VALUES ($1, $2, $3::auth_method, NULLIF($4, ''), NULLIF($5, '')) RETURNING id",
-      pqxx::params{sUsername, sEmail, sAuthMethod, sOidcSub, sSamlNameId});
+
+  pqxx::result result;
+  if (osDisplayName.has_value()) {
+    result = txn.exec(
+        "INSERT INTO users (username, email, auth_method, oidc_sub, saml_name_id, display_name) "
+        "VALUES ($1, $2, $3::auth_method, NULLIF($4, ''), NULLIF($5, ''), $6) RETURNING id",
+        pqxx::params{sUsername, sEmail, sAuthMethod, sOidcSub, sSamlNameId,
+                     osDisplayName.value()});
+  } else {
+    result = txn.exec(
+        "INSERT INTO users (username, email, auth_method, oidc_sub, saml_name_id) "
+        "VALUES ($1, $2, $3::auth_method, NULLIF($4, ''), NULLIF($5, '')) RETURNING id",
+        pqxx::params{sUsername, sEmail, sAuthMethod, sOidcSub, sSamlNameId});
+  }
+
   txn.commit();
   return result.one_row()[0].as<int64_t>();
 }
@@ -264,6 +322,45 @@ void UserRepository::updateFederatedEmail(int64_t iUserId, const std::string& sE
   auto result = txn.exec(
       "UPDATE users SET email = $2, updated_at = NOW() WHERE id = $1",
       pqxx::params{iUserId, sEmail});
+  txn.commit();
+
+  if (result.affected_rows() == 0) {
+    throw common::NotFoundError("USER_NOT_FOUND",
+                                "User with id " + std::to_string(iUserId) + " not found");
+  }
+}
+
+void UserRepository::updateDisplayName(int64_t iUserId,
+                                       const std::optional<std::string>& osDisplayName) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  pqxx::result result;
+  if (osDisplayName.has_value()) {
+    result = txn.exec(
+        "UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1",
+        pqxx::params{iUserId, osDisplayName.value()});
+  } else {
+    result = txn.exec(
+        "UPDATE users SET display_name = NULL, updated_at = NOW() WHERE id = $1",
+        pqxx::params{iUserId});
+  }
+
+  txn.commit();
+
+  if (result.affected_rows() == 0) {
+    throw common::NotFoundError("USER_NOT_FOUND",
+                                "User with id " + std::to_string(iUserId) + " not found");
+  }
+}
+
+void UserRepository::updateFederatedDisplayName(int64_t iUserId,
+                                                const std::string& sDisplayName) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1",
+      pqxx::params{iUserId, sDisplayName});
   txn.commit();
 
   if (result.affected_rows() == 0) {
