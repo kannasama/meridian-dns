@@ -19,7 +19,7 @@ const mainNavItems = [
 
 const adminNavItems = [
   { label: 'Auth', icon: 'pi pi-users', to: '/admin/auth' },
-  { label: 'Identity Providers', icon: 'pi pi-key', to: '/admin/identity-providers' },
+  { label: 'SSO', icon: 'pi pi-key', to: '/admin/identity-providers' },
   { label: 'Settings', icon: 'pi pi-cog', to: '/admin/settings' },
   { label: 'Backup & Restore', icon: 'pi pi-download', to: '/admin/backup' },
 ]

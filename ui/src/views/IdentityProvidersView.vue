@@ -220,7 +220,7 @@ async function save() {
         group_mappings: mappings,
         default_group_id: form.value.default_group_id ?? undefined,
       })
-      notify.success('Identity provider updated')
+      notify.success('SSO provider updated')
     } else {
       await idpApi.createIdentityProvider({
         name: form.value.name,
@@ -230,7 +230,7 @@ async function save() {
         group_mappings: mappings,
         default_group_id: form.value.default_group_id ?? undefined,
       })
-      notify.success('Identity provider created')
+      notify.success('SSO provider created')
     }
     dialogVisible.value = false
     await fetchData()
@@ -241,10 +241,10 @@ async function save() {
 
 async function handleDelete(idp: IdentityProvider) {
   confirmDelete(
-    `Delete identity provider "${idp.name}"?`,
+    `Delete SSO provider "${idp.name}"?`,
     async () => {
       await idpApi.deleteIdentityProvider(idp.id)
-      notify.success('Identity provider deleted')
+      notify.success('SSO provider deleted')
       await fetchData()
     },
   )
@@ -299,8 +299,8 @@ function copyToClipboard(text: string) {
 
 <template>
   <div>
-    <PageHeader title="Identity Providers" subtitle="Configure external authentication">
-      <Button label="Add Provider" icon="pi pi-plus" @click="openCreate" />
+    <PageHeader title="SSO Providers" subtitle="Configure SSO authentication">
+      <Button label="Add SSO Provider" icon="pi pi-plus" @click="openCreate" />
     </PageHeader>
 
     <Message v-if="!baseUrlConfigured" severity="warn" :closable="false" class="mb-3">
@@ -365,7 +365,7 @@ function copyToClipboard(text: string) {
 
     <Dialog
       v-model:visible="dialogVisible"
-      :header="isEditing ? 'Edit Identity Provider' : 'Add Identity Provider'"
+      :header="isEditing ? 'Edit SSO Provider' : 'Add SSO Provider'"
       modal
       :style="{ width: '44rem' }"
     >
