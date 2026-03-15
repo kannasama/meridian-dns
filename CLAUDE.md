@@ -5,6 +5,21 @@ architectural decisions, and development roadmap so context transfers across mac
 
 ---
 
+## Superpowers Skills (MANDATORY)
+Planning, debugging, verification, and code review are delegated to superpowers skills. **You MUST invoke the relevant skill before acting** — never skip this step, even if the task seems simple.  Leverage the `workflow-orchestration` skill in combination with the below.
+
+| Trigger | Skill to invoke |
+|---|---|
+| New feature, multi-step task | `brainstorming` → `writing-plans` or `test-driven-development` |
+| Bug, test failure, unexpected behavior | `systematic-debugging` |
+| About to claim work is done | `verification-before-completion` |
+| Major step completed | `requesting-code-review` |
+| Plan ready to execute | `executing-plans` or `subagent-driven-development` |
+
+
+## Long Term Lesson Context
+Include details documented in `docs/plans/lessons.md` when factoring in planning and requests for user interaction.
+
 ## Project Status
 
 - **Phases 1–3 complete:** skeleton, foundation layer
