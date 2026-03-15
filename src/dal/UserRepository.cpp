@@ -32,6 +32,7 @@ std::optional<UserRow> UserRepository::findByUsername(const std::string& sUserna
       row[4].as<std::string>(),
       row[5].as<bool>(),
       row[6].as<bool>(),
+      std::nullopt,
   };
   if (!row[7].is_null()) {
     ur.osDisplayName = row[7].as<std::string>();
@@ -61,6 +62,7 @@ std::optional<UserRow> UserRepository::findById(int64_t iUserId) {
       row[4].as<std::string>(),
       row[5].as<bool>(),
       row[6].as<bool>(),
+      std::nullopt,
   };
   if (!row[7].is_null()) {
     ur.osDisplayName = row[7].as<std::string>();
@@ -254,6 +256,7 @@ std::optional<UserRow> UserRepository::findByOidcSub(const std::string& sOidcSub
       row[4].as<std::string>(),
       row[5].as<bool>(),
       row[6].as<bool>(),
+      std::nullopt,
   };
   if (!row[7].is_null()) {
     ur.osDisplayName = row[7].as<std::string>();
@@ -283,6 +286,7 @@ std::optional<UserRow> UserRepository::findBySamlNameId(const std::string& sSaml
       row[4].as<std::string>(),
       row[5].as<bool>(),
       row[6].as<bool>(),
+      std::nullopt,
   };
   if (!row[7].is_null()) {
     ur.osDisplayName = row[7].as<std::string>();

@@ -73,6 +73,7 @@ common::RequestContext AuthMiddleware::validateJwt(const std::string& sBearerTok
   common::RequestContext rcCtx;
   rcCtx.iUserId = std::stoll(jPayload["sub"].get<std::string>());
   rcCtx.sUsername = jPayload["username"].get<std::string>();
+  rcCtx.sDisplayName = jPayload.value("display_name", "");
   rcCtx.sRole = jPayload["role"].get<std::string>();
   rcCtx.sAuthMethod = jPayload["auth_method"].get<std::string>();
 

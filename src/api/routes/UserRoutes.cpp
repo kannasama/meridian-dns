@@ -39,6 +39,7 @@ void UserRoutes::registerRoutes(crow::SimpleApp& app) {
             jArr.push_back({
                 {"id", user.iId},
                 {"username", user.sUsername},
+                {"display_name", user.osDisplayName.value_or("")},
                 {"email", user.sEmail},
                 {"auth_method", user.sAuthMethod},
                 {"is_active", user.bIsActive},
@@ -67,8 +68,13 @@ void UserRoutes::registerRoutes(crow::SimpleApp& app) {
           RequestValidator::validateUsername(sUsername);
           RequestValidator::validatePassword(sPassword);
 
+          std::optional<std::string> osDisplayName;
+          if (jBody.contains("display_name")) {
+            osDisplayName = jBody.value("display_name", "");
+          }
+
           std::string sHash = dns::security::CryptoService::hashPassword(sPassword);
-          int64_t iUserId = _urRepo.create(sUsername, sEmail, sHash);
+          int64_t iUserId = _urRepo.create(sUsername, sEmail, sHash, osDisplayName);
 
           bool bForceChange = jBody.value("force_password_change", false);
           if (bForceChange) {
@@ -109,6 +115,7 @@ void UserRoutes::registerRoutes(crow::SimpleApp& app) {
           return jsonResponse(200, {
               {"id", oUser->iId},
               {"username", oUser->sUsername},
+              {"display_name", oUser->osDisplayName.value_or("")},
               {"email", oUser->sEmail},
               {"auth_method", oUser->sAuthMethod},
               {"is_active", oUser->bIsActive},
@@ -133,8 +140,12 @@ void UserRoutes::registerRoutes(crow::SimpleApp& app) {
           auto jBody = nlohmann::json::parse(req.body);
           std::string sEmail = jBody.value("email", oUser->sEmail);
           bool bIsActive = jBody.value("is_active", oUser->bIsActive);
+          std::optional<std::string> osDisplayName;
+          if (jBody.contains("display_name")) {
+            osDisplayName = jBody.value("display_name", "");
+          }
 
-          _urRepo.update(iUserId, sEmail, bIsActive);
+          _urRepo.update(iUserId, sEmail, bIsActive, osDisplayName);
 
           // Sync group memberships: remove all, then re-add
           if (jBody.contains("group_ids") && jBody["group_ids"].is_array()) {

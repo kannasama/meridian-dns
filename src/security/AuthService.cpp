@@ -52,6 +52,12 @@ std::string AuthService::authenticateLocal(const std::string& sUsername,
     sRole = "Viewer";  // default display role if no group membership
   }
 
+  // Resolve display_name from user record
+  std::string sDisplayName;
+  if (oUser->osDisplayName.has_value()) {
+    sDisplayName = oUser->osDisplayName.value();
+  }
+
   // Build JWT payload
   auto iNow = std::chrono::duration_cast<std::chrono::seconds>(
                    std::chrono::system_clock::now().time_since_epoch())
@@ -60,6 +66,7 @@ std::string AuthService::authenticateLocal(const std::string& sUsername,
   nlohmann::json jPayload = {
       {"sub", std::to_string(oUser->iId)},
       {"username", oUser->sUsername},
+      {"display_name", sDisplayName},
       {"role", sRole},
       {"auth_method", "local"},
       {"iat", iNow},
@@ -96,6 +103,7 @@ common::RequestContext AuthService::validateToken(const std::string& sToken) con
   common::RequestContext rcCtx;
   rcCtx.iUserId = std::stoll(jPayload["sub"].get<std::string>());
   rcCtx.sUsername = jPayload["username"].get<std::string>();
+  rcCtx.sDisplayName = jPayload.value("display_name", "");
   rcCtx.sRole = jPayload["role"].get<std::string>();
   rcCtx.sAuthMethod = jPayload["auth_method"].get<std::string>();
 

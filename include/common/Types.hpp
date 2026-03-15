@@ -84,8 +84,10 @@ struct DriftAction {
 struct RequestContext {
   int64_t iUserId = 0;
   std::string sUsername;
+  std::string sDisplayName;
   std::string sRole;          // Display-only: highest-privilege role name
   std::string sAuthMethod;
+  std::string sIpAddress;
   std::unordered_set<std::string> vPermissions;  // Effective permissions for this request
 };
 

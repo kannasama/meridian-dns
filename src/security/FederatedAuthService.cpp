@@ -147,6 +147,13 @@ FederatedAuthService::LoginResult FederatedAuthService::processFederatedLogin(
     sRole = "Viewer";
   }
 
+  // Re-read user to get updated display_name
+  auto oFreshUser = _urRepo.findById(oUser->iId);
+  std::string sDisplayNameForJwt;
+  if (oFreshUser && oFreshUser->osDisplayName.has_value()) {
+    sDisplayNameForJwt = oFreshUser->osDisplayName.value();
+  }
+
   // 6. Build JWT payload (same pattern as AuthService::authenticateLocal)
   auto iNow = std::chrono::duration_cast<std::chrono::seconds>(
                    std::chrono::system_clock::now().time_since_epoch())
@@ -155,6 +162,7 @@ FederatedAuthService::LoginResult FederatedAuthService::processFederatedLogin(
   nlohmann::json jPayload = {
       {"sub", std::to_string(oUser->iId)},
       {"username", oUser->sUsername},
+      {"display_name", sDisplayNameForJwt},
       {"role", sRole},
       {"auth_method", sAuthMethod},
       {"iat", iNow},

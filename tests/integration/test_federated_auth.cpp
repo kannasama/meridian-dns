@@ -92,7 +92,7 @@ class FederatedAuthIntegrationTest : public ::testing::Test {
 
 TEST_F(FederatedAuthIntegrationTest, ProvisionNewOidcUser) {
   auto lr = _upFedAuth->processFederatedLogin(
-      "oidc", "oidc|new-user-123", "test-fed-oidc-new", "oidc@test.com",
+      "oidc", "oidc|new-user-123", "test-fed-oidc-new", "oidc@test.com", "",
       {}, {}, 0);
 
   EXPECT_FALSE(lr.sToken.empty());
@@ -108,7 +108,7 @@ TEST_F(FederatedAuthIntegrationTest, ProvisionNewOidcUser) {
 
 TEST_F(FederatedAuthIntegrationTest, ProvisionNewSamlUser) {
   auto lr = _upFedAuth->processFederatedLogin(
-      "saml", "saml-name-id-456", "test-fed-saml-new", "saml@test.com",
+      "saml", "saml-name-id-456", "test-fed-saml-new", "saml@test.com", "",
       {}, {}, 0);
 
   EXPECT_FALSE(lr.sToken.empty());
@@ -124,13 +124,13 @@ TEST_F(FederatedAuthIntegrationTest, ProvisionNewSamlUser) {
 TEST_F(FederatedAuthIntegrationTest, ExistingUserUpdatesEmail) {
   // First login creates user
   auto lr1 = _upFedAuth->processFederatedLogin(
-      "oidc", "oidc|email-update", "test-fed-email-update", "old@test.com",
+      "oidc", "oidc|email-update", "test-fed-email-update", "old@test.com", "",
       {}, {}, 0);
   EXPECT_TRUE(lr1.bNewUser);
 
   // Second login with new email
   auto lr2 = _upFedAuth->processFederatedLogin(
-      "oidc", "oidc|email-update", "test-fed-email-update", "new@test.com",
+      "oidc", "oidc|email-update", "test-fed-email-update", "new@test.com", "",
       {}, {}, 0);
   EXPECT_FALSE(lr2.bNewUser);
   EXPECT_EQ(lr2.iUserId, lr1.iUserId);
@@ -144,7 +144,7 @@ TEST_F(FederatedAuthIntegrationTest, ExistingUserUpdatesEmail) {
 TEST_F(FederatedAuthIntegrationTest, DisabledUserRejected) {
   // Create user
   auto lr = _upFedAuth->processFederatedLogin(
-      "oidc", "oidc|disabled-user", "test-fed-disabled", "disabled@test.com",
+      "oidc", "oidc|disabled-user", "test-fed-disabled", "disabled@test.com", "",
       {}, {}, 0);
 
   // Deactivate
@@ -153,7 +153,7 @@ TEST_F(FederatedAuthIntegrationTest, DisabledUserRejected) {
   // Try to login again — should throw
   EXPECT_THROW(
       _upFedAuth->processFederatedLogin(
-          "oidc", "oidc|disabled-user", "test-fed-disabled", "disabled@test.com",
+          "oidc", "oidc|disabled-user", "test-fed-disabled", "disabled@test.com", "",
           {}, {}, 0),
       dns::common::AuthenticationError);
 }
@@ -171,7 +171,7 @@ TEST_F(FederatedAuthIntegrationTest, GroupMappingAssignsCorrectGroups) {
   };
 
   auto lr = _upFedAuth->processFederatedLogin(
-      "oidc", "oidc|group-mapped", "test-fed-group-mapped", "group@test.com",
+      "oidc", "oidc|group-mapped", "test-fed-group-mapped", "group@test.com", "",
       {"dns-admins", "other-group"}, jMappings, 0);
 
   // Verify user is in the group
@@ -198,7 +198,7 @@ TEST_F(FederatedAuthIntegrationTest, GroupMappingWildcard) {
   };
 
   auto lr = _upFedAuth->processFederatedLogin(
-      "oidc", "oidc|wildcard-test", "test-fed-wildcard", "wild@test.com",
+      "oidc", "oidc|wildcard-test", "test-fed-wildcard", "wild@test.com", "",
       {"platform-team"}, jMappings, 0);
 
   auto vGroups = _upUserRepo->listGroupsForUser(lr.iUserId);
@@ -224,7 +224,7 @@ TEST_F(FederatedAuthIntegrationTest, GroupMappingFallsBackToDefault) {
   };
 
   auto lr = _upFedAuth->processFederatedLogin(
-      "oidc", "oidc|default-group", "test-fed-default-group", "default@test.com",
+      "oidc", "oidc|default-group", "test-fed-default-group", "default@test.com", "",
       {"some-other-group"}, jMappings, iDefaultGroupId);
 
   auto vGroups = _upUserRepo->listGroupsForUser(lr.iUserId);

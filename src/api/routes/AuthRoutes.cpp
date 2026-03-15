@@ -79,6 +79,11 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
             sEmail = oUser->sEmail;
           }
 
+          std::string sDisplayName;
+          if (oUser && oUser->osDisplayName.has_value()) {
+            sDisplayName = oUser->osDisplayName.value();
+          }
+
           nlohmann::json jPerms = nlohmann::json::array();
           for (const auto& sPerm : rcCtx.vPermissions) {
             jPerms.push_back(sPerm);
@@ -87,6 +92,7 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
           return jsonResponse(200, {
               {"user_id", rcCtx.iUserId},
               {"username", rcCtx.sUsername},
+              {"display_name", sDisplayName},
               {"email", sEmail},
               {"role", rcCtx.sRole},
               {"permissions", jPerms},
@@ -107,11 +113,15 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
           auto jBody = nlohmann::json::parse(req.body);
           std::string sEmail = jBody.value("email", "");
           RequestValidator::validateRequired(sEmail, "email");
+          std::optional<std::string> osDisplayName;
+          if (jBody.contains("display_name")) {
+            osDisplayName = jBody.value("display_name", "");
+          }
 
           auto oUser = _urRepo.findById(rcCtx.iUserId);
           if (!oUser) throw common::NotFoundError("USER_NOT_FOUND", "User not found");
 
-          _urRepo.update(rcCtx.iUserId, sEmail, oUser->bIsActive);
+          _urRepo.update(rcCtx.iUserId, sEmail, oUser->bIsActive, osDisplayName);
           return jsonResponse(200, {{"message", "Profile updated"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
