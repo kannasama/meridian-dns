@@ -1,3 +1,7 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- Copyright (c) 2026 Meridian DNS Contributors
+-- This file is part of Meridian DNS. See LICENSE for details.
+
 -- v011: Move role_id from group_members to groups
 -- Each group has exactly one role; all members inherit that role's permissions.
 

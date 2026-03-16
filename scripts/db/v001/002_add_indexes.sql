@@ -1,3 +1,7 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- Copyright (c) 2026 Meridian DNS Contributors
+-- This file is part of Meridian DNS. See LICENSE for details.
+
 -- 002_add_indexes.sql
 -- Performance indexes for meridian-dns.
 -- See ARCHITECTURE.md §5.3 for full documentation.

@@ -16,6 +16,7 @@ check_files() {
       MISSING=$((MISSING + 1))
     fi
   done < <(find . -path ./build -prune -o -path ./ui/node_modules -prune -o \
+    -path ./.roo -prune -o \
     -name "$pattern" -print0)
 }
 
