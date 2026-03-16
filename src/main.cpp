@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "common/Version.hpp"
+
 #include "api/ApiServer.hpp"
 #include "api/AuthMiddleware.hpp"
 #include "api/routes/BackupRoutes.hpp"
@@ -85,8 +87,6 @@ dns::core::MaintenanceScheduler* g_pScheduler = nullptr;
 void signalHandler(int /*iSignal*/) {
   if (g_pApiServer) g_pApiServer->stop();
 }
-// NOLINTNEXTLINE(cert-err58-cpp) — version string must be available before Config::load()
-constexpr std::string_view kVersion = "0.1.0";
 
 void printUsage(const char* pProgName) {
   std::cout << "Usage: " << pProgName << " [OPTIONS]\n"
@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
       std::quick_exit(EXIT_SUCCESS);
     }
     if (arg == "--version" || arg == "-v") {
-      std::cout << "meridian-dns " << kVersion << "\n";
+      std::cout << "meridian-dns " << MERIDIAN_VERSION << "\n";
       std::cout.flush();
       std::quick_exit(EXIT_SUCCESS);
     }
@@ -537,7 +537,7 @@ int main(int argc, char* argv[]) {
     // Step 12: Background task queue uses ThreadPool — ready
     spLog->info("Step 12: Background task queue ready (ThreadPool)");
 
-    spLog->info("meridian-dns ready");
+    spLog->info("meridian-dns {} ready", MERIDIAN_VERSION);
 
     // Blocks on Crow event loop until stop() is called
     apiServer->start(cfgApp.iHttpPort, cfgApp.iHttpThreads);

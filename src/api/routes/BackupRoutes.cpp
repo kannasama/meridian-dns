@@ -1,5 +1,7 @@
 #include "api/routes/BackupRoutes.hpp"
 
+#include "common/Version.hpp"
+
 #include <chrono>
 #include <iomanip>
 #include <sstream>
@@ -240,7 +242,7 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
           jBackup["version"] = 1;
           jBackup["exported_at"] = jImport.value("exported_at", "");
           jBackup["exported_by"] = rcCtx.sUsername;
-          jBackup["meridian_version"] = "0.1.0";
+          jBackup["meridian_version"] = MERIDIAN_VERSION;
           jBackup["settings"] = nlohmann::json::array();
           jBackup["roles"] = nlohmann::json::array();
           jBackup["groups"] = nlohmann::json::array();
