@@ -14,6 +14,7 @@ add_library(meridian-core STATIC ${DNS_CORE_SOURCES})
 
 target_include_directories(meridian-core PUBLIC
   "${PROJECT_SOURCE_DIR}/include"
+  "${CMAKE_BINARY_DIR}/generated"
 )
 
 target_link_libraries(meridian-core PUBLIC
