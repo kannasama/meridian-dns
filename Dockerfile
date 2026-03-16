@@ -55,7 +55,7 @@ RUN chmod +x /entrypoint.sh
 ENV DNS_UI_DIR=/opt/meridian-dns/ui
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -sf http://localhost:8080/api/v1/health || exit 1
+  CMD curl -sf http://localhost:8080/api/v1/health/live || exit 1
 
 USER meridian-dns
 EXPOSE 8080

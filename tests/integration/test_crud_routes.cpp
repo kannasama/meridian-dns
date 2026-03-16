@@ -19,6 +19,7 @@
 #include "dal/AuditRepository.hpp"
 #include "dal/ConnectionPool.hpp"
 #include "dal/DeploymentRepository.hpp"
+#include "dal/GitRepoRepository.hpp"
 #include "dal/ProviderRepository.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/RoleRepository.hpp"
@@ -77,6 +78,7 @@ class CrudRoutesTest : public ::testing::Test {
     _drRepo = std::make_unique<dns::dal::DeploymentRepository>(*_cpPool);
     _arRepo = std::make_unique<dns::dal::AuditRepository>(*_cpPool);
     _roleRepo = std::make_unique<dns::dal::RoleRepository>(*_cpPool);
+    _gitRepoRepo = std::make_unique<dns::dal::GitRepoRepository>(*_cpPool, *_csService);
 
     // Engines
     _veEngine = std::make_unique<dns::core::VariableEngine>(*_varRepo);
@@ -101,7 +103,8 @@ class CrudRoutesTest : public ::testing::Test {
     _recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
         *_rrRepo, *_zrRepo, *_arRepo, *_amMiddleware, *_deEngine, *_depEngine);
     _variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*_varRepo, *_amMiddleware);
-    _healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
+    _healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>(
+        *_cpPool, *_gitRepoRepo, *_prRepo);
     _deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(
         *_drRepo, *_rrRepo, *_amMiddleware, *_reEngine);
     _auditRoutes = std::make_unique<dns::api::routes::AuditRoutes>(
@@ -204,6 +207,7 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::dal::DeploymentRepository> _drRepo;
   std::unique_ptr<dns::dal::AuditRepository> _arRepo;
   std::unique_ptr<dns::dal::RoleRepository> _roleRepo;
+  std::unique_ptr<dns::dal::GitRepoRepository> _gitRepoRepo;
   std::unique_ptr<dns::core::VariableEngine> _veEngine;
   std::unique_ptr<dns::core::DiffEngine> _deEngine;
   std::unique_ptr<dns::core::DeploymentEngine> _depEngine;

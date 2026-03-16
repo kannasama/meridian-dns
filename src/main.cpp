@@ -474,7 +474,8 @@ int main(int argc, char* argv[]) {
     auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
         *rrRepo, *zrRepo, *arRepo, *amMiddleware, *deEngine, *depEngine);
     auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
-    auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>();
+    auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>(
+        *cpPool, *gitRepoRepo, *prRepo);
     auto themeRoutes = std::make_unique<dns::api::routes::ThemeRoutes>();
     auto deploymentRoutes = std::make_unique<dns::api::routes::DeploymentRoutes>(
         *drRepo, *rrRepo, *amMiddleware, *reEngine);
