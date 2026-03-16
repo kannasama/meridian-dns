@@ -421,56 +421,60 @@ The DAL exposes typed repository classes. Each repository owns its SQL and uses 
 
 ---
 
-### 4.5 GitOps Mirror Subsystem
+### 4.5 GitOps Subsystem (Multi-Repo)
 
-**Header:** `gitops/GitOpsMirror.hpp`
+**Headers:** `gitops/GitRepoManager.hpp`, `gitops/GitRepoMirror.hpp`, `gitops/GitOpsMirror.hpp`
 
 **Responsibilities:**
-- Maintain a local bare-clone of the configured Git remote
-- After each successful push, generate fully-expanded JSON zone snapshots
-- Stage, commit, and push changes to the remote using `libgit2`
+- Manage multiple Git repositories as first-class entities (`git_repos` table)
+- Maintain local clones under `gitops.base_path` (configurable setting)
+- After each successful push, commit fully-expanded JSON zone snapshots to all enabled repos
+- Support SSH and HTTPS authentication per-repository
+- Support per-zone branch overrides
 
-**Repo Layout:**
+**Architecture:**
+- `GitRepoManager` — Orchestrates all configured repos; dispatches commits after deployments
+- `GitRepoMirror` — Per-repo worker handling clone, pull, commit, and push via `libgit2`
+- `GitOpsMirror` — Legacy single-repo class (retained for backward compatibility)
+- `GitOpsMigration` — Migrates `DNS_GIT_REMOTE_URL` env var into the `git_repos` table on upgrade
+
+**Repo Layout (per repository):**
 ```
-/var/meridian-dns/repo/
+{base_path}/{repo_id}/
   {view_name}/
-    {provider_name}/
-      {zone_name}.json
-```
-
-**Zone Snapshot Format (`{zone_name}.json`):**
-```json
-{
-  "zone": "example.com",
-  "view": "external",
-  "provider": "cloudflare",
-  "generated_at": "2026-02-26T21:00:00Z",
-  "generated_by": "alice",
-  "records": [
-    {
-      "name": "www.example.com.",
-      "type": "A",
-      "ttl": 300,
-      "value": "203.0.113.10"
-    }
-  ]
-}
+    {zone_name}.json
 ```
 
 **Key Methods:**
 ```cpp
-class GitOpsMirror {
+class GitRepoManager {
 public:
-  void initialize(const std::string& remote_url, const std::string& local_path);
-  void commit(int64_t zone_id, const std::string& actor_identity);
-  void pull();   // called at startup to sync local clone
-private:
-  void writeZoneSnapshot(int64_t zone_id);
-  void gitAddCommitPush(const std::string& message);
+  void commitAfterDeploy(int64_t zoneId, const std::string& actor);
+  void commitBackup(const std::string& backupJson, const std::string& actor);
+  void testConnection(int64_t repoId);  // verify auth + write access
 };
 ```
 
-**Conflict Strategy:** The mirror is append/overwrite only. The Git repo is never the source of truth, so merge conflicts are resolved by force-pushing the current DB state. A conflict is logged as a warning in the audit log.
+**Conflict Strategy:** Repos are append/overwrite only. The Git repo is never the source of truth — merge conflicts are resolved by force-pushing the current DB state.
+
+### 4.5b Backup Service
+
+**Header:** `core/BackupService.hpp`
+
+**Responsibilities:**
+- Export full system state as JSON (providers, views, zones, records, variables, git repos, settings)
+- Import/restore from backup JSON with preview mode and transactional apply
+- Zone-level export and import
+- Credential fields are excluded from exports for security
+- GitOps backup: commit backup JSON to configured git repository
+
+### 4.5c Zone Capture
+
+Zone capture allows importing existing DNS records from providers into Meridian's deployment history without deploying through the pipeline.
+
+- `DeploymentEngine::capture(zoneId, actor)` — Fetches live records from provider, creates a deployment snapshot with `generated_by: "manual-capture"`
+- Auto-capture: During sync checks, zones never deployed through Meridian get a baseline snapshot
+- Manual capture: `POST /api/v1/zones/{id}/capture` endpoint
 
 ---
 
@@ -620,16 +624,34 @@ private:
 
 #### 4.6.4 HTTP Security Headers (SEC-12)
 
-`ApiServer` applies a response middleware to **all routes** that injects the following headers:
+Security headers (CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy) are
+**delegated to the reverse proxy** for v1.0. This allows deployment-specific configuration
+(e.g., different CSP `script-src` for CDN setups). See
+[DEPLOYMENT.md](DEPLOYMENT.md#reverse-proxy--nginx) for the recommended header configuration.
 
-```
-X-Content-Type-Options: nosniff
-X-Frame-Options: DENY
-Referrer-Policy: strict-origin-when-cross-origin
-Content-Security-Policy: default-src 'self'
-```
+The `applySecurityHeaders()` hook in `RouteHelpers.cpp` is retained as a no-op for future use.
 
-The `Server:` response header is suppressed (Crow's default server identification header is removed).
+#### 4.6.5 Federated Authentication (WS4)
+
+**Headers:** `security/FederatedAuthService.hpp`, `security/OidcService.hpp`, `security/SamlService.hpp`
+
+- `FederatedAuthService` — Handles user provisioning and group mapping from IdP responses
+- `OidcService` — OIDC authorization code flow with PKCE, discovery document caching
+- `SamlService` — SAML 2.0 SP implementation via lasso, XML signature validation
+- `SamlReplayCache` — TTL-based cache preventing assertion replay attacks
+- IdP group-to-Meridian-group mapping with exact match and wildcard support
+
+See [AUTHENTICATION.md](AUTHENTICATION.md) for the user-facing guide.
+
+#### 4.6.6 Permission Service (WS3)
+
+**Header:** `core/PermissionService.hpp`
+
+Implements granular RBAC with 44 discrete permissions across 12 categories. Permissions
+are collected into named roles, assigned via groups with optional view-level or zone-level
+scoping. Resolution uses union semantics — any matching grant is sufficient.
+
+See [PERMISSIONS.md](PERMISSIONS.md) for the full permission reference.
 
 #### 4.6.5 Input Validation Limits (SEC-11)
 
@@ -1187,7 +1209,12 @@ Note: `value` in the snapshot is the **fully expanded** value (all variables res
 
 | Method | Path | Auth Required | Description |
 |--------|------|---------------|-------------|
-| `GET` | `/health` | No | Returns `{"status":"ok"}` or `{"status":"degraded","detail":"..."}` |
+| `GET` | `/health` | No | Returns `{"status":"ok","version":"1.0.0"}` |
+| `GET` | `/health/live` | No | Liveness probe: `{"status":"alive","version":"1.0.0"}` |
+| `GET` | `/health/ready` | No | Readiness probe: DB check, git repo sync status, provider count. Returns 200 (healthy/degraded) or 503 (unhealthy) |
+
+The Dockerfile `HEALTHCHECK` uses `/health/live`. Container orchestrators should use
+`/health/ready` for readiness gates.
 
 ### 6.11 Settings
 
