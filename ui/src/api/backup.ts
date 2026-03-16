@@ -13,9 +13,9 @@ export interface RestoreResult {
   credential_warnings: string[]
 }
 
-export async function downloadBackup(commitToGit = false): Promise<void> {
+export async function downloadBackup(): Promise<void> {
   const token = localStorage.getItem('jwt')
-  const url = `/api/v1/backup/export${commitToGit ? '?commit_to_git=true' : ''}`
+  const url = '/api/v1/backup/export'
   const resp = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
@@ -29,6 +29,10 @@ export async function downloadBackup(commitToGit = false): Promise<void> {
   a.download = `meridian-backup-${new Date().toISOString().slice(0, 10)}.json`
   a.click()
   URL.revokeObjectURL(a.href)
+}
+
+export function pushToRepo(): Promise<{ message: string }> {
+  return post<{ message: string }>('/backup/push-to-repo')
 }
 
 export function restoreFromFile(json: string, apply = false): Promise<RestoreResult> {

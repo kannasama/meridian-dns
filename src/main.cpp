@@ -443,7 +443,7 @@ int main(int argc, char* argv[]) {
             [&bsService = *backupService, &stRepo = *settingsRepo,
              &grmgr = *upGitRepoManager]() {
               auto sRepoId = stRepo.getValue("backup.git_repo_id", "");
-              if (sRepoId.empty()) return;
+              if (sRepoId.empty() || sRepoId == "0") return;
               auto jExport = bsService.exportSystem("system/scheduled");
               auto sPath = stRepo.getValue("backup.git_path",
                                            "_system/config-backup.json");

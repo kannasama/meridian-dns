@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import Button from 'primevue/button'
-import Checkbox from 'primevue/checkbox'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
@@ -10,6 +9,7 @@ import PageHeader from '../components/shared/PageHeader.vue'
 import { useNotificationStore } from '../stores/notification'
 import {
   downloadBackup,
+  pushToRepo,
   restoreFromFile,
   restoreFromRepo,
 } from '../api/backup'
@@ -43,17 +43,29 @@ const hasBackupRepo = computed(() => selectedRepoId.value !== null && selectedRe
 
 // Export section
 const exporting = ref(false)
-const commitToGit = ref(false)
+const pushing = ref(false)
 
 async function doExport() {
   exporting.value = true
   try {
-    await downloadBackup(commitToGit.value)
+    await downloadBackup()
     notify.success('Configuration exported')
   } catch (e: unknown) {
     notify.error((e as Error).message || 'Export failed')
   } finally {
     exporting.value = false
+  }
+}
+
+async function doPushToRepo() {
+  pushing.value = true
+  try {
+    await pushToRepo()
+    notify.success('Backup pushed to repository')
+  } catch (e: unknown) {
+    notify.error((e as Error).message || 'Push to repository failed')
+  } finally {
+    pushing.value = false
   }
 }
 
@@ -230,24 +242,23 @@ async function saveBackupSettings() {
           Encrypted credentials are excluded — you'll need to re-enter them after restore.
         </p>
         <div class="section-actions">
-          <div class="checkbox-row">
-            <Checkbox
-              v-model="commitToGit"
-              :binary="true"
-              input-id="commit-git"
-              :disabled="!hasBackupRepo"
-            />
-            <label for="commit-git">
-              Commit to GitOps repository
-              <small v-if="!hasBackupRepo" class="field-hint"> — select a backup repository above</small>
-            </label>
-          </div>
           <Button
             label="Export Configuration"
             icon="pi pi-download"
             :loading="exporting"
             @click="doExport"
           />
+          <Button
+            label="Push to Repository"
+            icon="pi pi-cloud-upload"
+            :loading="pushing"
+            :disabled="!hasBackupRepo"
+            severity="secondary"
+            @click="doPushToRepo"
+          />
+          <small v-if="!hasBackupRepo" class="field-hint">
+            Select a backup repository in settings to enable push.
+          </small>
         </div>
       </div>
 

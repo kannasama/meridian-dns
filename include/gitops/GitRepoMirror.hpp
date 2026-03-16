@@ -58,6 +58,7 @@ class GitRepoMirror {
 
  private:
   void checkoutBranch(const std::string& sBranch);
+  void fetchAndResetToRemote(const std::string& sBranch);
   void gitAddCommitPush(const std::string& sMessage, const std::string& sBranch);
   void setupSshHome();
 

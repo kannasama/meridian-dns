@@ -68,19 +68,6 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
 
           auto jExport = _bsService.exportSystem(rcCtx.sUsername);
 
-          // Optionally commit to git
-          auto pCommitToGit = req.url_params.get("commit_to_git");
-          if (pCommitToGit && std::string(pCommitToGit) == "true" && _pGitRepoManager) {
-            auto sRepoId = _stRepo.getValue("backup.git_repo_id", "");
-            if (!sRepoId.empty()) {
-              auto sPath = _stRepo.getValue("backup.git_path",
-                                            "_system/config-backup.json");
-              _pGitRepoManager->writeAndCommit(
-                  std::stoll(sRepoId), sPath, jExport.dump(2),
-                  "Config backup by " + rcCtx.sUsername);
-            }
-          }
-
           auto sTimestamp = makeTimestamp();
           auto sFilename = "meridian-backup-" + sTimestamp + ".json";
 
@@ -89,6 +76,40 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
           resp.set_header("Content-Disposition",
                           "attachment; filename=\"" + sFilename + "\"");
           return resp;
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        }
+      });
+
+  // POST /api/v1/backup/push-to-repo — backup.create permission
+  // Generates a system export and commits it to the configured backup git repo.
+  CROW_ROUTE(app, "/api/v1/backup/push-to-repo").methods("POST"_method)(
+      [this](const crow::request& req) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requirePermission(rcCtx, Permissions::kBackupCreate);
+
+          if (!_pGitRepoManager) {
+            throw ValidationError("GIT_NOT_CONFIGURED",
+                                  "GitRepoManager is not available");
+          }
+
+          auto sRepoId = _stRepo.getValue("backup.git_repo_id", "");
+          if (sRepoId.empty() || sRepoId == "0") {
+            throw ValidationError("NO_BACKUP_REPO",
+                                  "No backup git repository configured "
+                                  "(set backup.git_repo_id in settings)");
+          }
+
+          auto sPath = _stRepo.getValue("backup.git_path",
+                                        "_system/config-backup.json");
+          auto jExport = _bsService.exportSystem(rcCtx.sUsername);
+
+          _pGitRepoManager->writeAndCommit(
+              std::stoll(sRepoId), sPath, jExport.dump(2),
+              "Config backup by " + rcCtx.sUsername);
+
+          return jsonResponse(200, {{"message", "Backup pushed to repository"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
         }
@@ -135,7 +156,7 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
           }
 
           auto sRepoId = _stRepo.getValue("backup.git_repo_id", "");
-          if (sRepoId.empty()) {
+          if (sRepoId.empty() || sRepoId == "0") {
             throw ValidationError("NO_BACKUP_REPO",
                                   "No backup git repository configured "
                                   "(set backup.git_repo_id in settings)");

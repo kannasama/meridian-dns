@@ -253,6 +253,51 @@ void GitRepoMirror::checkoutBranch(const std::string& sBranch) {
   }
 }
 
+void GitRepoMirror::fetchAndResetToRemote(const std::string& sBranch) {
+  if (!_pRepo || _sRemoteUrl.empty() || sBranch.empty()) return;
+  auto spLog = common::Logger::get();
+
+  // Fetch from origin
+  git_remote* pRemote = nullptr;
+  if (git_remote_lookup(&pRemote, _pRepo, "origin") != 0) return;
+
+  git_fetch_options fetchOpts;
+  git_fetch_options_init(&fetchOpts, GIT_FETCH_OPTIONS_VERSION);
+  applyRemoteCallbacks(fetchOpts.callbacks, this, _auth);
+
+  int iErr = git_remote_fetch(pRemote, nullptr, &fetchOpts, nullptr);
+  git_remote_free(pRemote);
+  if (iErr < 0) {
+    spLog->debug("GitRepoMirror[{}]: fetch before commit failed — proceeding with local state",
+                 _sName);
+    return;
+  }
+
+  // Fast-forward local branch to remote tracking branch
+  std::string sRemoteRef = "refs/remotes/origin/" + sBranch;
+  git_reference* pRemoteRef = nullptr;
+  if (git_reference_lookup(&pRemoteRef, _pRepo, sRemoteRef.c_str()) != 0) return;
+
+  const git_oid* pRemoteOid = git_reference_target(pRemoteRef);
+  if (!pRemoteOid) {
+    git_reference_free(pRemoteRef);
+    return;
+  }
+
+  git_object* pTarget = nullptr;
+  git_object_lookup(&pTarget, _pRepo, pRemoteOid, GIT_OBJECT_COMMIT);
+  if (pTarget) {
+    git_checkout_options checkoutOpts;
+    git_checkout_options_init(&checkoutOpts, GIT_CHECKOUT_OPTIONS_VERSION);
+    checkoutOpts.checkout_strategy = GIT_CHECKOUT_FORCE;
+    git_reset(_pRepo, pTarget, GIT_RESET_HARD, &checkoutOpts);
+    git_object_free(pTarget);
+    spLog->debug("GitRepoMirror[{}]: fast-forwarded to origin/{}", _sName, sBranch);
+  }
+
+  git_reference_free(pRemoteRef);
+}
+
 void GitRepoMirror::gitAddCommitPush(const std::string& sMessage, const std::string& sBranch) {
   if (!_pRepo) return;
   auto spLog = common::Logger::get();
@@ -317,14 +362,15 @@ void GitRepoMirror::gitAddCommitPush(const std::string& sMessage, const std::str
       applyRemoteCallbacks(pushOpts.callbacks, this, _auth);
 
       int iErr = git_remote_push(pRemote, &refspecs, &pushOpts);
+      git_remote_free(pRemote);
       if (iErr < 0) {
         const git_error* pErr = git_error_last();
-        spLog->warn("GitRepoMirror[{}]: push failed: {}", _sName,
-                    pErr ? pErr->message : "unknown");
-      } else {
-        spLog->info("GitRepoMirror[{}]: pushed to origin ({})", _sName, sRefspec);
+        std::string sErrMsg = pErr ? pErr->message : "unknown";
+        spLog->error("GitRepoMirror[{}]: push failed: {}", _sName, sErrMsg);
+        throw common::GitMirrorError("GIT_PUSH_FAILED",
+                                     "Push to remote failed: " + sErrMsg);
       }
-      git_remote_free(pRemote);
+      spLog->info("GitRepoMirror[{}]: pushed to origin ({})", _sName, sRefspec);
     }
   }
 }
@@ -338,8 +384,9 @@ void GitRepoMirror::commitSnapshot(const std::string& sRelativePath,
 
   std::string sEffectiveBranch = sBranch.empty() ? _sDefaultBranch : sBranch;
 
-  // Checkout target branch
+  // Checkout target branch and sync with remote
   checkoutBranch(sEffectiveBranch);
+  fetchAndResetToRemote(sEffectiveBranch);
 
   // Write the file
   namespace fs = std::filesystem;
