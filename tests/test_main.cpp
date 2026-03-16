@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Meridian DNS Contributors
+// This file is part of Meridian DNS. See LICENSE for details.
+
 /// Custom test entry point that explicitly shuts down spdlog and avoids
 /// static destruction order issues with the spdlog shared library on
 /// GCC 15 / glibc. Uses _exit() to skip atexit handlers that trigger
