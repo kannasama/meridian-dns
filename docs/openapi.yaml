@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Meridian DNS API
-  version: 0.1.0
+  version: 1.0.0
   description: |
     Multi-provider DNS management platform with variable templating,
     deployment snapshots, rollback, and GitOps mirroring.
@@ -2088,3 +2088,603 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ZoneSyncResult'
+
+  # ── Health Probes (WS8) ──────────────────────────────────────────────
+
+  /health/live:
+    get:
+      summary: Liveness probe
+      description: Returns alive status. No external dependency checks.
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+                  version:
+                    type: string
+                    example: "1.0.0"
+
+  /health/ready:
+    get:
+      summary: Readiness probe
+      description: Checks DB connectivity, git repo sync status, and provider count.
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Application is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded]
+                  version:
+                    type: string
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                      git_repos:
+                        type: object
+                      providers:
+                        type: object
+        '503':
+          description: Database unreachable
+
+  # ── Roles (WS3) ─────────────────────────────────────────────────────
+
+  /roles:
+    get:
+      summary: List all roles
+      tags: [Roles]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Role list
+    post:
+      summary: Create a custom role
+      description: Requires `roles.create` permission.
+      tags: [Roles]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Role created
+
+  /roles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get role by ID
+      tags: [Roles]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Role details
+    put:
+      summary: Update role
+      tags: [Roles]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Role updated
+    delete:
+      summary: Delete role
+      tags: [Roles]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Role deleted
+
+  /roles/{id}/permissions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: List role permissions
+      tags: [Roles]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Permission list
+    put:
+      summary: Set role permissions
+      description: Requires `roles.edit` permission.
+      tags: [Roles]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permissions:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Permissions updated
+
+  /permissions:
+    get:
+      summary: List all known permissions
+      tags: [Roles]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Permission list
+
+  # ── Identity Providers (WS4) ─────────────────────────────────────────
+
+  /identity-providers:
+    get:
+      summary: List identity providers
+      tags: [Identity Providers]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: IdP list
+    post:
+      summary: Create identity provider
+      tags: [Identity Providers]
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: IdP created
+
+  /identity-providers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get IdP by ID
+      tags: [Identity Providers]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: IdP details
+    put:
+      summary: Update IdP
+      tags: [Identity Providers]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: IdP updated
+    delete:
+      summary: Delete IdP
+      tags: [Identity Providers]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: IdP deleted
+
+  /identity-providers/{id}/test:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Test IdP configuration
+      tags: [Identity Providers]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Test result
+
+  /identity-providers/generate-sp-keypair:
+    post:
+      summary: Generate SAML SP keypair
+      tags: [Identity Providers]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Generated keypair
+
+  /auth/identity-providers:
+    get:
+      summary: List enabled IdPs for login page (unauthenticated)
+      tags: [Authentication]
+      security: []
+      responses:
+        '200':
+          description: Enabled IdP list for login UI
+
+  /auth/oidc/{id}/login:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Initiate OIDC login flow
+      tags: [Authentication]
+      security: []
+      responses:
+        '302':
+          description: Redirect to IdP
+
+  /auth/oidc/{id}/callback:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: OIDC callback
+      tags: [Authentication]
+      security: []
+      responses:
+        '302':
+          description: Redirect to UI with session
+
+  /auth/saml/{id}/login:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Initiate SAML login
+      tags: [Authentication]
+      security: []
+      responses:
+        '302':
+          description: Redirect to IdP
+
+  /auth/saml/{id}/acs:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: SAML Assertion Consumer Service
+      tags: [Authentication]
+      security: []
+      responses:
+        '302':
+          description: Redirect to UI with session
+
+  /auth/saml/{id}/metadata:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: SAML SP metadata
+      tags: [Authentication]
+      security: []
+      responses:
+        '200':
+          description: XML metadata
+
+  /auth/saml/{id}/slo:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Initiate SAML Single Logout
+      tags: [Authentication]
+      security: []
+      responses:
+        '302':
+          description: Redirect to IdP for logout
+
+  /auth/saml/{id}/slo/callback:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: SAML SLO callback
+      tags: [Authentication]
+      security: []
+      responses:
+        '302':
+          description: Redirect after logout
+
+  # ── Git Repos (WS5) ────────────────────────────────────────────────
+
+  /git-repos:
+    get:
+      summary: List git repositories
+      tags: [Git Repos]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Repository list
+    post:
+      summary: Create git repository
+      description: Requires `repos.create` permission.
+      tags: [Git Repos]
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Repository created
+
+  /git-repos/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get repository by ID
+      tags: [Git Repos]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Repository details
+    put:
+      summary: Update repository
+      tags: [Git Repos]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Repository updated
+    delete:
+      summary: Delete repository
+      tags: [Git Repos]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Repository deleted
+
+  /git-repos/{id}/test:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Test repository connection
+      tags: [Git Repos]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Connection test result
+
+  /git-repos/{id}/sync:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Trigger repository sync
+      tags: [Git Repos]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sync initiated
+
+  # ── Backup (WS6) ───────────────────────────────────────────────────
+
+  /backup/export:
+    post:
+      summary: Export full system backup
+      description: Requires `backup.create` permission.
+      tags: [Backup]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Backup JSON
+
+  /backup/restore:
+    post:
+      summary: Restore from backup JSON
+      description: Requires `backup.restore` permission. Supports preview mode.
+      tags: [Backup]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Restore result
+
+  /backup/push-to-repo:
+    post:
+      summary: Push backup to configured git repository
+      tags: [Backup]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Backup pushed
+
+  /backup/restore-from-repo:
+    post:
+      summary: Restore from git repository backup
+      tags: [Backup]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Restore result
+
+  /zones/{id}/export:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Export zone configuration
+      tags: [Backup]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Zone export JSON
+
+  /zones/{id}/import:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Import records into zone
+      tags: [Backup]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Import result
+
+  # ── Settings (WS2) ─────────────────────────────────────────────────
+
+  /settings:
+    get:
+      summary: List all settings
+      description: Requires `settings.view` permission.
+      tags: [Settings]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Settings list
+    put:
+      summary: Update settings
+      description: Requires `settings.edit` permission.
+      tags: [Settings]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Settings updated
+
+  # ── Setup ───────────────────────────────────────────────────────────
+
+  /setup/status:
+    get:
+      summary: Check setup status
+      tags: [Setup]
+      security: []
+      responses:
+        '200':
+          description: Setup status
+
+  /setup:
+    post:
+      summary: Complete initial setup
+      tags: [Setup]
+      security: []
+      responses:
+        '200':
+          description: Setup completed
+
+  # ── Themes (WS1) ───────────────────────────────────────────────────
+
+  /themes:
+    get:
+      summary: Get theme configuration
+      tags: [Themes]
+      security: []
+      responses:
+        '200':
+          description: Theme presets and current selection
+    put:
+      summary: Update theme selection
+      tags: [Themes]
+      security: []
+      responses:
+        '200':
+          description: Theme updated
+
+  # ── Records restore ─────────────────────────────────────────────────
+
+  /zones/{id}/records/{rid}/restore:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: rid
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Restore a deleted record
+      description: Requires `records.edit` permission.
+      tags: [Records]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Record restored
