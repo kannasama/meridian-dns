@@ -3,12 +3,6 @@
 Thank you for considering a contribution to Meridian DNS! This document explains the
 process for contributing.
 
-## Contributor License Agreement
-
-All contributions require signing the [Contributor License Agreement](CLA.md). By
-submitting a pull request, you agree to its terms. The CLA enables the project's
-dual-license model (AGPL-3.0 + commercial).
-
 ## Getting Started
 
 1. Fork the repository
@@ -57,3 +51,8 @@ Use GitHub Issues for bug reports and feature requests. Include:
 
 **Do not** open a public issue for security vulnerabilities. See [SECURITY.md](SECURITY.md)
 for the responsible disclosure process.
+
+## License
+
+Meridian DNS is licensed under the [AGPL-3.0-or-later](LICENSE). By submitting a
+contribution, you agree that your work will be licensed under the same terms.
