@@ -3,12 +3,11 @@
 namespace dns::api {
 
 namespace {
-void applySecurityHeaders(crow::response& resp) {
-  resp.set_header("X-Content-Type-Options", "nosniff");
-  resp.set_header("X-Frame-Options", "DENY");
-  resp.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
-  resp.set_header("Content-Security-Policy", "default-src 'self'");
-}
+// Security headers (CSP, HSTS, X-Frame-Options, etc.) are delegated to the
+// reverse proxy for v1.0.  See docs/DEPLOYMENT.md §Reverse Proxy for the
+// recommended header configuration.  This function is retained as a hook for
+// any future application-level headers.
+void applySecurityHeaders(crow::response& /*resp*/) {}
 }  // namespace
 
 common::RequestContext authenticate(const AuthMiddleware& amMiddleware,
