@@ -29,3 +29,4 @@ CMakeFiles/
 # ── Custom Ignores ───────────────────────────────────────────────────────────
 docker-build.log
 Scratch/
+docs/internal/
