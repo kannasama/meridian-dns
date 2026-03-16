@@ -19,10 +19,10 @@ Generate the required secrets:
 
 ```bash
 # Generate master key (AES-256 encryption key for provider tokens, credentials)
-echo "DNS_MASTER_KEY=$(openssl rand -hex 32)" >> .env
+sed -i "s/^DNS_MASTER_KEY=.*/DNS_MASTER_KEY=$(openssl rand -hex 32)/" .env
 
 # Generate JWT signing secret
-echo "DNS_JWT_SECRET=$(openssl rand -hex 32)" >> .env
+sed -i "s/^DNS_JWT_SECRET=.*/DNS_JWT_SECRET=$(openssl rand -hex 32)/" .env
 ```
 
 ### 2. Start the stack
