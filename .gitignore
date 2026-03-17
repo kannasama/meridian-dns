@@ -27,6 +27,8 @@ Thumbs.db
 CMakeFiles/
 
 # ── Custom Ignores ───────────────────────────────────────────────────────────
+.roo/
+.claude/
 docker-build.log
 Scratch/
 docs/internal/
