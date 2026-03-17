@@ -1,0 +1,135 @@
+# ── Meridian DNS — GitLab CI/CD Pipeline ─────────────────────────────────────
+#
+# Required CI/CD variables (Settings → CI/CD → Variables, masked + protected):
+#   DNS_DB_PASSWORD   — password for the test PostgreSQL instance
+#   DNS_MASTER_KEY    — AES-256 master key (openssl rand -hex 32)
+#   DNS_JWT_SECRET    — JWT signing secret (openssl rand -hex 32)
+#
+# Runner requirements:
+#   - docker executor for all jobs
+#   - a runner tagged 'privileged' with privileged: true for the docker:publish job
+#     (required for Docker-in-Docker)
+
+stages:
+  - lint
+  - build
+  - test
+  - docker
+
+variables:
+  FF_NETWORK_PER_BUILD: "true"  # isolate service networks per build
+
+# ── Stage: lint ───────────────────────────────────────────────────────────────
+
+lint:headers:
+  stage: lint
+  image: alpine:3.21
+  before_script:
+    - apk add --no-cache bash findutils grep
+  script:
+    - bash scripts/check-license-headers.sh
+
+# ── Stage: build ──────────────────────────────────────────────────────────────
+
+build:cpp:
+  stage: build
+  image: fedora:43
+  before_script:
+    - dnf update -y --setopt=install_weak_deps=False -q && dnf clean all
+    - |
+      dnf install -y --setopt=install_weak_deps=False \
+        cmake ninja-build gcc-c++ \
+        libpqxx-devel openssl-devel libgit2-devel \
+        json-devel spdlog-devel asio-devel \
+        pkgconf-pkg-config git ca-certificates \
+        lasso-devel libxml2-devel xmlsec1-devel xmlsec1-openssl-devel glib2-devel \
+        jansson-devel libcurl-devel cjose-devel \
+        autoconf automake libtool \
+        httpd-devel pcre2-devel \
+      && dnf clean all
+  script:
+    - cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_UI=OFF
+    - cmake --build build --parallel
+  artifacts:
+    paths:
+      - build/tests/dns-tests
+    expire_in: 1 hour
+
+build:ui:
+  stage: build
+  image: node:22-slim
+  script:
+    - cd ui && npm ci && npm run build
+  artifacts:
+    paths:
+      - ui/dist/
+    expire_in: 1 hour
+
+# ── Stage: test ───────────────────────────────────────────────────────────────
+
+test:unit:
+  stage: test
+  image: fedora:43
+  needs: [build:cpp]
+  before_script:
+    - |
+      dnf install -y --setopt=install_weak_deps=False \
+        libpq libpqxx openssl-libs libgit2 spdlog fmt \
+        lasso libxml2 xmlsec1 xmlsec1-openssl glib2 \
+        jansson libcurl cjose \
+      && dnf clean all
+  script:
+    # DNS_DB_URL is not set — DB integration tests skip gracefully
+    - build/tests/dns-tests
+
+test:integration:
+  stage: test
+  image: fedora:43
+  needs: [build:cpp]
+  services:
+    - name: postgres:16
+      alias: postgres
+  variables:
+    POSTGRES_DB: meridian_dns_test
+    POSTGRES_USER: dns
+    POSTGRES_PASSWORD: $DNS_DB_PASSWORD
+    DNS_DB_URL: "postgresql://dns:${DNS_DB_PASSWORD}@postgres/meridian_dns_test"
+  before_script:
+    - |
+      dnf install -y --setopt=install_weak_deps=False \
+        libpq libpqxx openssl-libs libgit2 spdlog fmt \
+        lasso libxml2 xmlsec1 xmlsec1-openssl glib2 \
+        jansson libcurl cjose \
+        postgresql \
+      && dnf clean all
+    - until pg_isready -h postgres -U dns; do sleep 1; done
+    - |
+      for f in $(find scripts/db -name '*.sql' | sort); do
+        echo "Applying $f ..."
+        PGPASSWORD=$DNS_DB_PASSWORD psql -h postgres -U dns -d meridian_dns_test -f "$f"
+      done
+  script:
+    - build/tests/dns-tests
+
+# ── Stage: docker ─────────────────────────────────────────────────────────────
+
+docker:publish:
+  stage: docker
+  image: docker:27
+  services:
+    - docker:27-dind
+  rules:
+    - if: $CI_COMMIT_TAG
+  variables:
+    DOCKER_TLS_CERTDIR: /certs
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - |
+      docker build \
+        -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG" \
+        -t "$CI_REGISTRY_IMAGE:latest" \
+        .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+  tags:
+    - privileged
