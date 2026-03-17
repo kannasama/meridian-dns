@@ -39,8 +39,6 @@ services:
       POSTGRES_PASSWORD: ${DNS_DB_PASSWORD:-dns_dev_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "${DNS_DB_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dns -d meridian_dns"]
       interval: 5s
