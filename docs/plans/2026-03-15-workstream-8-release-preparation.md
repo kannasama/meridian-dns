@@ -931,7 +931,7 @@ docs/internal/
 
 ## Container Image Strategy
 
-- **Docker Hub:** `meridiandns/meridian-dns` — primary public distribution
+- **Docker Hub:** `kannasama/meridian-dns` — primary public distribution
 - **GHCR:** `ghcr.io/meridiandns/meridian-dns` — secondary, alongside GitHub mirror
 - **Tags:** `latest`, semver (`1.0.0`), major (`1`), major.minor (`1.0`)
 - **Architecture:** amd64-only for v1.0; arm64 planned for v1.1+
@@ -950,7 +950,7 @@ docs/internal/
    - License header check: `scripts/check-license-headers.sh`
 3. **Publish stage:**
    - Build and push to Docker Hub + GHCR
-   - Multi-registry push: `docker buildx build --push --tag meridiandns/meridian-dns:1.0.0 --tag ghcr.io/meridiandns/meridian-dns:1.0.0 .`
+   - Multi-registry push: `docker buildx build --push --tag kannasama/meridian-dns:1.0.0 --tag ghcr.io/meridiandns/meridian-dns:1.0.0 .`
    - Tag variants: `latest`, `1`, `1.0`, `1.0.0`
 4. **Release stage:**
    - Create GitLab release entry (primary repo)
@@ -958,8 +958,8 @@ docs/internal/
 
 ### Docker Hub Organization
 
-- Organization: `meridiandns`
-- Repository: `meridiandns/meridian-dns`
+- Organization: `kannasama`
+- Repository: `kannasama/meridian-dns`
 - Maintainer access: project maintainers only
 - Automated builds: disabled (CI/CD pushes images)
 
@@ -976,10 +976,10 @@ docs/internal/
 docker buildx build \
   --platform linux/amd64 \
   --push \
-  --tag meridiandns/meridian-dns:1.0.0 \
-  --tag meridiandns/meridian-dns:1.0 \
-  --tag meridiandns/meridian-dns:1 \
-  --tag meridiandns/meridian-dns:latest \
+  --tag kannasama/meridian-dns:1.0.0 \
+  --tag kannasama/meridian-dns:1.0 \
+  --tag kannasama/meridian-dns:1 \
+  --tag kannasama/meridian-dns:latest \
   --tag ghcr.io/meridiandns/meridian-dns:1.0.0 \
   --tag ghcr.io/meridiandns/meridian-dns:1.0 \
   --tag ghcr.io/meridiandns/meridian-dns:1 \
@@ -1000,7 +1000,7 @@ docker buildx build \
 9. [ ] Git tag `vX.Y.Z` created and pushed
 10. [ ] Docker images built and pushed to Docker Hub + GHCR
 11. [ ] Release entries created on GitLab and GitHub
-12. [ ] Verify image pullable: `docker pull meridiandns/meridian-dns:X.Y.Z`
+12. [ ] Verify image pullable: `docker pull kannasama/meridian-dns:X.Y.Z`
 ```
 
 **Step 3:** Note: After committing `.gitignore`, the `docs/internal/` directory won't be tracked. To confirm the ignore works: `echo "test" > docs/internal/test.txt && git status` — `docs/internal/test.txt` should NOT appear as untracked. Then remove the test file.
@@ -1106,7 +1106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 5. **Database backup/restore** — `pg_dump`/`pg_restore` commands for raw DB backup (distinguished from Meridian config backup), recommended cron schedule
 6. **Reverse proxy — nginx** — Example config with TLS, proxy_pass, WebSocket (if needed), recommended security headers (`Content-Security-Policy`, `Strict-Transport-Security`, `X-Robots-Tag`)
 7. **Reverse proxy — Traefik** — Example docker-compose labels with TLS via Let's Encrypt
-8. **Container registry** — Docker Hub (`meridiandns/meridian-dns`) and GHCR pull commands with tag explanation
+8. **Container registry** — Docker Hub (`kannasama/meridian-dns`) and GHCR pull commands with tag explanation
 9. **Upgrading** — pull new image, run migrations (`meridian-dns --migrate`), restart
 10. **Health checks** — `/api/v1/health/live` (liveness) and `/api/v1/health/ready` (readiness) with Kubernetes probe example YAML
 

@@ -25,7 +25,51 @@ sed -i "s/^DNS_MASTER_KEY=.*/DNS_MASTER_KEY=$(openssl rand -hex 32)/" .env
 sed -i "s/^DNS_JWT_SECRET=.*/DNS_JWT_SECRET=$(openssl rand -hex 32)/" .env
 ```
 
-### 2. Start the stack
+### 2. Review the Compose file
+
+The default [`docker-compose.yml`](../docker-compose.yml) ships with the project:
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: meridian_dns
+      POSTGRES_USER: dns
+      POSTGRES_PASSWORD: ${DNS_DB_PASSWORD:-dns_dev_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DNS_DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dns -d meridian_dns"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DNS_DB_URL: postgresql://dns:${DNS_DB_PASSWORD:-dns_dev_password}@db:5432/meridian_dns
+      DNS_MASTER_KEY: ${DNS_MASTER_KEY}
+      DNS_JWT_SECRET: ${DNS_JWT_SECRET}
+      DNS_HTTP_PORT: "8080"
+      DNS_AUDIT_STDOUT: "true"
+      DNS_LOG_LEVEL: "${DNS_LOG_LEVEL:-info}"
+    ports:
+      - "${DNS_HTTP_PORT:-8080}:8080"
+    volumes:
+      - meridian-data:/var/meridian-dns
+
+volumes:
+  pgdata:
+  meridian-data:
+```
+
+### 3. Start the stack
 
 ```bash
 docker compose up -d
@@ -33,7 +77,7 @@ docker compose up -d
 
 This starts PostgreSQL 16 and Meridian DNS on port 8080.
 
-### 3. Complete setup
+### 4. Complete setup
 
 Open `http://localhost:8080` in your browser. The setup wizard will guide you through
 creating the initial admin account and configuring your first DNS provider.
@@ -83,8 +127,8 @@ authentication is required.
 ### Docker Hub
 
 ```bash
-docker pull meridiandns/meridian-dns:1.0.0
-docker pull meridiandns/meridian-dns:latest
+docker pull kannasama/meridian-dns:1.0.0
+docker pull kannasama/meridian-dns:latest
 ```
 
 ### GitHub Container Registry
