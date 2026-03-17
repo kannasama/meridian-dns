@@ -28,7 +28,7 @@ CMakeFiles/
 
 # ── Custom Ignores ───────────────────────────────────────────────────────────
 .roo/
-.claude/
+.claude
 docker-build.log
 Scratch/
 docs/internal/
