@@ -81,9 +81,7 @@ void SetupRoutes::registerRoutes(crow::SimpleApp& app) {
           // 3. Validate input fields
           RequestValidator::validateUsername(sUsername);
           RequestValidator::validatePassword(sPassword);
-          if (sEmail.empty()) {
-            throw common::ValidationError("INVALID_EMAIL", "Email is required");
-          }
+          RequestValidator::validateEmail(sEmail);
 
           // 4. Transactional setup
           auto cgConn = _cpPool.checkout();

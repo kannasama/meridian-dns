@@ -28,6 +28,7 @@ class RequestValidator {
   static void validateUsername(const std::string& sUsername);
   static void validatePassword(const std::string& sPassword);
   static void validateApiKeyDescription(const std::string& sDescription);
+  static void validateEmail(const std::string& sEmail);
   static void validateGroupName(const std::string& sName);
   static void validateGitRepoName(const std::string& sName);
   static void validateGitRemoteUrl(const std::string& sUrl);

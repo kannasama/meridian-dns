@@ -30,7 +30,25 @@ void RequestValidator::validateValueTemplate(const std::string& s) { validateStr
 void RequestValidator::validateVariableValue(const std::string& s) { validateStringLength(s, "variable_value", 4096); }
 void RequestValidator::validateProviderName(const std::string& s) { validateStringLength(s, "provider_name", 128); }
 void RequestValidator::validateUsername(const std::string& s) { validateStringLength(s, "username", 128); }
-void RequestValidator::validatePassword(const std::string& s) { validateStringLength(s, "password", 1024); }
+void RequestValidator::validatePassword(const std::string& s) {
+  if (s.size() < 8)
+    throw common::ValidationError("PASSWORD_TOO_SHORT",
+        "Password must be at least 8 characters");
+  validateStringLength(s, "password", 1024);
+}
+void RequestValidator::validateEmail(const std::string& sEmail) {
+  if (sEmail.empty())
+    throw common::ValidationError("FIELD_REQUIRED", "email is required");
+  if (sEmail.size() > 254)
+    throw common::ValidationError("FIELD_TOO_LONG", "email exceeds maximum length of 254");
+  auto nAt = sEmail.find('@');
+  if (nAt == std::string::npos || nAt == 0 || nAt == sEmail.size() - 1)
+    throw common::ValidationError("INVALID_EMAIL", "Invalid email format");
+  auto sDomain = sEmail.substr(nAt + 1);
+  if (sDomain.find('.') == std::string::npos)
+    throw common::ValidationError("INVALID_EMAIL", "Invalid email format");
+}
+
 void RequestValidator::validateGroupName(const std::string& s) { validateStringLength(s, "group_name", 128); }
 
 void RequestValidator::validateRecordType(const std::string& sType) {

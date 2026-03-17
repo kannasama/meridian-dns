@@ -53,6 +53,7 @@ void StaticFileHandler::registerRoutes(crow::SimpleApp& app) {
       res.code = 200;
       res.body = readFile(sFullPath);
       res.set_header("Content-Type", mimeType(sFullPath));
+      applyStaticSecurityHeaders(res);
       return;
     }
 
@@ -74,6 +75,7 @@ void StaticFileHandler::registerRoutes(crow::SimpleApp& app) {
       res.code = 200;
       res.body = std::move(sContent);
       res.set_header("Content-Type", "text/html; charset=utf-8");
+      applyStaticSecurityHeaders(res);
       return;
     }
 
@@ -87,6 +89,12 @@ std::string StaticFileHandler::readFile(const std::string& sPath) {
   std::ostringstream oss;
   oss << ifs.rdbuf();
   return oss.str();
+}
+
+void StaticFileHandler::applyStaticSecurityHeaders(crow::response& res) {
+  res.set_header("X-Content-Type-Options", "nosniff");
+  res.set_header("X-Frame-Options", "DENY");
+  res.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
 }
 
 std::string StaticFileHandler::mimeType(const std::string& sPath) {

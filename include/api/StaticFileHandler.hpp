@@ -32,6 +32,9 @@ class StaticFileHandler {
   /// Read a file from disk and return its contents (empty string on failure).
   static std::string readFile(const std::string& sPath);
 
+  /// Apply baseline security headers to static file responses.
+  static void applyStaticSecurityHeaders(crow::response& res);
+
   /// Guess MIME type from file extension.
   static std::string mimeType(const std::string& sPath);
 };

@@ -100,7 +100,7 @@ class CrudRoutesTest : public ::testing::Test {
         *_urRepo, *_srRepo, *_roleRepo, *_jsSigner, 3600, 86400);
 
     // Routes
-    _authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*_asService, *_amMiddleware, *_urRepo);
+    _authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*_asService, *_amMiddleware, *_urRepo, *_srRepo);
     _providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*_prRepo, *_amMiddleware);
     _viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*_vrRepo, *_amMiddleware);
     _zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*_zrRepo, *_amMiddleware, *_deEngine);

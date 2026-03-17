@@ -12,6 +12,7 @@
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "common/Permissions.hpp"
+#include "common/TimeUtils.hpp"
 #include "dal/AuditRepository.hpp"
 
 #include <nlohmann/json.hpp>
@@ -30,9 +31,7 @@ namespace {
 
 std::string formatTimestamp(std::chrono::system_clock::time_point tp) {
   auto tt = std::chrono::system_clock::to_time_t(tp);
-  std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&tt), "%FT%TZ");
-  return oss.str();
+  return dns::common::toIso8601(tt);
 }
 
 std::optional<std::chrono::system_clock::time_point> parseIso8601(const std::string& s) {

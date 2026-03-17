@@ -391,12 +391,21 @@ int main(int argc, char* argv[]) {
     spLog->info("Step 9: Core engines initialized "
                 "(VariableEngine, DiffEngine, DeploymentEngine, RollbackEngine)");
 
+    // Look up dedicated system user for automated operations (M8)
+    int64_t iSystemUserId = 1;  // fallback
+    auto oSystemUser = urRepo->findByUsername("_system");
+    if (oSystemUser) {
+      iSystemUserId = oSystemUser->iId;
+    } else {
+      spLog->warn("System user '_system' not found — using user ID 1 as fallback");
+    }
+
     // Schedule sync-check maintenance task (requires DiffEngine from Step 9)
     if (cfgApp.iSyncCheckInterval > 0) {
       msScheduler->schedule("sync-check",
           std::chrono::seconds(cfgApp.iSyncCheckInterval),
           [&zrRepo = *zrRepo, &deEngine = *deEngine, &drRepo = *drRepo,
-           &depEngine = *depEngine]() {
+           &depEngine = *depEngine, iSystemUserId]() {
             auto spLog = dns::common::Logger::get();
             auto vZones = zrRepo.listAll();
             int iChecked = 0;
@@ -418,7 +427,7 @@ int main(int argc, char* argv[]) {
                   auto vDeps = drRepo.listByZoneId(zone.iId, 1);
                   if (vDeps.empty()) {
                     dns::common::AuditContext acSystem{"system", "system", ""};
-                    depEngine.capture(zone.iId, 1, acSystem, "auto-capture");
+                    depEngine.capture(zone.iId, iSystemUserId, acSystem, "auto-capture");
                     ++iCaptured;
                     spLog->info("Auto-captured baseline for zone '{}'", zone.sName);
                   }
@@ -471,7 +480,7 @@ int main(int argc, char* argv[]) {
         *urRepo, *grRepo, *roleRepo, *srRepo, *upSigner,
         cfgApp.iJwtTtlSeconds, cfgApp.iSessionAbsoluteTtlSeconds);
 
-    auto authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*asService, *amMiddleware, *urRepo);
+    auto authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*asService, *amMiddleware, *urRepo, *srRepo);
     auto providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*prRepo, *amMiddleware);
     auto viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*vrRepo, *amMiddleware);
     auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware, *deEngine);

@@ -90,15 +90,25 @@ Upgrade to **SHA-512** (available via OpenSSL `EVP_sha512()` — zero new depend
 
 ### C-2 — OIDC CSRF / Replay (SEC-06)
 
-**Severity:** Critical  
+**Severity:** Critical
 **Component:** [`AuthService`](../../include/security/AuthService.hpp), [`AuthRoutes`](../../include/api/routes/AuthRoutes.hpp)
 
-**Finding:**  
+**Finding:**
 The OIDC Authorization Code Flow with PKCE is specified, but the architecture does not document:
 1. **`state` parameter validation** — without this, an attacker can perform a CSRF attack on `/auth/oidc/callback`, injecting their own authorization code and hijacking the victim's session
 2. **`nonce` binding** — without a nonce bound to the ID token, a stolen ID token from one session can be replayed in another
 
-**Decision:**  
+> **v1.0 Implementation Note:** The `state` parameter is stored in an in-memory map
+> (`OidcService._mAuthStates`) with 10-minute TTL and mutex protection, rather than the
+> cookie-based approach described below. This provides equivalent security for
+> single-instance deployments. The cookie-based approach is a future enhancement for
+> multi-instance compatibility.
+>
+> The `nonce` parameter is **not implemented**. PKCE (S256) provides equivalent protection
+> against authorization code injection. Adding `nonce` is planned as a future
+> defense-in-depth measure.
+
+**Decision:**
 Implement `state` and `nonce` via an **HMAC-signed, short-lived cookie** (no database required):
 
 ```
@@ -303,7 +313,12 @@ No HTTP security headers are set on responses. The Web GUI served by the API is 
 - **Information leakage** via `Referer` header (missing `Referrer-Policy`)
 - **XSS** via inline scripts (missing `Content-Security-Policy`)
 
-**Decision:**  
+> **v1.0 Update:** Baseline headers (`X-Content-Type-Options`, `X-Frame-Options`,
+> `Referrer-Policy`) are now implemented in `applySecurityHeaders()` in `RouteHelpers.cpp`
+> and `StaticFileHandler.cpp`. Full header set (CSP, HSTS, Permissions-Policy) is
+> delegated to the reverse proxy. See `docs/DEPLOYMENT.md` §Reverse Proxy.
+
+**Decision:**
 Add a Crow response middleware (applied to all routes) that injects:
 
 ```
@@ -331,6 +346,9 @@ No maximum sizes are defined for HTTP request bodies or individual field values.
 
 **Decision:**  
 Define explicit limits enforced at two levels:
+
+> **v1.0 Update:** 64 KB maximum request body size implemented via `enforceBodyLimit()`
+> utility in `RouteHelpers.cpp`. Applied to routes that parse request bodies.
 
 **Level 1 — HTTP Layer (Crow config):**
 - Maximum request body size: **64 KB** (sufficient for any valid DNS API request)
@@ -387,8 +405,12 @@ All SQL uses `libpqxx` parameterized queries (`pqxx::work::exec_params()`). No r
 **Finding:**  
 No brute-force protection on `/auth/local/login` or API key validation. An attacker can make unlimited authentication attempts.
 
-**Decision:**  
+**Decision:**
 Delegate to the reverse proxy. The application will NOT implement in-process rate limiting.
+
+> **v1.0 Update:** In-process rate limiting was implemented for login and change-password
+> endpoints via `RateLimiter.cpp` (5 req/60s per IP, token-bucket algorithm). The reverse
+> proxy still provides additional rate limiting as documented below.
 
 **Deployment Requirement:**  
 The reverse proxy MUST implement rate limiting on authentication endpoints. Reference configurations:

@@ -624,12 +624,19 @@ private:
 
 #### 4.6.4 HTTP Security Headers (SEC-12)
 
-Security headers (CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy) are
-**delegated to the reverse proxy** for v1.0. This allows deployment-specific configuration
-(e.g., different CSP `script-src` for CDN setups). See
-[DEPLOYMENT.md](DEPLOYMENT.md#reverse-proxy--nginx) for the recommended header configuration.
+The application sets **baseline security headers** on all responses as defense-in-depth:
 
-The `applySecurityHeaders()` hook in `RouteHelpers.cpp` is retained as a no-op for future use.
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+
+These are applied via `applySecurityHeaders()` in `RouteHelpers.cpp` (API responses) and
+`StaticFileHandler.cpp` (static file responses).
+
+The reverse proxy provides **additional headers** for production deployments:
+CSP, HSTS, Permissions-Policy. See
+[DEPLOYMENT.md](DEPLOYMENT.md#reverse-proxy--nginx) for the recommended configuration.
+The reverse proxy may override any application-set header if needed.
 
 #### 4.6.5 Federated Authentication (WS4)
 
@@ -1838,9 +1845,16 @@ secrets:
 
 ---
 
-### 12.4 Rate Limiting (Reverse Proxy)
+### 12.4 Rate Limiting
 
-The application does not implement in-process rate limiting. The reverse proxy **must** enforce rate limits on authentication endpoints to prevent brute-force attacks.
+The application implements **in-process rate limiting** on authentication endpoints as
+defense-in-depth:
+
+- `POST /api/v1/auth/local/login` — 5 requests per 60 seconds per IP
+- `POST /api/v1/auth/change-password` — shared rate limiter (same 5 req/60s per IP)
+
+This is implemented via the `RateLimiter` class (token-bucket algorithm, thread-safe).
+The reverse proxy should provide **additional rate limiting** for production deployments.
 
 **nginx:**
 ```nginx
@@ -1902,4 +1916,16 @@ When `DNS_GIT_REMOTE_URL` is configured, the following security requirements app
 | **Host verification** | When `DNS_GIT_KNOWN_HOSTS_FILE` is set, the `certificate_check` callback validates the remote host against the file; connections to unlisted hosts are rejected. When unset, all hosts are accepted (suitable for internal networks). |
 | **Force-push** | The GitOps mirror uses force-push to resolve conflicts (DB state always wins). The remote repository should be configured to allow force-push only from the deploy key, and to protect the branch from deletion. |
 
-> **Multi-instance SAML note:** The `SamlReplayCache` is process-local (in-memory). If the application is deployed with multiple instances behind a load balancer, a shared external cache (e.g., Redis) must be used to prevent assertion replay across instances. This is a future enhancement; document in your deployment runbook if running multi-instance.
+> **Multi-instance note:** The following components are process-local (in-memory):
+>
+> - **`SamlReplayCache`** — Assertion ID cache preventing SAML replay attacks
+> - **`OidcService._mAuthStates`** — OIDC state parameter map for CSRF protection
+> - **`RateLimiter`** — Per-IP login rate limiting buckets
+>
+> For multi-instance deployments behind a load balancer, these must be externalized
+> to a shared store (e.g., Redis). This is a future enhancement.
+>
+> **Known limitation:** The `SamlReplayCache` is lost on application restart, creating a
+> replay window bounded by the assertion's `NotOnOrAfter` timestamp (typically 5 minutes).
+> A future enhancement could write the cache to local storage on clean shutdown and reload
+> on startup to eliminate this window.

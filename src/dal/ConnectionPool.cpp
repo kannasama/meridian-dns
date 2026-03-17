@@ -48,8 +48,12 @@ pqxx::connection* ConnectionGuard::operator->() { return _spConn.get(); }
 ConnectionPool::ConnectionPool(const std::string& sDbUrl, int iPoolSize)
     : _sDbUrl(sDbUrl), _iPoolSize(iPoolSize) {
   auto spLog = common::Logger::get();
-  spLog->info("Initializing connection pool: size={}, url={}",
-              _iPoolSize, _sDbUrl.substr(0, _sDbUrl.find('@')));
+  std::string sSafeHost = _sDbUrl;
+  auto nAt = sSafeHost.find('@');
+  if (nAt != std::string::npos)
+    sSafeHost = sSafeHost.substr(nAt + 1);
+  spLog->info("Initializing connection pool: size={}, host={}",
+              _iPoolSize, sSafeHost);
 
   _vAvailable.reserve(static_cast<size_t>(_iPoolSize));
   for (int i = 0; i < _iPoolSize; ++i) {

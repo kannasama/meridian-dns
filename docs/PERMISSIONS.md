@@ -7,7 +7,7 @@ Meridian DNS uses a granular permission model:
 1. **Permissions** — Discrete actions (e.g. `zones.create`, `records.delete`)
 2. **Roles** — Named collections of permissions (e.g. "Admin", "Operator")
 3. **Groups** — Collections of users, each group membership carries a role
-4. **Scoping** — Permissions can be scoped to specific views or zones
+4. **Scoping** — All permissions are **global** in v1.0. View/zone scoping is planned for a future release.
 
 ## Permission Strings
 
@@ -152,11 +152,14 @@ Users gain permissions through group membership:
 A user can belong to multiple groups with different roles. Permissions are
 combined (union semantics).
 
-## Hierarchical Scoping
+## Permission Scoping
 
-Group memberships can be scoped to limit where permissions apply:
+### v1.0: Global Permissions
 
-### Global Scope (no restriction)
+In v1.0, all permissions are **global**. A user with `zones.edit` can edit all
+zones regardless of view or zone assignment. The data model supports scoped
+permissions (the `group_members` table has `scope_view_id` and `scope_zone_id`
+columns), but enforcement is not yet implemented.
 
 ```json
 {"user_id": 1, "group_id": 2, "role_id": 3}
@@ -164,21 +167,10 @@ Group memberships can be scoped to limit where permissions apply:
 
 The user has the role's permissions across all views and zones.
 
-### View Scope
-
-```json
-{"user_id": 1, "group_id": 2, "role_id": 3, "scope_view_id": 5}
-```
-
-The user has the role's permissions only within view ID 5.
-
-### Zone Scope
-
-```json
-{"user_id": 1, "group_id": 2, "role_id": 3, "scope_zone_id": 10}
-```
-
-The user has the role's permissions only for zone ID 10.
+> **Planned Enhancement:** View-level and zone-level scoped permissions are
+> planned for a future release. When implemented, group memberships will support
+> optional `scope_view_id` and `scope_zone_id` fields to restrict where
+> permissions apply.
 
 ## Resolution Logic
 
@@ -186,25 +178,18 @@ When checking if a user can perform an action:
 
 1. Collect all group memberships for the user
 2. For each membership, check if the assigned role includes the required permission
-3. If scoped, check if the scope matches the target resource
-4. **Union semantics** — if any membership grants the permission, access is allowed
+3. **Union semantics** — if any membership grants the permission, access is allowed
 
 ## Common Patterns
 
-### DNS Operator for Production Zones Only
+### DNS Operator Team
 
 1. Create role "Zone Operator" with: `zones.*`, `records.*`, `variables.view`
-2. Create group "Production DNS"
-3. Add user with "Zone Operator" role, scoped to the production view
+2. Create group "DNS Operators"
+3. Add users with "Zone Operator" role
 
 ### Read-Only Auditor
 
 1. Use the built-in "Viewer" role
 2. Create group "Auditors"
-3. Add users with "Viewer" role (global scope)
-
-### Full Admin for One View
-
-1. Use the built-in "Admin" role
-2. Create group "Internal DNS Admins"
-3. Add users with "Admin" role, scoped to the internal view
+3. Add users with "Viewer" role

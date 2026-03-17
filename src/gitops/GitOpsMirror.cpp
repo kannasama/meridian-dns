@@ -13,6 +13,8 @@
 #include <git2.h>
 #include <nlohmann/json.hpp>
 
+#include "common/TimeUtils.hpp"
+
 #include "common/Errors.hpp"
 #include "common/Logger.hpp"
 #include "core/VariableEngine.hpp"
@@ -261,16 +263,10 @@ std::string GitOpsMirror::buildSnapshotJson(int64_t iZoneId,
     });
   }
 
-  // ISO 8601 timestamp
-  auto tpNow = std::chrono::system_clock::now();
-  auto ttNow = std::chrono::system_clock::to_time_t(tpNow);
-  std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&ttNow), "%FT%TZ");
-
   nlohmann::json j = {
       {"zone", oZone->sName},
       {"view", sViewName},
-      {"generated_at", oss.str()},
+      {"generated_at", dns::common::nowIso8601()},
       {"generated_by", sActor},
       {"records", jRecords},
   };

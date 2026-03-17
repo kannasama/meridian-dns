@@ -7,19 +7,30 @@
 namespace dns::api {
 
 namespace {
-// Security headers (CSP, HSTS, X-Frame-Options, etc.) are delegated to the
-// reverse proxy for v1.0.  See docs/DEPLOYMENT.md §Reverse Proxy for the
-// recommended header configuration.  This function is retained as a hook for
-// any future application-level headers.
-void applySecurityHeaders(crow::response& /*resp*/) {}
+// Baseline security headers set in-application as defense-in-depth.
+// The reverse proxy provides additional headers (CSP, HSTS, Permissions-Policy).
+// See docs/DEPLOYMENT.md §Reverse Proxy for the full recommended configuration.
+void applySecurityHeaders(crow::response& resp) {
+  resp.set_header("X-Content-Type-Options", "nosniff");
+  resp.set_header("X-Frame-Options", "DENY");
+  resp.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
+}
 }  // namespace
+
+void enforceBodyLimit(const crow::request& req, size_t nMaxBytes) {
+  if (req.body.size() > nMaxBytes)
+    throw common::PayloadTooLargeError("PAYLOAD_TOO_LARGE",
+        "Request body exceeds maximum size of " + std::to_string(nMaxBytes) + " bytes");
+}
 
 common::RequestContext authenticate(const AuthMiddleware& amMiddleware,
                                     const crow::request& req) {
   auto rcCtx = amMiddleware.authenticate(req.get_header_value("Authorization"),
                                           req.get_header_value("X-API-Key"));
 
-  // Populate client IP with X-Forwarded-For awareness
+  // Populate client IP — X-Forwarded-For is trusted unconditionally.
+  // Production deployments MUST use a trusted reverse proxy. See docs/DEPLOYMENT.md.
+  // Future enhancement: DNS_TRUSTED_PROXIES configuration variable.
   std::string sIp = req.get_header_value("X-Forwarded-For");
   if (!sIp.empty()) {
     auto pos = sIp.find(',');

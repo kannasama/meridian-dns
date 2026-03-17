@@ -13,6 +13,7 @@
 
 #include "common/Errors.hpp"
 #include "common/Logger.hpp"
+#include "common/TimeUtils.hpp"
 #include "common/Types.hpp"
 #include "core/DiffEngine.hpp"
 #include "core/VariableEngine.hpp"
@@ -90,15 +91,10 @@ nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
     });
   }
 
-  auto tpNow = std::chrono::system_clock::now();
-  auto ttNow = std::chrono::system_clock::to_time_t(tpNow);
-  std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&ttNow), "%FT%TZ");
-
   return {
       {"zone", sZoneName},
       {"view", sViewName},
-      {"deployed_at", oss.str()},
+      {"deployed_at", common::nowIso8601()},
       {"deployed_by", sIdentity},
       {"records", jRecords},
   };
@@ -126,15 +122,10 @@ nlohmann::json DeploymentEngine::buildCaptureSnapshot(
     });
   }
 
-  auto tpNow = std::chrono::system_clock::now();
-  auto ttNow = std::chrono::system_clock::to_time_t(tpNow);
-  std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&ttNow), "%FT%TZ");
-
   return {
       {"zone", sZoneName},
       {"view", sViewName},
-      {"captured_at", oss.str()},
+      {"captured_at", common::nowIso8601()},
       {"captured_by", sIdentity},
       {"generated_by", sGeneratedBy},
       {"record_count", static_cast<int>(vLiveRecords.size())},

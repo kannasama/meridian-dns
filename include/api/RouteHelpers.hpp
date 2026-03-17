@@ -23,6 +23,10 @@ common::RequestContext authenticate(const AuthMiddleware& amMiddleware,
 /// does not have the required permission in their RequestContext.
 void requirePermission(const common::RequestContext& rcCtx, std::string_view svPermission);
 
+/// Enforce maximum request body size (64 KB). Throws PayloadTooLargeError if exceeded.
+/// Call at the start of any route handler that processes a request body.
+void enforceBodyLimit(const crow::request& req, size_t nMaxBytes = 65536);
+
 /// Build a JSON response with Content-Type and security headers.
 crow::response jsonResponse(int iStatus, const nlohmann::json& j);
 

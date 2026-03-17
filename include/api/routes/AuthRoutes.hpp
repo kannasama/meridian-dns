@@ -7,9 +7,11 @@
 
 namespace dns::security {
 class AuthService;
+class CryptoService;
 }
 
 namespace dns::dal {
+class SessionRepository;
 class UserRepository;
 }
 
@@ -25,7 +27,8 @@ class AuthRoutes {
  public:
   AuthRoutes(dns::security::AuthService& asService,
              const dns::api::AuthMiddleware& amMiddleware,
-             dns::dal::UserRepository& urRepo);
+             dns::dal::UserRepository& urRepo,
+             dns::dal::SessionRepository& srRepo);
   ~AuthRoutes();
 
   /// Register auth routes on the Crow app.
@@ -35,6 +38,7 @@ class AuthRoutes {
   dns::security::AuthService& _asService;
   const dns::api::AuthMiddleware& _amMiddleware;
   dns::dal::UserRepository& _urRepo;
+  dns::dal::SessionRepository& _srRepo;
 };
 
 }  // namespace dns::api::routes

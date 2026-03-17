@@ -12,6 +12,7 @@
 #include <unordered_set>
 
 #include "common/Errors.hpp"
+#include "common/TimeUtils.hpp"
 #include "dal/ConnectionPool.hpp"
 #include "dal/GitRepoRepository.hpp"
 #include "dal/GroupRepository.hpp"
@@ -30,14 +31,6 @@ namespace dns::core {
 namespace {
 
 constexpr std::string_view kBackupVersion = "0.1.0";
-
-std::string nowIso8601() {
-  auto tp = std::chrono::system_clock::now();
-  auto tt = std::chrono::system_clock::to_time_t(tp);
-  std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&tt), "%FT%TZ");
-  return oss.str();
-}
 
 }  // namespace
 
@@ -294,7 +287,7 @@ nlohmann::json BackupService::exportSystem(const std::string& sExportedBy) const
   // ── Assemble the complete backup ───────────────────────────────────────
   nlohmann::json jBackup = {
       {"version", 1},
-      {"exported_at", nowIso8601()},
+      {"exported_at", common::nowIso8601()},
       {"exported_by", sExportedBy},
       {"meridian_version", std::string(kBackupVersion)},
       {"settings", jSettings},
@@ -383,7 +376,7 @@ nlohmann::json BackupService::exportZone(int64_t iZoneId) const {
   return {
       {"version", 1},
       {"type", "zone"},
-      {"exported_at", nowIso8601()},
+      {"exported_at", common::nowIso8601()},
       {"zone", jZone},
       {"records", jRecords},
       {"variables", jVariables},

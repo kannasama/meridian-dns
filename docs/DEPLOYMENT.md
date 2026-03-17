@@ -44,6 +44,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - internal
 
   app:
     build: .
@@ -61,6 +63,12 @@ services:
       - "${DNS_HTTP_PORT:-8080}:8080"
     volumes:
       - meridian-data:/var/meridian-dns
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
 
 volumes:
   pgdata:
@@ -156,6 +164,33 @@ docker compose exec db pg_dump -U dns meridian_dns > backup_$(date +%Y%m%d).sql
 # Restore
 docker compose exec -T db psql -U dns meridian_dns < backup_20260315.sql
 ```
+
+## Security: Reverse Proxy Requirement
+
+Meridian DNS is designed to operate behind a **trusted reverse proxy** in production.
+The application trusts the `X-Forwarded-For` header unconditionally for client IP
+resolution, which affects:
+
+- **Rate limiting** — IP-based rate limiting on login and change-password endpoints
+- **Audit logging** — Client IP address recorded in audit trail entries
+
+Without a trusted reverse proxy, an attacker can spoof `X-Forwarded-For` to bypass
+rate limiting and forge audit log IP addresses. **Direct exposure of port 8080 to
+untrusted networks is not supported for production use.**
+
+> **Future Enhancement:** A `DNS_TRUSTED_PROXIES` configuration variable is planned to
+> restrict which source IPs are trusted for `X-Forwarded-For` header processing.
+
+## Network Isolation
+
+The default `docker-compose.yml` uses an internal Docker network to isolate the
+PostgreSQL database from external access. The `db` service is only accessible from
+the `app` service via the internal network — it does not expose any ports to the host.
+
+For custom deployments, ensure that:
+- PostgreSQL is not directly accessible from untrusted networks
+- Only the application container exposes its HTTP port
+- Database credentials are not shared with other services
 
 ## Reverse Proxy — nginx
 

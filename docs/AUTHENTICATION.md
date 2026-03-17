@@ -63,8 +63,19 @@ redirected to the change password page before accessing any other functionality.
 
 ### PKCE Support
 
-Meridian DNS uses PKCE (Proof Key for Code Exchange) for the authorization code flow,
-providing additional security even if the client secret is compromised.
+Meridian DNS uses PKCE (Proof Key for Code Exchange, S256 challenge method) for the
+authorization code flow, providing protection against authorization code injection
+attacks even if the client secret is compromised.
+
+> **Note:** The OpenID Connect `nonce` parameter is not currently implemented. PKCE
+> provides equivalent protection against authorization code injection. Adding `nonce`
+> is planned as a future defense-in-depth measure.
+
+### State Parameter
+
+A random `state` parameter is generated for each OIDC authorization request and stored
+in an in-memory map with a 10-minute TTL. The callback validates that the returned
+`state` matches the stored value, preventing CSRF attacks on the callback URL.
 
 ## SAML 2.0 Provider Setup
 
@@ -156,7 +167,9 @@ curl -H "X-API-Key: mdns_abc123..." https://dns.example.com/api/v1/zones
 
 Tokens contain:
 - `sub` — User ID
-- `sid` — Session ID (for server-side tracking)
+- `username` — Username
+- `role` — Highest role name
+- `auth_method` — Authentication method (`local`, `oidc`, `saml`, `api_key`)
 - `iat` — Issued at timestamp
 - `exp` — Expiration timestamp
 

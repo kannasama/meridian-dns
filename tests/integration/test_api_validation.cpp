@@ -50,13 +50,33 @@ TEST(ApiValidationTest, PasswordTooLongReturns400) {
   EXPECT_THROW(RequestValidator::validatePassword(sLong), ValidationError);
 }
 
+TEST(ApiValidationTest, PasswordTooShortReturns400) {
+  EXPECT_THROW(RequestValidator::validatePassword("short"), ValidationError);
+  EXPECT_THROW(RequestValidator::validatePassword("1234567"), ValidationError);
+  EXPECT_NO_THROW(RequestValidator::validatePassword("12345678"));
+}
+
 // ── Response format tests ───────────────────────────────────────────────────
-// Security headers (CSP, X-Frame-Options, etc.) are delegated to the reverse
-// proxy for v1.0 — see docs/DEPLOYMENT.md §Reverse Proxy.
+// Baseline security headers are set in-application as defense-in-depth.
+// The reverse proxy provides additional headers (CSP, HSTS, Permissions-Policy).
+// See docs/DEPLOYMENT.md §Reverse Proxy for the full configuration.
 
 TEST(ApiValidationTest, AllResponsesHaveContentType) {
   auto resp = jsonResponse(200, {{"ok", true}});
   EXPECT_EQ(resp.get_header_value("Content-Type"), "application/json");
+}
+
+TEST(ApiValidationTest, AllResponsesHaveSecurityHeaders) {
+  auto resp = jsonResponse(200, {{"ok", true}});
+  EXPECT_EQ(resp.get_header_value("X-Content-Type-Options"), "nosniff");
+  EXPECT_EQ(resp.get_header_value("X-Frame-Options"), "DENY");
+  EXPECT_EQ(resp.get_header_value("Referrer-Policy"), "strict-origin-when-cross-origin");
+}
+
+TEST(ApiValidationTest, ErrorResponsesHaveSecurityHeaders) {
+  ValidationError err("TEST", "test");
+  auto resp = errorResponse(err);
+  EXPECT_EQ(resp.get_header_value("X-Content-Type-Options"), "nosniff");
 }
 
 TEST(ApiValidationTest, ErrorResponsesHaveContentType) {

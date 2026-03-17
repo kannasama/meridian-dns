@@ -12,6 +12,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - internal
 
   app:
     build: .
@@ -29,6 +31,12 @@ services:
       - "${DNS_HTTP_PORT:-8080}:8080"
     volumes:
       - meridian-data:/var/meridian-dns
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
 
 volumes:
   pgdata:

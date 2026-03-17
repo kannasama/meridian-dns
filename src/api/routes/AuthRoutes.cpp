@@ -9,6 +9,7 @@
 #include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
+#include "dal/SessionRepository.hpp"
 #include "dal/UserRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
@@ -21,8 +22,9 @@ static dns::api::RateLimiter g_rlLogin(5, std::chrono::seconds(60));
 
 AuthRoutes::AuthRoutes(dns::security::AuthService& asService,
                        const dns::api::AuthMiddleware& amMiddleware,
-                       dns::dal::UserRepository& urRepo)
-    : _asService(asService), _amMiddleware(amMiddleware), _urRepo(urRepo) {}
+                       dns::dal::UserRepository& urRepo,
+                       dns::dal::SessionRepository& srRepo)
+    : _asService(asService), _amMiddleware(amMiddleware), _urRepo(urRepo), _srRepo(srRepo) {}
 
 AuthRoutes::~AuthRoutes() = default;
 
@@ -31,6 +33,8 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/auth/local/login").methods("POST"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
+         enforceBodyLimit(req);
+
          std::string sClientIp = req.get_header_value("X-Forwarded-For");
          if (sClientIp.empty()) sClientIp = req.remote_ip_address;
          if (!g_rlLogin.allow(sClientIp))
@@ -59,6 +63,14 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
       [this](const crow::request& req) -> crow::response {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
+
+          // Invalidate the server-side session (SEC-I4)
+          std::string sAuth = req.get_header_value("Authorization");
+          if (sAuth.size() > 7 && sAuth.substr(0, 7) == "Bearer ") {
+            std::string sToken = sAuth.substr(7);
+            std::string sHash = dns::security::CryptoService::sha256Hex(sToken);
+            _srRepo.deleteByHash(sHash);
+          }
 
           return jsonResponse(200, {{"message", "Logged out successfully"}});
         } catch (const common::AppError& e) {
@@ -116,7 +128,7 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sEmail = jBody.value("email", "");
-          RequestValidator::validateRequired(sEmail, "email");
+          RequestValidator::validateEmail(sEmail);
           std::optional<std::string> osDisplayName;
           if (jBody.contains("display_name")) {
             osDisplayName = jBody.value("display_name", "");
@@ -138,6 +150,13 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/auth/change-password").methods("POST"_method)(
       [this](const crow::request& req) -> crow::response {
         try {
+          // Rate limit password verification attempts (SEC-I2)
+          std::string sClientIp = req.get_header_value("X-Forwarded-For");
+          if (sClientIp.empty()) sClientIp = req.remote_ip_address;
+          if (!g_rlLogin.allow(sClientIp))
+            throw common::RateLimitedError("RATE_LIMITED",
+                                           "Too many attempts. Try again later.");
+
           auto rcCtx = authenticate(_amMiddleware, req);
 
           auto jBody = nlohmann::json::parse(req.body);

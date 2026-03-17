@@ -75,6 +75,12 @@ struct GitMirrorError : AppError {
       : AppError(500, std::move(sCode), std::move(sMsg)) {}
 };
 
+/// 413 Payload Too Large — request body exceeds size limit.
+struct PayloadTooLargeError : AppError {
+  explicit PayloadTooLargeError(std::string sCode, std::string sMsg)
+      : AppError(413, std::move(sCode), std::move(sMsg)) {}
+};
+
 /// 429 Too Many Requests — rate limit exceeded.
 struct RateLimitedError : AppError {
   explicit RateLimitedError(std::string sCode, std::string sMsg)

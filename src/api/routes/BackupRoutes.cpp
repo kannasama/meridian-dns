@@ -14,6 +14,7 @@
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "common/Permissions.hpp"
+#include "common/TimeUtils.hpp"
 #include "core/BackupService.hpp"
 #include "dal/SettingsRepository.hpp"
 #include "gitops/GitRepoManager.hpp"
@@ -28,9 +29,7 @@ namespace {
 std::string makeTimestamp() {
   auto tp = std::chrono::system_clock::now();
   auto tt = std::chrono::system_clock::to_time_t(tp);
-  std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&tt), "%Y-%m-%dT%H%M%SZ");
-  return oss.str();
+  return dns::common::toIso8601Compact(tt);
 }
 
 nlohmann::json restoreResultToJson(const dns::core::RestoreResult& result) {
