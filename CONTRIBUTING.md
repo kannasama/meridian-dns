@@ -33,7 +33,9 @@ build: changes to build system or dependencies
 
 ## Pull Request Process
 
-1. Ensure the build succeeds with no warnings: `cmake --build build --parallel`
+1. Ensure the build succeeds with no warnings:
+   - **Docker (recommended):** `docker buildx build .`
+   - **Native:** `cmake --build build --parallel`
 2. All tests pass: `build/tests/dns-tests`
 3. SPDX headers present: `scripts/check-license-headers.sh`
 4. Update relevant documentation if behavior changes

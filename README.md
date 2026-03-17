@@ -66,8 +66,8 @@ across PowerDNS, Cloudflare, and DigitalOcean from a single interface.
 cp .env.example .env
 
 # Generate required secrets
-echo "DNS_MASTER_KEY=$(openssl rand -hex 32)" >> .env
-echo "DNS_JWT_SECRET=$(openssl rand -hex 32)" >> .env
+sed -i "s/^DNS_MASTER_KEY=.*/DNS_MASTER_KEY=$(openssl rand -hex 32)/" .env
+sed -i "s/^DNS_JWT_SECRET=.*/DNS_JWT_SECRET=$(openssl rand -hex 32)/" .env
 
 # 2. Start the stack
 docker compose up -d
