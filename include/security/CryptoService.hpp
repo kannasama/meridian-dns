@@ -52,12 +52,20 @@ class CryptoService {
   /// Uses constant-time comparison for the hash.
   static bool verifyPassword(const std::string& sPassword, const std::string& sHash);
 
+  /// Base64url-encode a raw binary string (no padding, URL-safe alphabet).
+  static std::string base64UrlEncode(const std::string& sData);
+
+  /// Base64url-encode a raw byte vector (no padding, URL-safe alphabet).
+  static std::string base64UrlEncode(const std::vector<unsigned char>& vData);
+
+  /// Base64url-decode a string back to raw binary.
+  static std::string base64UrlDecode(const std::string& sEncoded);
+
  private:
   std::vector<unsigned char> _vMasterKey;  // raw 32 bytes
 
   static std::string base64Encode(const std::vector<unsigned char>& vData);
   static std::vector<unsigned char> base64Decode(const std::string& sEncoded);
-  static std::string base64UrlEncode(const std::vector<unsigned char>& vData);
   static std::vector<unsigned char> hexDecode(const std::string& sHex);
 };
 

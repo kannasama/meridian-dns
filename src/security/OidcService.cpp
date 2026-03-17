@@ -5,6 +5,7 @@
 #include "security/OidcService.hpp"
 
 #include "common/Errors.hpp"
+#include "security/CryptoService.hpp"
 
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -26,35 +27,6 @@ extern "C" {
 namespace dns::security {
 
 namespace {
-
-// ── Base64url / SHA-256 helpers (used by PKCE and state generation) ─────────
-
-std::string base64UrlEncode(const unsigned char* pData, size_t uLen) {
-  EVP_ENCODE_CTX* pCtx = EVP_ENCODE_CTX_new();
-  EVP_EncodeInit(pCtx);
-
-  const int iMaxOut = static_cast<int>(uLen) * 2 + 64;
-  std::vector<unsigned char> vOut(static_cast<size_t>(iMaxOut));
-  int iOutLen = 0;
-  int iTotalLen = 0;
-
-  EVP_EncodeUpdate(pCtx, vOut.data(), &iOutLen, pData, static_cast<int>(uLen));
-  iTotalLen += iOutLen;
-  EVP_EncodeFinal(pCtx, vOut.data() + iTotalLen, &iOutLen);
-  iTotalLen += iOutLen;
-  EVP_ENCODE_CTX_free(pCtx);
-
-  std::string sB64(reinterpret_cast<char*>(vOut.data()), static_cast<size_t>(iTotalLen));
-  std::erase(sB64, '\n');
-  for (auto& c : sB64) {
-    if (c == '+') c = '-';
-    else if (c == '/') c = '_';
-  }
-  while (!sB64.empty() && sB64.back() == '=') {
-    sB64.pop_back();
-  }
-  return sB64;
-}
 
 std::string sha256Raw(const std::string& sInput) {
   unsigned char vHash[EVP_MAX_MD_SIZE];
@@ -169,12 +141,12 @@ std::pair<std::string, std::string> OidcService::generatePkce() {
   if (RAND_bytes(vRandom, sizeof(vRandom)) != 1) {
     throw std::runtime_error("RAND_bytes failed for PKCE verifier");
   }
-  std::string sVerifier = base64UrlEncode(vRandom, sizeof(vRandom));
+  std::string sVerifier = CryptoService::base64UrlEncode(
+      std::string(reinterpret_cast<const char*>(vRandom), sizeof(vRandom)));
 
   // Challenge = base64url(SHA-256(verifier))
   std::string sHash = sha256Raw(sVerifier);
-  std::string sChallenge = base64UrlEncode(
-      reinterpret_cast<const unsigned char*>(sHash.data()), sHash.size());
+  std::string sChallenge = CryptoService::base64UrlEncode(sHash);
 
   return {sVerifier, sChallenge};
 }
@@ -184,7 +156,8 @@ std::string OidcService::generateState() {
   if (RAND_bytes(vRandom, sizeof(vRandom)) != 1) {
     throw std::runtime_error("RAND_bytes failed for OIDC state");
   }
-  return base64UrlEncode(vRandom, sizeof(vRandom));
+  return CryptoService::base64UrlEncode(
+      std::string(reinterpret_cast<const char*>(vRandom), sizeof(vRandom)));
 }
 
 std::string OidcService::buildAuthorizationUrl(

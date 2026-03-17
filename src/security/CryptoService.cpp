@@ -128,6 +128,26 @@ std::string CryptoService::base64UrlEncode(const std::vector<unsigned char>& vDa
   return sB64;
 }
 
+std::string CryptoService::base64UrlEncode(const std::string& sData) {
+  std::vector<unsigned char> v(sData.begin(), sData.end());
+  return base64UrlEncode(v);
+}
+
+std::string CryptoService::base64UrlDecode(const std::string& sInput) {
+  // Convert from base64url to base64
+  std::string sB64 = sInput;
+  for (auto& c : sB64) {
+    if (c == '-') c = '+';
+    else if (c == '_') c = '/';
+  }
+  // Add padding
+  while (sB64.size() % 4 != 0) {
+    sB64 += '=';
+  }
+  auto vDecoded = base64Decode(sB64);
+  return std::string(reinterpret_cast<const char*>(vDecoded.data()), vDecoded.size());
+}
+
 // ── Constructor / Destructor ───────────────────────────────────────────────
 
 CryptoService::CryptoService(std::string sMasterKeyHex) {
