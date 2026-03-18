@@ -136,8 +136,8 @@ docker:publish:
     DOCKER_HOST: tcp://docker:2376
     DOCKER_TLS_VERIFY: "1"
   script:
-    - docker login -u "$DOCKERHUB_USERNAME" --password-stdin <<< "$DOCKERHUB_TOKEN"
-    - docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin <<< "$GHCR_TOKEN"
+    - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+    - echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
     - docker buildx create --use
     - |
       docker buildx build --push \
