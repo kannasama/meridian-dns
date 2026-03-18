@@ -37,12 +37,14 @@ Include details documented in `docs/plans/lessons.md` when factoring in planning
 
 Build and test:
 ```bash
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel
-build/tests/dns-tests
+# Local cmake builds are NOT available — use docker buildx for all C++ compilation
+docker buildx build --load -t meridian-dns .
+
+# Run tests inside the built image (DB integration tests need DNS_DB_URL)
+docker run --rm meridian-dns /app/dns-tests
 ```
 
-UI development:
+UI development (Node.js may be available locally):
 ```bash
 cd ui && npm install && npm run dev   # Vite dev server on :5173, proxies /api/v1 to :8080
 cd ui && npm run build                # Production build to ui/dist/
