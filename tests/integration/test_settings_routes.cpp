@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
+#include <pqxx/pqxx>
 
 #include <cstdlib>
 #include <memory>
@@ -36,6 +37,17 @@ class SettingsRoutesTest : public ::testing::Test {
     dns::common::Logger::init("warn");
     _cpPool = std::make_unique<dns::dal::ConnectionPool>(_sDbUrl, 2);
     _srRepo = std::make_unique<dns::dal::SettingsRepository>(*_cpPool);
+
+    // Ensure system_config exists (created by MigrationRunner::bootstrap in production;
+    // guard here so tests run independently of test execution order)
+    {
+      auto cg = _cpPool->checkout();
+      pqxx::work txn(*cg);
+      txn.exec("CREATE TABLE IF NOT EXISTS system_config ("
+               "  key TEXT PRIMARY KEY, value TEXT NOT NULL,"
+               "  description TEXT, updated_at TIMESTAMPTZ DEFAULT now())");
+      txn.commit();
+    }
 
     // Seed settings so GET returns data
     dns::common::Config::seedToDb(*_srRepo);

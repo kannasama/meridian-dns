@@ -170,6 +170,7 @@ class CrudRoutesTest : public ::testing::Test {
   crow::response handle(const std::string& sMethod, const std::string& sUrl,
                         const std::string& sBody = "") {
     crow::request req;
+    req.remote_ip_address = "127.0.0.1";
 
     // Split URL into path and query string — Crow's trie matches only the path
     auto iQmark = sUrl.find('?');
@@ -319,7 +320,8 @@ TEST_F(CrudRoutesTest, ZoneCrud) {
 
   // Update
   resp = handle("PUT", "/api/v1/zones/" + std::to_string(iZoneId),
-                R"({"name":"example.com","deployment_retention":5})");
+                R"({"name":"example.com","view_id":)" + std::to_string(iViewId) +
+                R"(,"deployment_retention":5})");
   EXPECT_EQ(resp.code, 200);
 
   // Delete

@@ -32,9 +32,14 @@ class SettingsRepositoryTest : public ::testing::Test {
     _cpPool = std::make_unique<dns::dal::ConnectionPool>(_sDbUrl, 2);
     _srRepo = std::make_unique<dns::dal::SettingsRepository>(*_cpPool);
 
-    // Clean test keys (leave setup_completed alone)
+    // Ensure system_config exists (created by MigrationRunner::bootstrap in production;
+    // guard here so tests run independently of test execution order)
     auto cg = _cpPool->checkout();
     pqxx::work txn(*cg);
+    txn.exec("CREATE TABLE IF NOT EXISTS system_config ("
+             "  key TEXT PRIMARY KEY, value TEXT NOT NULL,"
+             "  description TEXT, updated_at TIMESTAMPTZ DEFAULT now())");
+    // Clean test keys (leave setup_completed alone)
     txn.exec("DELETE FROM system_config WHERE key LIKE 'test.%'");
     txn.commit();
   }
