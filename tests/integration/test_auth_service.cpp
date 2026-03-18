@@ -70,15 +70,16 @@ class AuthServiceTest : public ::testing::Test {
     _iTestUserId = r.one_row()[0].as<int64_t>();
 
     // Create group and membership for role resolution
-    auto rGroup = txn.exec(
-        "INSERT INTO groups (name) VALUES ('operators') RETURNING id").one_row();
-    int64_t iGroupId = rGroup[0].as<int64_t>();
     // Look up the Operator system role
     auto rRole = txn.exec(
         "SELECT id FROM roles WHERE name = 'Operator'").one_row();
     int64_t iRoleId = rRole[0].as<int64_t>();
-    txn.exec("INSERT INTO group_members (user_id, group_id, role_id) VALUES ($1, $2, $3)",
-             pqxx::params{_iTestUserId, iGroupId, iRoleId});
+    auto rGroup = txn.exec(
+        "INSERT INTO groups (name, role_id) VALUES ('operators', $1) RETURNING id",
+        pqxx::params{iRoleId}).one_row();
+    int64_t iGroupId = rGroup[0].as<int64_t>();
+    txn.exec("INSERT INTO group_members (user_id, group_id) VALUES ($1, $2)",
+             pqxx::params{_iTestUserId, iGroupId});
     txn.commit();
   }
 

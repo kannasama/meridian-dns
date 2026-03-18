@@ -153,13 +153,14 @@ class CrudRoutesTest : public ::testing::Test {
     {
       auto cg2 = _cpPool->checkout();
       pqxx::work txn2(*cg2);
-      auto gResult = txn2.exec(
-          "INSERT INTO groups (name) VALUES ('admins') RETURNING id");
-      int64_t iGroupId = gResult.one_row()[0].as<int64_t>();
       auto rRole = txn2.exec("SELECT id FROM roles WHERE name = 'Admin'").one_row();
       int64_t iRoleId = rRole[0].as<int64_t>();
-      txn2.exec("INSERT INTO group_members (user_id, group_id, role_id) VALUES ($1, $2, $3)",
-                pqxx::params{iUserId, iGroupId, iRoleId});
+      auto gResult = txn2.exec(
+          "INSERT INTO groups (name, role_id) VALUES ('admins', $1) RETURNING id",
+          pqxx::params{iRoleId});
+      int64_t iGroupId = gResult.one_row()[0].as<int64_t>();
+      txn2.exec("INSERT INTO group_members (user_id, group_id) VALUES ($1, $2)",
+                pqxx::params{iUserId, iGroupId});
       txn2.commit();
     }
 

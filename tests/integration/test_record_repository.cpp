@@ -104,8 +104,10 @@ TEST_F(RecordRepositoryTest, DeleteById) {
   int64_t iId = _rrRepo->create(_iZoneId, "del", "A", 300, "1.1.1.1", 0);
   _rrRepo->deleteById(iId);
 
+  // deleteById is a soft-delete: record is marked pending_delete, not removed
   auto oRow = _rrRepo->findById(iId);
-  EXPECT_FALSE(oRow.has_value());
+  ASSERT_TRUE(oRow.has_value());
+  EXPECT_TRUE(oRow->bPendingDelete);
 }
 
 TEST_F(RecordRepositoryTest, InvalidZoneIdThrows) {

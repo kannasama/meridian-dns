@@ -171,6 +171,7 @@ FederatedAuthService::LoginResult FederatedAuthService::processFederatedLogin(
       {"auth_method", sAuthMethod},
       {"iat", iNow},
       {"exp", iNow + _iJwtTtlSeconds},
+      {"jti", CryptoService::generateApiKey()},
   };
 
   lr.sToken = _jsSigner.sign(jPayload);
