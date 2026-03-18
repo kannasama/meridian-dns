@@ -11,12 +11,15 @@ check_files() {
   local pattern="$1"
 
   while IFS= read -r -d '' file; do
-    if ! head -5 "$file" | grep -qF "$SPDX_ID"; then
+    # Use a here-string instead of a pipe so that grep's early exit (via -q)
+    # does not send SIGPIPE to head, which would produce a non-zero pipeline
+    # exit under set -o pipefail and flip the result to a false MISSING report.
+    if ! grep -qF "$SPDX_ID" <<< "$(head -5 "$file")"; then
       echo "MISSING: $file"
       MISSING=$((MISSING + 1))
     fi
   done < <(find . -path ./build -prune -o -path ./ui/node_modules -prune -o \
-    -path ./.roo -prune -o \
+    -path ./.roo -prune -o -path ./.claude -prune -o \
     -name "$pattern" -print0)
 }
 
