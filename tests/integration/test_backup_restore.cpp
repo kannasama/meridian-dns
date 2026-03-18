@@ -45,7 +45,7 @@ class BackupRestoreTest : public ::testing::Test {
 
     _cpPool = std::make_unique<dns::dal::ConnectionPool>(_sDbUrl, 2);
     _csService = std::make_unique<dns::security::CryptoService>(
-        "0123456789abcdef0123456789abcdef");
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
     _stRepo = std::make_unique<dns::dal::SettingsRepository>(*_cpPool);
     _rlRepo = std::make_unique<dns::dal::RoleRepository>(*_cpPool);
