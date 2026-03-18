@@ -132,12 +132,9 @@ docker:publish:
   rules:
     - if: $CI_COMMIT_TAG
   variables:
-    DOCKER_TLS_CERTDIR: /certs
-    DOCKER_CERT_PATH: /certs/client
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_VERIFY: "1"
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375
   script:
-    - i=0; until [ -f /certs/client/ca.pem ]; do [ $i -ge 90 ] && echo "Timed out waiting for DinD TLS certs" && exit 1; sleep 1; i=$((i+1)); done
     - i=0; until docker info > /dev/null 2>&1; do [ $i -ge 90 ] && echo "Timed out waiting for Docker daemon" && exit 1; sleep 1; i=$((i+1)); done
     - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
     - echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
