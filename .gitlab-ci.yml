@@ -24,9 +24,6 @@ stages:
   - test
   - docker
 
-variables:
-  FF_NETWORK_PER_BUILD: "true"  # isolate service networks per build
-
 # ── Stage: lint ───────────────────────────────────────────────────────────────
 
 lint:headers:
@@ -110,7 +107,13 @@ test:integration:
         jansson libcurl cjose \
         postgresql \
       && dnf clean all
-    - until pg_isready -h postgres -U dns; do sleep 1; done
+    - |
+      for i in $(seq 1 30); do
+        pg_isready -h postgres -U dns && break
+        echo "Waiting for postgres ($i/30)..."
+        [ "$i" -eq 30 ] && echo "ERROR: postgres did not become ready" && exit 1
+        sleep 2
+      done
     - |
       for f in $(find scripts/db -name '*.sql' | sort); do
         echo "Applying $f ..."
