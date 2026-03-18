@@ -48,7 +48,7 @@ services:
       - internal
 
   app:
-    build: .
+    image: ghcr.io/meridiandns/meridian-dns:${MERIDIAN_VERSION:-latest}
     depends_on:
       db:
         condition: service_healthy
@@ -133,24 +133,29 @@ authentication is required.
 ### Docker Hub
 
 ```bash
-docker pull kannasama/meridian-dns:1.0.0
+docker pull kannasama/meridian-dns:v1.0.0
 docker pull kannasama/meridian-dns:latest
 ```
 
 ### GitHub Container Registry
 
 ```bash
-docker pull ghcr.io/meridiandns/meridian-dns:1.0.0
+docker pull ghcr.io/meridiandns/meridian-dns:v1.0.0
 ```
 
 ### Tag Format
 
 | Tag | Description |
 |-----|-------------|
-| `1.0.0` | Exact version |
-| `1.0` | Latest patch in 1.0.x |
-| `1` | Latest minor in 1.x.x |
+| `v1.0.0` | Exact version |
 | `latest` | Latest stable release |
+
+To pin to a specific release, set `MERIDIAN_VERSION` before starting the stack:
+
+```bash
+MERIDIAN_VERSION=v1.0.0 docker compose up -d
+# or add MERIDIAN_VERSION=v1.0.0 to your .env file
+```
 
 ## Database Backup
 
