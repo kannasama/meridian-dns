@@ -97,3 +97,26 @@ TEST_F(SoaPresetRepositoryTest, DeleteById) {
   _repo->deleteById(iId);
   EXPECT_FALSE(_repo->findById(iId).has_value());
 }
+
+TEST_F(SoaPresetRepositoryTest, DeleteThrowsWhenInUse) {
+  // Create a preset and a zone_template that references it
+  int64_t iPresetId = _repo->create("in-use-preset", "ns1.", "admin.",
+                                     3600, 900, 604800, 300, 3600);
+  {
+    auto cg = _cpPool->checkout();
+    pqxx::work txn(*cg);
+    txn.exec("INSERT INTO zone_templates (name, description, soa_preset_id) "
+             "VALUES ('test-tmpl', '', $1)",
+             pqxx::params{iPresetId});
+    txn.commit();
+  }
+  EXPECT_THROW(_repo->deleteById(iPresetId), dns::common::ConflictError);
+
+  // Cleanup
+  {
+    auto cg = _cpPool->checkout();
+    pqxx::work txn(*cg);
+    txn.exec("DELETE FROM zone_templates WHERE name = 'test-tmpl'");
+    txn.commit();
+  }
+}
