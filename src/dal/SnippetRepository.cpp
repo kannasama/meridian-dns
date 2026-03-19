@@ -11,6 +11,29 @@
 
 namespace dns::dal {
 
+static std::vector<SnippetRecordRow> fetchRecords(pqxx::work& txn, int64_t iSnippetId) {
+  auto recs = txn.exec(
+      "SELECT id, snippet_id, name, type, ttl, value_template, priority, sort_order "
+      "FROM snippet_records WHERE snippet_id = $1 ORDER BY sort_order, id",
+      pqxx::params{iSnippetId});
+
+  std::vector<SnippetRecordRow> vRecs;
+  vRecs.reserve(recs.size());
+  for (const auto& row : recs) {
+    SnippetRecordRow rec;
+    rec.iId            = row[0].as<int64_t>();
+    rec.iSnippetId     = row[1].as<int64_t>();
+    rec.sName          = row[2].as<std::string>();
+    rec.sType          = row[3].as<std::string>();
+    rec.iTtl           = row[4].as<int>();
+    rec.sValueTemplate = row[5].as<std::string>();
+    rec.iPriority      = row[6].as<int>();
+    rec.iSortOrder     = row[7].as<int>();
+    vRecs.push_back(std::move(rec));
+  }
+  return vRecs;
+}
+
 SnippetRepository::SnippetRepository(ConnectionPool& cpPool) : _cpPool(cpPool) {}
 SnippetRepository::~SnippetRepository() = default;
 
@@ -81,25 +104,8 @@ std::optional<SnippetRow> SnippetRepository::findById(int64_t iId) {
   sr.tpUpdatedAt  = std::chrono::system_clock::time_point(
       std::chrono::seconds(result[0][4].as<int64_t>()));
 
-  auto recs = txn.exec(
-      "SELECT id, snippet_id, name, type, ttl, value_template, priority, sort_order "
-      "FROM snippet_records WHERE snippet_id = $1 ORDER BY sort_order, id",
-      pqxx::params{iId});
+  sr.vRecords = fetchRecords(txn, iId);
   txn.commit();
-
-  sr.vRecords.reserve(recs.size());
-  for (const auto& row : recs) {
-    SnippetRecordRow rec;
-    rec.iId             = row[0].as<int64_t>();
-    rec.iSnippetId      = row[1].as<int64_t>();
-    rec.sName           = row[2].as<std::string>();
-    rec.sType           = row[3].as<std::string>();
-    rec.iTtl            = row[4].as<int>();
-    rec.sValueTemplate  = row[5].as<std::string>();
-    rec.iPriority       = row[6].as<int>();
-    rec.iSortOrder      = row[7].as<int>();
-    sr.vRecords.push_back(std::move(rec));
-  }
 
   return sr;
 }
@@ -112,7 +118,7 @@ void SnippetRepository::update(int64_t iId, const std::string& sName,
   pqxx::result result;
   try {
     result = txn.exec(
-        "UPDATE snippets SET name = $2, description = $3 WHERE id = $1",
+        "UPDATE snippets SET name = $2, description = $3, updated_at = NOW() WHERE id = $1",
         pqxx::params{iId, sName, sDescription});
     txn.commit();
   } catch (const pqxx::unique_violation&) {
@@ -167,26 +173,8 @@ void SnippetRepository::replaceRecords(int64_t iSnippetId,
 std::vector<SnippetRecordRow> SnippetRepository::listRecords(int64_t iSnippetId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec(
-      "SELECT id, snippet_id, name, type, ttl, value_template, priority, sort_order "
-      "FROM snippet_records WHERE snippet_id = $1 ORDER BY sort_order, id",
-      pqxx::params{iSnippetId});
+  auto vRecs = fetchRecords(txn, iSnippetId);
   txn.commit();
-
-  std::vector<SnippetRecordRow> vRecs;
-  vRecs.reserve(result.size());
-  for (const auto& row : result) {
-    SnippetRecordRow rec;
-    rec.iId            = row[0].as<int64_t>();
-    rec.iSnippetId     = row[1].as<int64_t>();
-    rec.sName          = row[2].as<std::string>();
-    rec.sType          = row[3].as<std::string>();
-    rec.iTtl           = row[4].as<int>();
-    rec.sValueTemplate = row[5].as<std::string>();
-    rec.iPriority      = row[6].as<int>();
-    rec.iSortOrder     = row[7].as<int>();
-    vRecs.push_back(std::move(rec));
-  }
   return vRecs;
 }
 
