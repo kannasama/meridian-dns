@@ -117,15 +117,14 @@ void ZoneTemplateRepository::update(int64_t iId, const std::string& sName,
           "UPDATE zone_templates SET name = $2, description = $3, soa_preset_id = $4, "
           "updated_at = NOW() WHERE id = $1",
           pqxx::params{iId, sName, sDescription, oSoaPresetId});
+      if (result.affected_rows() == 0) {
+        throw common::NotFoundError("TEMPLATE_NOT_FOUND",
+                                    "Zone template with id " + std::to_string(iId) + " not found");
+      }
       txn.commit();
     } catch (const pqxx::unique_violation&) {
       throw common::ConflictError("TEMPLATE_EXISTS",
                                   "Zone template '" + sName + "' already exists");
-    }
-
-    if (result.affected_rows() == 0) {
-      throw common::NotFoundError("TEMPLATE_NOT_FOUND",
-                                  "Zone template with id " + std::to_string(iId) + " not found");
     }
   }
 
