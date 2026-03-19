@@ -11,6 +11,37 @@
 
 namespace dns::dal {
 
+static dns::dal::ZoneRow parseZoneRow(const pqxx::row& row) {
+  dns::dal::ZoneRow zr;
+  zr.iId    = row[0].as<int64_t>();
+  zr.sName  = row[1].as<std::string>();
+  zr.iViewId = row[2].as<int64_t>();
+  if (!row[3].is_null()) zr.oDeploymentRetention = row[3].as<int>();
+  zr.bManageSoa = row[4].as<bool>();
+  zr.bManageNs  = row[5].as<bool>();
+  zr.tpCreatedAt = std::chrono::system_clock::time_point(
+      std::chrono::seconds(row[6].as<int64_t>()));
+  zr.sSyncStatus = row[7].as<std::string>();
+  if (!row[8].is_null()) {
+    zr.oSyncCheckedAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(row[8].as<int64_t>()));
+  }
+  if (!row[9].is_null())  zr.oGitRepoId  = row[9].as<int64_t>();
+  if (!row[10].is_null()) zr.oGitBranch  = row[10].as<std::string>();
+  if (!row[11].is_null()) zr.oTemplateId = row[11].as<int64_t>();
+  zr.bTemplateCheckPending = row[12].as<bool>();
+  if (!row[13].is_null()) zr.oSoaPresetId = row[13].as<int64_t>();
+  if (!row[14].is_null()) {
+    pqxx::array_parser ap(row[14].as<std::string>());
+    for (;;) {
+      auto [j, v] = ap.get_next();
+      if (j != pqxx::array_parser::juncture::string_value) break;
+      zr.vTags.push_back(v);
+    }
+  }
+  return zr;
+}
+
 ZoneRepository::ZoneRepository(ConnectionPool& cpPool) : _cpPool(cpPool) {}
 ZoneRepository::~ZoneRepository() = default;
 
@@ -66,36 +97,7 @@ std::vector<ZoneRow> ZoneRepository::listAll() {
   std::vector<ZoneRow> vRows;
   vRows.reserve(result.size());
   for (const auto& row : result) {
-    ZoneRow zr;
-    zr.iId = row[0].as<int64_t>();
-    zr.sName = row[1].as<std::string>();
-    zr.iViewId = row[2].as<int64_t>();
-    if (!row[3].is_null()) zr.oDeploymentRetention = row[3].as<int>();
-    zr.bManageSoa = row[4].as<bool>();
-    zr.bManageNs = row[5].as<bool>();
-    zr.tpCreatedAt = std::chrono::system_clock::time_point(
-        std::chrono::seconds(row[6].as<int64_t>()));
-    zr.sSyncStatus = row[7].as<std::string>();
-    if (!row[8].is_null()) {
-      zr.oSyncCheckedAt = std::chrono::system_clock::time_point(
-          std::chrono::seconds(row[8].as<int64_t>()));
-    }
-    if (!row[9].is_null()) zr.oGitRepoId = row[9].as<int64_t>();
-    if (!row[10].is_null()) zr.oGitBranch = row[10].as<std::string>();
-    if (!row[11].is_null()) zr.oTemplateId = row[11].as<int64_t>();
-    zr.bTemplateCheckPending = row[12].as<bool>();
-    if (!row[13].is_null()) zr.oSoaPresetId = row[13].as<int64_t>();
-    if (!row[14].is_null()) {
-      std::string sArr = row[14].as<std::string>();
-      pqxx::array_parser ap(sArr);
-      auto [junk, sVal] = ap.get_next();
-      while (junk == pqxx::array_parser::juncture::string_value) {
-        zr.vTags.push_back(sVal);
-        auto [j2, v2] = ap.get_next();
-        junk = j2; sVal = v2;
-      }
-    }
-    vRows.push_back(std::move(zr));
+    vRows.push_back(parseZoneRow(row));
   }
   return vRows;
 }
@@ -116,36 +118,7 @@ std::vector<ZoneRow> ZoneRepository::listByViewId(int64_t iViewId) {
   std::vector<ZoneRow> vRows;
   vRows.reserve(result.size());
   for (const auto& row : result) {
-    ZoneRow zr;
-    zr.iId = row[0].as<int64_t>();
-    zr.sName = row[1].as<std::string>();
-    zr.iViewId = row[2].as<int64_t>();
-    if (!row[3].is_null()) zr.oDeploymentRetention = row[3].as<int>();
-    zr.bManageSoa = row[4].as<bool>();
-    zr.bManageNs = row[5].as<bool>();
-    zr.tpCreatedAt = std::chrono::system_clock::time_point(
-        std::chrono::seconds(row[6].as<int64_t>()));
-    zr.sSyncStatus = row[7].as<std::string>();
-    if (!row[8].is_null()) {
-      zr.oSyncCheckedAt = std::chrono::system_clock::time_point(
-          std::chrono::seconds(row[8].as<int64_t>()));
-    }
-    if (!row[9].is_null()) zr.oGitRepoId = row[9].as<int64_t>();
-    if (!row[10].is_null()) zr.oGitBranch = row[10].as<std::string>();
-    if (!row[11].is_null()) zr.oTemplateId = row[11].as<int64_t>();
-    zr.bTemplateCheckPending = row[12].as<bool>();
-    if (!row[13].is_null()) zr.oSoaPresetId = row[13].as<int64_t>();
-    if (!row[14].is_null()) {
-      std::string sArr = row[14].as<std::string>();
-      pqxx::array_parser ap(sArr);
-      auto [junk, sVal] = ap.get_next();
-      while (junk == pqxx::array_parser::juncture::string_value) {
-        zr.vTags.push_back(sVal);
-        auto [j2, v2] = ap.get_next();
-        junk = j2; sVal = v2;
-      }
-    }
-    vRows.push_back(std::move(zr));
+    vRows.push_back(parseZoneRow(row));
   }
   return vRows;
 }
@@ -164,37 +137,7 @@ std::optional<ZoneRow> ZoneRepository::findById(int64_t iId) {
   txn.commit();
 
   if (result.empty()) return std::nullopt;
-
-  ZoneRow zr;
-  zr.iId = result[0][0].as<int64_t>();
-  zr.sName = result[0][1].as<std::string>();
-  zr.iViewId = result[0][2].as<int64_t>();
-  if (!result[0][3].is_null()) zr.oDeploymentRetention = result[0][3].as<int>();
-  zr.bManageSoa = result[0][4].as<bool>();
-  zr.bManageNs = result[0][5].as<bool>();
-  zr.tpCreatedAt = std::chrono::system_clock::time_point(
-      std::chrono::seconds(result[0][6].as<int64_t>()));
-  zr.sSyncStatus = result[0][7].as<std::string>();
-  if (!result[0][8].is_null()) {
-    zr.oSyncCheckedAt = std::chrono::system_clock::time_point(
-        std::chrono::seconds(result[0][8].as<int64_t>()));
-  }
-  if (!result[0][9].is_null()) zr.oGitRepoId = result[0][9].as<int64_t>();
-  if (!result[0][10].is_null()) zr.oGitBranch = result[0][10].as<std::string>();
-  if (!result[0][11].is_null()) zr.oTemplateId = result[0][11].as<int64_t>();
-  zr.bTemplateCheckPending = result[0][12].as<bool>();
-  if (!result[0][13].is_null()) zr.oSoaPresetId = result[0][13].as<int64_t>();
-  if (!result[0][14].is_null()) {
-    std::string sArr = result[0][14].as<std::string>();
-    pqxx::array_parser ap(sArr);
-    auto [junk, sVal] = ap.get_next();
-    while (junk == pqxx::array_parser::juncture::string_value) {
-      zr.vTags.push_back(sVal);
-      auto [j2, v2] = ap.get_next();
-      junk = j2; sVal = v2;
-    }
-  }
-  return zr;
+  return parseZoneRow(result[0]);
 }
 
 void ZoneRepository::update(int64_t iId, const std::string& sName, int64_t iViewId,
@@ -289,7 +232,7 @@ void ZoneRepository::updateTags(int64_t iZoneId, const std::vector<std::string>&
     }
     sArr += "]";
   }
-  txn.exec("UPDATE zones SET tags=" + sArr + " WHERE id=" + txn.quote(iZoneId));
+  txn.exec("UPDATE zones SET tags=" + sArr + " WHERE id=$1", pqxx::params{iZoneId});
   txn.commit();
 }
 
