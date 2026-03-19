@@ -45,6 +45,24 @@ inline constexpr std::string_view kVariablesCreate = "variables.create";
 inline constexpr std::string_view kVariablesEdit   = "variables.edit";
 inline constexpr std::string_view kVariablesDelete = "variables.delete";
 
+// Snippets
+inline constexpr std::string_view kSnippetsView   = "snippets.view";
+inline constexpr std::string_view kSnippetsCreate = "snippets.create";
+inline constexpr std::string_view kSnippetsEdit   = "snippets.edit";
+inline constexpr std::string_view kSnippetsDelete = "snippets.delete";
+
+// SOA Presets
+inline constexpr std::string_view kSoaPresetsView   = "soa_presets.view";
+inline constexpr std::string_view kSoaPresetsCreate = "soa_presets.create";
+inline constexpr std::string_view kSoaPresetsEdit   = "soa_presets.edit";
+inline constexpr std::string_view kSoaPresetsDelete = "soa_presets.delete";
+
+// Zone Templates
+inline constexpr std::string_view kTemplatesView   = "templates.view";
+inline constexpr std::string_view kTemplatesCreate = "templates.create";
+inline constexpr std::string_view kTemplatesEdit   = "templates.edit";
+inline constexpr std::string_view kTemplatesDelete = "templates.delete";
+
 // Git Repos
 inline constexpr std::string_view kReposView       = "repos.view";
 inline constexpr std::string_view kReposCreate     = "repos.create";
@@ -89,6 +107,9 @@ inline constexpr std::array kAllPermissions = {
     kProvidersView, kProvidersCreate, kProvidersEdit, kProvidersDelete,
     kViewsView, kViewsCreate, kViewsEdit, kViewsDelete,
     kVariablesView, kVariablesCreate, kVariablesEdit, kVariablesDelete,
+    kSnippetsView, kSnippetsCreate, kSnippetsEdit, kSnippetsDelete,
+    kSoaPresetsView, kSoaPresetsCreate, kSoaPresetsEdit, kSoaPresetsDelete,
+    kTemplatesView, kTemplatesCreate, kTemplatesEdit, kTemplatesDelete,
     kReposView, kReposCreate, kReposEdit, kReposDelete,
     kAuditView, kAuditExport, kAuditPurge,
     kUsersView, kUsersCreate, kUsersEdit, kUsersDelete,
