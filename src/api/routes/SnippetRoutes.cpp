@@ -5,6 +5,7 @@
 #include "api/routes/SnippetRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "common/Permissions.hpp"
@@ -62,7 +63,7 @@ nlohmann::json snippetToJson(const dns::dal::SnippetRow& s, bool bWithRecords) {
   return j;
 }
 
-static std::vector<dns::dal::SnippetRecordRow> parseRecords(const nlohmann::json& jRecords) {
+std::vector<dns::dal::SnippetRecordRow> parseRecords(const nlohmann::json& jRecords) {
   std::vector<dns::dal::SnippetRecordRow> vRecords;
   for (size_t i = 0; i < jRecords.size(); ++i) {
     const auto& jr = jRecords[i];
@@ -74,7 +75,11 @@ static std::vector<dns::dal::SnippetRecordRow> parseRecords(const nlohmann::json
     r.iTtl = jr.value("ttl", 300);
     r.sValueTemplate = jr.value("value_template", "");
     r.iPriority = jr.value("priority", 0);
-    r.iSortOrder = jr.value("sort_order", (int)i);
+    r.iSortOrder = jr.value("sort_order", static_cast<int>(i));
+    if (r.sName.empty() || r.sType.empty() || r.sValueTemplate.empty()) {
+      throw dns::common::ValidationError("MISSING_FIELDS",
+                                         "record name, type, and value_template are required");
+    }
     vRecords.push_back(r);
   }
   return vRecords;
@@ -116,6 +121,7 @@ void SnippetRoutes::registerRoutes(crow::SimpleApp& app) {
           if (sName.empty()) {
             throw common::ValidationError("MISSING_FIELDS", "name is required");
           }
+          dns::api::RequestValidator::validateStringLength(sName, "name", 255);
 
           int64_t iId = _srRepo.create(sName, sDescription);
 
@@ -164,6 +170,7 @@ void SnippetRoutes::registerRoutes(crow::SimpleApp& app) {
           if (sName.empty()) {
             throw common::ValidationError("MISSING_FIELDS", "name is required");
           }
+          dns::api::RequestValidator::validateStringLength(sName, "name", 255);
 
           _srRepo.update(static_cast<int64_t>(iId), sName, sDescription);
 
@@ -200,6 +207,7 @@ void SnippetRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRecordsCreate);
+          enforceBodyLimit(req);
 
           // Verify zone exists
           auto oZone = _zrRepo.findById(static_cast<int64_t>(iZoneId));
