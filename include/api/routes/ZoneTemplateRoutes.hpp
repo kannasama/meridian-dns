@@ -3,12 +3,13 @@
 // This file is part of Meridian DNS. See LICENSE for details.
 #pragma once
 
+#include "common/Types.hpp"
+
 #include <crow.h>
 
 namespace dns::dal {
 class ZoneTemplateRepository;
 class SnippetRepository;
-class SoaPresetRepository;
 class ZoneRepository;
 class RecordRepository;
 class AuditRepository;
@@ -27,7 +28,6 @@ class ZoneTemplateRoutes {
  public:
   ZoneTemplateRoutes(dns::dal::ZoneTemplateRepository& ztrRepo,
                      dns::dal::SnippetRepository&      snrRepo,
-                     dns::dal::SoaPresetRepository&    sprRepo,
                      dns::dal::ZoneRepository&         zrRepo,
                      dns::dal::RecordRepository&       rrRepo,
                      dns::dal::AuditRepository&        arRepo,
@@ -39,11 +39,12 @@ class ZoneTemplateRoutes {
  private:
   dns::dal::ZoneTemplateRepository& _ztrRepo;
   dns::dal::SnippetRepository&      _snrRepo;
-  dns::dal::SoaPresetRepository&    _sprRepo;
   dns::dal::ZoneRepository&         _zrRepo;
   dns::dal::RecordRepository&       _rrRepo;
   dns::dal::AuditRepository&        _arRepo;
   const dns::api::AuthMiddleware&   _amMiddleware;
+
+  dns::common::PreviewResult runComplianceCheck(int64_t iZoneId);
 };
 
 }  // namespace dns::api::routes

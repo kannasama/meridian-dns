@@ -14,7 +14,6 @@
 #include "dal/AuditRepository.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/SnippetRepository.hpp"
-#include "dal/SoaPresetRepository.hpp"
 #include "dal/ZoneRepository.hpp"
 #include "dal/ZoneTemplateRepository.hpp"
 
@@ -29,12 +28,11 @@ using namespace dns::common;
 
 ZoneTemplateRoutes::ZoneTemplateRoutes(dns::dal::ZoneTemplateRepository& ztrRepo,
                                        dns::dal::SnippetRepository&      snrRepo,
-                                       dns::dal::SoaPresetRepository&    sprRepo,
                                        dns::dal::ZoneRepository&         zrRepo,
                                        dns::dal::RecordRepository&       rrRepo,
                                        dns::dal::AuditRepository&        arRepo,
                                        const dns::api::AuthMiddleware&   amMiddleware)
-    : _ztrRepo(ztrRepo), _snrRepo(snrRepo), _sprRepo(sprRepo),
+    : _ztrRepo(ztrRepo), _snrRepo(snrRepo),
       _zrRepo(zrRepo), _rrRepo(rrRepo), _arRepo(arRepo),
       _amMiddleware(amMiddleware) {}
 
@@ -112,6 +110,28 @@ std::vector<dns::dal::SnippetRecordRow> buildExpectedRecords(
 }
 
 }  // namespace
+
+dns::common::PreviewResult ZoneTemplateRoutes::runComplianceCheck(int64_t iZoneId) {
+  auto oZone = _zrRepo.findById(iZoneId);
+  if (!oZone.has_value()) {
+    throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
+  }
+
+  if (!oZone->oTemplateId.has_value()) {
+    throw common::ValidationError("ZONE_NOT_LINKED", "Zone has no template linked");
+  }
+
+  auto oTemplate = _ztrRepo.findById(*oZone->oTemplateId);
+  if (!oTemplate.has_value()) {
+    throw common::NotFoundError("TEMPLATE_NOT_FOUND", "Template not found");
+  }
+
+  auto vExpected = buildExpectedRecords(_snrRepo, oTemplate->vSnippetIds);
+  auto vCurrent  = _rrRepo.listByZoneId(iZoneId);
+
+  return dns::core::TemplateEngine::computeComplianceDiff(
+      iZoneId, oZone->sName, vExpected, vCurrent);
+}
 
 void ZoneTemplateRoutes::registerRoutes(crow::SimpleApp& app) {
 
@@ -265,17 +285,17 @@ void ZoneTemplateRoutes::registerRoutes(crow::SimpleApp& app) {
             throw common::NotFoundError("TEMPLATE_NOT_FOUND", "Template not found");
           }
 
+          auto oZone = _zrRepo.findById(static_cast<int64_t>(iZoneId));
+          if (!oZone.has_value()) {
+            throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
+          }
+
           auto vExpected = buildExpectedRecords(_snrRepo, oTemplate->vSnippetIds);
 
           if (bLink) {
             _zrRepo.setTemplateLink(static_cast<int64_t>(iZoneId), iTemplateId);
 
             auto vCurrent = _rrRepo.listByZoneId(static_cast<int64_t>(iZoneId));
-
-            auto oZone = _zrRepo.findById(static_cast<int64_t>(iZoneId));
-            if (!oZone.has_value()) {
-              throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
-            }
 
             auto prResult = dns::core::TemplateEngine::computeComplianceDiff(
                 static_cast<int64_t>(iZoneId), oZone->sName, vExpected, vCurrent);
@@ -308,26 +328,7 @@ void ZoneTemplateRoutes::registerRoutes(crow::SimpleApp& app) {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kZonesView);
 
-          auto oZone = _zrRepo.findById(static_cast<int64_t>(iZoneId));
-          if (!oZone.has_value()) {
-            throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
-          }
-
-          if (!oZone->oTemplateId.has_value()) {
-            throw common::ValidationError("ZONE_NOT_LINKED", "Zone has no template linked");
-          }
-
-          auto oTemplate = _ztrRepo.findById(*oZone->oTemplateId);
-          if (!oTemplate.has_value()) {
-            throw common::NotFoundError("TEMPLATE_NOT_FOUND", "Template not found");
-          }
-
-          auto vExpected = buildExpectedRecords(_snrRepo, oTemplate->vSnippetIds);
-          auto vCurrent  = _rrRepo.listByZoneId(static_cast<int64_t>(iZoneId));
-
-          auto prResult = dns::core::TemplateEngine::computeComplianceDiff(
-              static_cast<int64_t>(iZoneId), oZone->sName, vExpected, vCurrent);
-
+          auto prResult = runComplianceCheck(static_cast<int64_t>(iZoneId));
           return jsonResponse(200, previewResultToJson(prResult));
         } catch (const common::AppError& e) {
           return errorResponse(e);
@@ -342,41 +343,28 @@ void ZoneTemplateRoutes::registerRoutes(crow::SimpleApp& app) {
           requirePermission(rcCtx, Permissions::kRecordsCreate);
           enforceBodyLimit(req);
 
-          // Re-run compliance check
-          auto oZone = _zrRepo.findById(static_cast<int64_t>(iZoneId));
-          if (!oZone.has_value()) {
-            throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
-          }
-
-          if (!oZone->oTemplateId.has_value()) {
-            throw common::ValidationError("ZONE_NOT_LINKED", "Zone has no template linked");
-          }
-
-          auto oTemplate = _ztrRepo.findById(*oZone->oTemplateId);
-          if (!oTemplate.has_value()) {
-            throw common::NotFoundError("TEMPLATE_NOT_FOUND", "Template not found");
-          }
-
-          auto vExpected = buildExpectedRecords(_snrRepo, oTemplate->vSnippetIds);
-          auto vCurrent  = _rrRepo.listByZoneId(static_cast<int64_t>(iZoneId));
-
-          auto prResult = dns::core::TemplateEngine::computeComplianceDiff(
-              static_cast<int64_t>(iZoneId), oZone->sName, vExpected, vCurrent);
+          // Parse body before DB calls
+          auto jBody = nlohmann::json::parse(req.body);
 
           // Build set of requested (name, type) pairs
-          auto jBody = nlohmann::json::parse(req.body);
-          std::set<std::string> setRequested;
+          std::set<std::string> requestedKeys;
           if (jBody.contains("records") && jBody["records"].is_array()) {
             for (const auto& jr : jBody["records"]) {
               std::string sKey = jr.value("name", "") + '\0' + jr.value("type", "");
-              setRequested.insert(sKey);
+              requestedKeys.insert(sKey);
             }
           }
+
+          // Re-run compliance check
+          auto prResult = runComplianceCheck(static_cast<int64_t>(iZoneId));
+
+          // Need current records for update path
+          auto vCurrent = _rrRepo.listByZoneId(static_cast<int64_t>(iZoneId));
 
           int iApplied = 0;
           for (const auto& diff : prResult.vDiffs) {
             std::string sKey = diff.sName + '\0' + diff.sType;
-            if (setRequested.find(sKey) == setRequested.end()) {
+            if (requestedKeys.find(sKey) == requestedKeys.end()) {
               continue;
             }
 
