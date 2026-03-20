@@ -41,6 +41,8 @@ async function fetchSnippets() {
   loading.value = true
   try {
     snippets.value = await snippetApi.listSnippets()
+  } catch (e: unknown) {
+    notify.error(e instanceof Error ? e.message : 'Failed to load snippets')
   } finally {
     loading.value = false
   }
@@ -54,9 +56,13 @@ function openCreate() {
 
 async function openEdit(snippet: Snippet) {
   editingId.value = snippet.id
-  const full = await snippetApi.getSnippet(snippet.id)
-  form.value = { name: full.name, description: full.description, records: [...full.records] }
-  drawerVisible.value = true
+  try {
+    const full = await snippetApi.getSnippet(snippet.id)
+    form.value = { name: full.name, description: full.description, records: [...full.records] }
+    drawerVisible.value = true
+  } catch (e: unknown) {
+    notify.error(e instanceof Error ? e.message : 'Failed to load snippet')
+  }
 }
 
 function addRecord() {
