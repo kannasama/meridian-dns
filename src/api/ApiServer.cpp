@@ -14,6 +14,9 @@
 #include "api/routes/VariableRoutes.hpp"
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
+#include "api/routes/SnippetRoutes.hpp"
+#include "api/routes/SoaPresetRoutes.hpp"
+#include "api/routes/ZoneTemplateRoutes.hpp"
 
 namespace dns::api {
 
@@ -27,7 +30,10 @@ ApiServer::ApiServer(crow::SimpleApp& app,
                      routes::ViewRoutes& vrRoutes,
                      routes::ZoneRoutes& zrRoutes,
                      routes::RecordRoutes& rrRoutes,
-                     routes::VariableRoutes& varRoutes)
+                     routes::VariableRoutes& varRoutes,
+                     routes::SnippetRoutes&      snrRoutes,
+                     routes::SoaPresetRoutes&    sprRoutes,
+                     routes::ZoneTemplateRoutes& ztrRoutes)
     : _app(app),
       _arRoutes(arRoutes),
       _audrRoutes(audrRoutes),
@@ -38,7 +44,10 @@ ApiServer::ApiServer(crow::SimpleApp& app,
       _vrRoutes(vrRoutes),
       _zrRoutes(zrRoutes),
       _rrRoutes(rrRoutes),
-      _varRoutes(varRoutes) {}
+      _varRoutes(varRoutes),
+      _snrRoutes(snrRoutes),
+      _sprRoutes(sprRoutes),
+      _ztrRoutes(ztrRoutes) {}
 
 ApiServer::~ApiServer() = default;
 
@@ -53,6 +62,9 @@ void ApiServer::registerRoutes() {
   _zrRoutes.registerRoutes(_app);
   _rrRoutes.registerRoutes(_app);
   _varRoutes.registerRoutes(_app);
+  _snrRoutes.registerRoutes(_app);
+  _sprRoutes.registerRoutes(_app);
+  _ztrRoutes.registerRoutes(_app);
 }
 
 void ApiServer::start(int iPort, int iThreads) {

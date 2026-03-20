@@ -39,6 +39,9 @@
 #include "common/Logger.hpp"
 #include "api/routes/AuditRoutes.hpp"
 #include "api/routes/DeploymentRoutes.hpp"
+#include "api/routes/SnippetRoutes.hpp"
+#include "api/routes/SoaPresetRoutes.hpp"
+#include "api/routes/ZoneTemplateRoutes.hpp"
 #include "core/BackupService.hpp"
 #include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
@@ -65,6 +68,9 @@
 #include "dal/VariableRepository.hpp"
 #include "dal/ViewRepository.hpp"
 #include "dal/ZoneRepository.hpp"
+#include "dal/SnippetRepository.hpp"
+#include "dal/SoaPresetRepository.hpp"
+#include "dal/ZoneTemplateRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
 #include "security/FederatedAuthService.hpp"
@@ -293,6 +299,9 @@ int main(int argc, char* argv[]) {
     auto varRepo = std::make_unique<dns::dal::VariableRepository>(*cpPool);
     auto drRepo = std::make_unique<dns::dal::DeploymentRepository>(*cpPool);
     auto arRepo = std::make_unique<dns::dal::AuditRepository>(*cpPool);
+    auto snrRepo = std::make_unique<dns::dal::SnippetRepository>(*cpPool);
+    auto sprRepo = std::make_unique<dns::dal::SoaPresetRepository>(*cpPool);
+    auto ztrRepo = std::make_unique<dns::dal::ZoneTemplateRepository>(*cpPool);
     auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
     auto roleRepo = std::make_unique<dns::dal::RoleRepository>(*cpPool);
     auto settingsRepo = std::make_unique<dns::dal::SettingsRepository>(*cpPool);
@@ -511,12 +520,18 @@ int main(int argc, char* argv[]) {
         *idpRepo, *srRepo, *samlService, *fedAuthService);
     auto backupRoutes = std::make_unique<dns::api::routes::BackupRoutes>(
         *backupService, *settingsRepo, *amMiddleware, upGitRepoManager.get());
+    auto snippetRoutes = std::make_unique<dns::api::routes::SnippetRoutes>(
+        *snrRepo, *zrRepo, *rrRepo, *arRepo, *amMiddleware);
+    auto soaPresetRoutes = std::make_unique<dns::api::routes::SoaPresetRoutes>(
+        *sprRepo, *amMiddleware);
+    auto zoneTemplateRoutes = std::make_unique<dns::api::routes::ZoneTemplateRoutes>(
+        *ztrRepo, *snrRepo, *zrRepo, *rrRepo, *arRepo, *amMiddleware);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
         crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
         *providerRoutes, *setupRoutes, *viewRoutes, *zoneRoutes, *recordRoutes,
-        *variableRoutes);
+        *variableRoutes, *snippetRoutes, *soaPresetRoutes, *zoneTemplateRoutes);
 
     apiServer->registerRoutes();
     userRoutes->registerRoutes(crowApp);
