@@ -46,7 +46,7 @@ class RecordRepository {
                  const nlohmann::json& jProviderMeta = nullptr);
 
   /// List records for a zone.
-  std::vector<RecordRow> listByZoneId(int64_t iZoneId);
+  virtual std::vector<RecordRow> listByZoneId(int64_t iZoneId);
 
   /// Find a record by ID. Returns nullopt if not found.
   std::optional<RecordRow> findById(int64_t iId);
