@@ -98,6 +98,8 @@ export interface Variable {
   type: string
   scope: string
   zone_id: number | null
+  variable_kind: 'static' | 'dynamic'
+  dynamic_format: string | null
   created_at: number
   updated_at: number
 }
@@ -108,6 +110,13 @@ export interface VariableCreate {
   type: string
   scope?: string
   zone_id?: number | null
+  variable_kind?: 'static' | 'dynamic'
+  dynamic_format?: string | null
+}
+
+export interface VariableUpdate {
+  value?: string
+  dynamic_format?: string | null
 }
 
 export interface RecordDiff {
