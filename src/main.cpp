@@ -70,6 +70,7 @@
 #include "dal/ZoneRepository.hpp"
 #include "dal/SnippetRepository.hpp"
 #include "dal/SoaPresetRepository.hpp"
+#include "dal/SystemConfigRepository.hpp"
 #include "dal/ZoneTemplateRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
@@ -301,6 +302,7 @@ int main(int argc, char* argv[]) {
     auto arRepo = std::make_unique<dns::dal::AuditRepository>(*cpPool);
     auto snrRepo = std::make_unique<dns::dal::SnippetRepository>(*cpPool);
     auto sprRepo = std::make_unique<dns::dal::SoaPresetRepository>(*cpPool);
+    auto scrRepo = std::make_unique<dns::dal::SystemConfigRepository>(*cpPool);
     auto ztrRepo = std::make_unique<dns::dal::ZoneTemplateRepository>(*cpPool);
     auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
     auto roleRepo = std::make_unique<dns::dal::RoleRepository>(*cpPool);
@@ -395,7 +397,7 @@ int main(int argc, char* argv[]) {
 
     auto depEngine = std::make_unique<dns::core::DeploymentEngine>(
         *deEngine, *veEngine, *zrRepo, *vrRepo, *rrRepo, *prRepo,
-        *drRepo, *arRepo, upGitRepoManager.get(), cfgApp.iDeploymentRetentionCount);
+        *drRepo, *arRepo, *scrRepo, upGitRepoManager.get(), cfgApp.iDeploymentRetentionCount);
     auto reEngine = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
     spLog->info("Step 9: Core engines initialized "
                 "(VariableEngine, DiffEngine, DeploymentEngine, RollbackEngine)");

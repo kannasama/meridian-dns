@@ -12,12 +12,14 @@
 #include <nlohmann/json.hpp>
 
 #include "common/Types.hpp"
+#include "core/VariableEngine.hpp"
 
 namespace dns::dal {
 class AuditRepository;
 class DeploymentRepository;
 class ProviderRepository;
 class RecordRepository;
+class SystemConfigRepository;
 class ViewRepository;
 class ZoneRepository;
 }  // namespace dns::dal
@@ -43,6 +45,7 @@ class DeploymentEngine {
                    dns::dal::ProviderRepository& prRepo,
                    dns::dal::DeploymentRepository& drRepo,
                    dns::dal::AuditRepository& arRepo,
+                   dns::dal::SystemConfigRepository& scrRepo,
                    dns::gitops::GitRepoManager* pGitRepoManager,
                    int iRetentionCount);
   ~DeploymentEngine();
@@ -62,7 +65,8 @@ class DeploymentEngine {
 
  private:
   /// Build the deployment snapshot JSON from current records.
-  nlohmann::json buildSnapshot(int64_t iZoneId, const std::string& sIdentity) const;
+  nlohmann::json buildSnapshot(int64_t iZoneId, const std::string& sIdentity,
+                               const SysContext& sysCtx) const;
 
   /// Build a capture snapshot from live provider records (no diff/push).
   nlohmann::json buildCaptureSnapshot(int64_t iZoneId,
@@ -81,6 +85,7 @@ class DeploymentEngine {
   dns::dal::ProviderRepository& _prRepo;
   dns::dal::DeploymentRepository& _drRepo;
   dns::dal::AuditRepository& _arRepo;
+  dns::dal::SystemConfigRepository& _scrRepo;
   dns::gitops::GitRepoManager* _pGitRepoManager;
   int _iRetentionCount;
 

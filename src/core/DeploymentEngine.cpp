@@ -21,6 +21,7 @@
 #include "dal/DeploymentRepository.hpp"
 #include "dal/ProviderRepository.hpp"
 #include "dal/RecordRepository.hpp"
+#include "dal/SystemConfigRepository.hpp"
 #include "dal/ViewRepository.hpp"
 #include "dal/ZoneRepository.hpp"
 #include "gitops/GitRepoManager.hpp"
@@ -36,6 +37,7 @@ DeploymentEngine::DeploymentEngine(DiffEngine& deEngine,
                                    dns::dal::ProviderRepository& prRepo,
                                    dns::dal::DeploymentRepository& drRepo,
                                    dns::dal::AuditRepository& arRepo,
+                                   dns::dal::SystemConfigRepository& scrRepo,
                                    dns::gitops::GitRepoManager* pGitRepoManager,
                                    int iRetentionCount)
     : _deEngine(deEngine),
@@ -46,6 +48,7 @@ DeploymentEngine::DeploymentEngine(DiffEngine& deEngine,
       _prRepo(prRepo),
       _drRepo(drRepo),
       _arRepo(arRepo),
+      _scrRepo(scrRepo),
       _pGitRepoManager(pGitRepoManager),
       _iRetentionCount(iRetentionCount) {}
 
@@ -62,7 +65,8 @@ std::mutex& DeploymentEngine::zoneMutex(int64_t iZoneId) {
 }
 
 nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
-                                               const std::string& sIdentity) const {
+                                               const std::string& sIdentity,
+                                               const SysContext& sysCtx) const {
   auto oZone = _zrRepo.findById(iZoneId);
   std::string sZoneName = oZone ? oZone->sName : "unknown";
 
@@ -75,7 +79,7 @@ nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
   for (const auto& rec : vRecords) {
     std::string sExpanded;
     try {
-      sExpanded = _veEngine.expand(rec.sValueTemplate, iZoneId);
+      sExpanded = _veEngine.expand(rec.sValueTemplate, iZoneId, sysCtx);
     } catch (...) {
       sExpanded = rec.sValueTemplate;
     }
@@ -191,6 +195,10 @@ void DeploymentEngine::push(int64_t iZoneId,
   // 3. Get zone and view with providers
   auto oZone = _zrRepo.findById(iZoneId);
 
+  // 3a. Allocate SOA serial for this push (only after validation passes, before push)
+  std::string sSerial = _scrRepo.getAndIncrementSerial();
+  SysContext pushCtx{prResult.sZoneName, sSerial};
+
   // 4. Execute per-provider diffs
   for (const auto& ppr : prResult.vProviderPreviews) {
     auto oProvider = _prRepo.findById(ppr.iProviderId);
@@ -292,7 +300,7 @@ void DeploymentEngine::push(int64_t iZoneId,
                  acCtx.sAuthMethod, acCtx.sIpAddress);
 
   // 6. Create deployment snapshot
-  auto jSnapshot = buildSnapshot(iZoneId, acCtx.sIdentity);
+  auto jSnapshot = buildSnapshot(iZoneId, acCtx.sIdentity, pushCtx);
   _drRepo.create(iZoneId, iActorUserId, jSnapshot);
 
   // 7. Prune old snapshots
