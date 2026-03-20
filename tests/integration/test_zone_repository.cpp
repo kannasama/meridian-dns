@@ -179,3 +179,75 @@ TEST_F(ZoneRepositoryTest, CreateWithoutGitRepoHasNullFields) {
   EXPECT_FALSE(oZone->oGitRepoId.has_value());
   EXPECT_FALSE(oZone->oGitBranch.has_value());
 }
+
+// ── CloneZone tests ──────────────────────────────────────────────────────────
+
+#include "dal/RecordRepository.hpp"
+
+class CloneZoneTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const char* pUrl = std::getenv("DNS_DB_URL");
+    _sDbUrl = pUrl ? std::string(pUrl) : std::string{};
+    if (_sDbUrl.empty()) {
+      GTEST_SKIP() << "DNS_DB_URL not set — skipping integration test";
+    }
+    dns::common::Logger::init("warn");
+    _cpPool  = std::make_unique<dns::dal::ConnectionPool>(_sDbUrl, 2);
+    _vrRepo  = std::make_unique<dns::dal::ViewRepository>(*_cpPool);
+    _zrRepo  = std::make_unique<dns::dal::ZoneRepository>(*_cpPool);
+    _rrRepo  = std::make_unique<dns::dal::RecordRepository>(*_cpPool);
+
+    auto cg = _cpPool->checkout();
+    pqxx::work txn(*cg);
+    txn.exec("DELETE FROM records");
+    txn.exec("DELETE FROM variables");
+    txn.exec("DELETE FROM deployments");
+    txn.exec("DELETE FROM zones");
+    txn.exec("DELETE FROM view_providers");
+    txn.exec("DELETE FROM views");
+    txn.commit();
+
+    _iViewId = _vrRepo->create("clone-view", "For clone tests");
+  }
+
+  std::string _sDbUrl;
+  std::unique_ptr<dns::dal::ConnectionPool> _cpPool;
+  std::unique_ptr<dns::dal::ViewRepository> _vrRepo;
+  std::unique_ptr<dns::dal::ZoneRepository> _zrRepo;
+  std::unique_ptr<dns::dal::RecordRepository> _rrRepo;
+  int64_t _iViewId = 0;
+};
+
+TEST_F(CloneZoneTest, CloneZone_ReturnsNewZoneId) {
+  int64_t iSrcId  = _zrRepo->create("source.com", _iViewId, std::nullopt);
+  int64_t iCloneId = _zrRepo->cloneZone(iSrcId, "clone.com", _iViewId);
+  EXPECT_GT(iCloneId, 0);
+  EXPECT_NE(iCloneId, iSrcId);
+}
+
+TEST_F(CloneZoneTest, CloneZone_CopiesRecords) {
+  int64_t iSrcId = _zrRepo->create("source.com", _iViewId, std::nullopt);
+  _rrRepo->create(iSrcId, "www", "A", 300, "1.2.3.4", 0);
+  _rrRepo->create(iSrcId, "mail", "MX", 300, "mail.source.com.", 10);
+
+  int64_t iCloneId = _zrRepo->cloneZone(iSrcId, "clone.com", _iViewId);
+  auto vRecords = _rrRepo->listByZoneId(iCloneId);
+  EXPECT_EQ(vRecords.size(), 2u);
+}
+
+TEST_F(CloneZoneTest, CloneZone_SetsNullTemplateAndSoaPreset) {
+  int64_t iSrcId  = _zrRepo->create("source.com", _iViewId, std::nullopt);
+  int64_t iCloneId = _zrRepo->cloneZone(iSrcId, "clone.com", _iViewId);
+
+  auto oZone = _zrRepo->findById(iCloneId);
+  ASSERT_TRUE(oZone.has_value());
+  EXPECT_FALSE(oZone->oTemplateId.has_value());
+  EXPECT_FALSE(oZone->oSoaPresetId.has_value());
+  EXPECT_TRUE(oZone->vTags.empty());
+}
+
+TEST_F(CloneZoneTest, CloneZone_ThrowsOnMissingSource) {
+  EXPECT_THROW(_zrRepo->cloneZone(999999999, "clone.com", _iViewId),
+               dns::common::NotFoundError);
+}

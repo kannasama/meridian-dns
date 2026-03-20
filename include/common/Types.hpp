@@ -74,6 +74,28 @@ struct PreviewResult {
   std::vector<ProviderPreviewResult> vProviderPreviews;  // Per-provider breakdown
 };
 
+/// Result of a global record search query.
+/// Class abbreviation: sr
+struct SearchResult {
+  int64_t iId = 0;
+  int64_t iZoneId = 0;
+  std::string sZoneName;
+  std::string sViewName;
+  std::string sName;
+  std::string sType;
+  int iTtl = 300;
+  std::string sValueTemplate;
+  int iPriority = 0;
+};
+
+/// Validation warning attached to a record create/update response.
+/// Class abbreviation: vw
+struct ValidationWarning {
+  std::string sCode;      // e.g. "CNAME_COEXISTENCE", "MISSING_TRAILING_DOT"
+  std::string sSeverity;  // "error" (blocking) or "warning" (non-blocking)
+  std::string sMessage;
+};
+
 /// User decision for a drift record during deployment.
 /// Class abbreviation: da
 struct DriftAction {

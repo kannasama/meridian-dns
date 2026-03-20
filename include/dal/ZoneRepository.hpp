@@ -76,6 +76,11 @@ class ZoneRepository {
   /// Replace the zone's tags.
   void updateTags(int64_t iZoneId, const std::vector<std::string>& vTags);
 
+  /// Clone a zone: copies metadata and all non-pending-delete records into a new zone.
+  /// The new zone gets template_id=NULL, soa_preset_id=NULL, tags={}.
+  /// Returns the new zone's ID. Throws NotFoundError if source zone not found.
+  int64_t cloneZone(int64_t iSourceId, const std::string& sName, int64_t iViewId);
+
   /// Delete a zone. Cascades to records, variables, deployments.
   void deleteById(int64_t iId);
 

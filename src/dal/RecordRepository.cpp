@@ -293,4 +293,85 @@ void RecordRepository::batchSoftDelete(int64_t iZoneId,
   txn.commit();
 }
 
+
+std::vector<dns::common::SearchResult> RecordRepository::search(
+    const std::string& sQuery,
+    const std::optional<std::string>& osType,
+    const std::optional<int64_t>& oiZoneId,
+    const std::optional<int64_t>& oiViewId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  std::string sLike = "%" + sQuery + "%";
+
+  std::string sSql =
+      "SELECT r.id, r.zone_id, z.name AS zone_name, v.name AS view_name, "
+      "  r.name, r.type, r.ttl, r.value_template, r.priority "
+      "FROM records r "
+      "JOIN zones z ON r.zone_id = z.id "
+      "JOIN views v ON z.view_id = v.id "
+      "WHERE NOT r.pending_delete "
+      "  AND (r.name ILIKE $1 OR r.value_template ILIKE $1 OR z.name ILIKE $1) ";
+
+  pqxx::params params;
+  params.append(sLike);
+  int iParam = 2;
+
+  if (osType.has_value()) {
+    sSql += " AND r.type = $" + std::to_string(iParam++) + " ";
+    params.append(osType.value());
+  }
+  if (oiZoneId.has_value()) {
+    sSql += " AND r.zone_id = $" + std::to_string(iParam++) + " ";
+    params.append(oiZoneId.value());
+  }
+  if (oiViewId.has_value()) {
+    sSql += " AND z.view_id = $" + std::to_string(iParam++) + " ";
+    params.append(oiViewId.value());
+  }
+
+  sSql += " ORDER BY z.name, r.name, r.type LIMIT 200";
+
+  auto result = txn.exec(sSql, params);
+  txn.commit();
+
+  std::vector<dns::common::SearchResult> vResults;
+  vResults.reserve(result.size());
+  for (const auto& row : result) {
+    dns::common::SearchResult sr;
+    sr.iId            = row[0].as<int64_t>();
+    sr.iZoneId        = row[1].as<int64_t>();
+    sr.sZoneName      = row[2].as<std::string>();
+    sr.sViewName      = row[3].as<std::string>();
+    sr.sName          = row[4].as<std::string>();
+    sr.sType          = row[5].as<std::string>();
+    sr.iTtl           = row[6].as<int>();
+    sr.sValueTemplate = row[7].as<std::string>();
+    sr.iPriority      = row[8].as<int>();
+    vResults.push_back(std::move(sr));
+  }
+  return vResults;
+}
+
+int RecordRepository::bulkUpdateTtl(int64_t iZoneId, int iTtl,
+                                     const std::optional<std::string>& osFilterType) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  std::string sSql =
+      "UPDATE records SET ttl = $2, updated_at = NOW() "
+      "WHERE zone_id = $1 AND NOT pending_delete";
+  pqxx::params params;
+  params.append(iZoneId);
+  params.append(iTtl);
+
+  if (osFilterType.has_value()) {
+    sSql += " AND type = $3";
+    params.append(osFilterType.value());
+  }
+
+  auto result = txn.exec(sSql, params);
+  txn.commit();
+  return static_cast<int>(result.affected_rows());
+}
 }  // namespace dns::dal

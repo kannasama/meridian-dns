@@ -11,6 +11,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "common/Types.hpp"
+
 namespace dns::dal {
 
 class ConnectionPool;
@@ -93,6 +95,20 @@ class RecordRepository {
   int64_t upsertById(int64_t iId, int64_t iZoneId, const std::string& sName,
                      const std::string& sType, int iTtl,
                      const std::string& sValueTemplate, int iPriority);
+
+  /// Search records across all zones. Returns up to 200 results.
+  /// Matches against record name, value_template, and parent zone name (case-insensitive).
+  std::vector<dns::common::SearchResult> search(
+      const std::string& sQuery,
+      const std::optional<std::string>& osType,
+      const std::optional<int64_t>& oiZoneId,
+      const std::optional<int64_t>& oiViewId);
+
+  /// Update TTL on all non-pending-delete records in a zone.
+  /// If osFilterType is set, only records of that type are updated.
+  /// Returns the number of rows affected.
+  int bulkUpdateTtl(int64_t iZoneId, int iTtl,
+                    const std::optional<std::string>& osFilterType);
 
  private:
   ConnectionPool& _cpPool;

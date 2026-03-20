@@ -236,4 +236,53 @@ void ZoneRepository::updateTags(int64_t iZoneId, const std::vector<std::string>&
   txn.commit();
 }
 
+int64_t ZoneRepository::cloneZone(int64_t iSourceId, const std::string& sName,
+                                   int64_t iViewId) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  // Fetch source zone
+  auto src = txn.exec(
+      "SELECT manage_soa, manage_ns, deployment_retention "
+      "FROM zones WHERE id = $1",
+      pqxx::params{iSourceId});
+  if (src.empty()) {
+    throw common::NotFoundError("ZONE_NOT_FOUND",
+                                "Zone with id " + std::to_string(iSourceId) + " not found");
+  }
+  bool bManageSoa = src[0][0].as<bool>();
+  bool bManageNs  = src[0][1].as<bool>();
+  std::optional<int> oRetention;
+  if (!src[0][2].is_null()) oRetention = src[0][2].as<int>();
+
+  // Insert new zone
+  pqxx::result newZone;
+  if (oRetention.has_value()) {
+    newZone = txn.exec(
+        "INSERT INTO zones (name, view_id, manage_soa, manage_ns, deployment_retention, "
+        "  template_id, soa_preset_id, tags, template_check_pending, sync_status) "
+        "VALUES ($1, $2, $3, $4, $5, NULL, NULL, '{}', false, 'unknown') RETURNING id",
+        pqxx::params{sName, iViewId, bManageSoa, bManageNs, *oRetention});
+  } else {
+    newZone = txn.exec(
+        "INSERT INTO zones (name, view_id, manage_soa, manage_ns, "
+        "  template_id, soa_preset_id, tags, template_check_pending, sync_status) "
+        "VALUES ($1, $2, $3, $4, NULL, NULL, '{}', false, 'unknown') RETURNING id",
+        pqxx::params{sName, iViewId, bManageSoa, bManageNs});
+  }
+  int64_t iNewId = newZone.one_row()[0].as<int64_t>();
+
+  // Copy all non-pending-delete records
+  txn.exec(
+      "INSERT INTO records "
+      "  (zone_id, name, type, ttl, value_template, priority, provider_meta, "
+      "   created_at, updated_at) "
+      "SELECT $1, name, type, ttl, value_template, priority, provider_meta, NOW(), NOW() "
+      "FROM records WHERE zone_id = $2 AND NOT pending_delete",
+      pqxx::params{iNewId, iSourceId});
+
+  txn.commit();
+  return iNewId;
+}
+
 }  // namespace dns::dal
