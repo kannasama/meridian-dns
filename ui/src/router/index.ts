@@ -79,6 +79,21 @@ const router = createRouter({
           component: () => import('../views/GitReposView.vue'),
         },
         {
+          path: 'snippets',
+          name: 'snippets',
+          component: () => import('../views/SnippetsView.vue'),
+        },
+        {
+          path: 'soa-presets',
+          name: 'soa-presets',
+          component: () => import('../views/SoaPresetsView.vue'),
+        },
+        {
+          path: 'templates',
+          name: 'templates',
+          component: () => import('../views/TemplatesView.vue'),
+        },
+        {
           path: 'deployments',
           name: 'deployments',
           component: () => import('../views/DeploymentsView.vue'),

@@ -105,14 +105,18 @@ function removeSnippet(idx: number) {
 function moveSnippetUp(idx: number) {
   if (idx === 0) return
   const arr = [...selectedSnippets.value]
-  ;[arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]]
+  const tmp = arr[idx - 1]!
+  arr[idx - 1] = arr[idx]!
+  arr[idx] = tmp
   selectedSnippets.value = arr
 }
 
 function moveSnippetDown(idx: number) {
   if (idx === selectedSnippets.value.length - 1) return
   const arr = [...selectedSnippets.value]
-  ;[arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]]
+  const tmp = arr[idx]!
+  arr[idx] = arr[idx + 1]!
+  arr[idx + 1] = tmp
   selectedSnippets.value = arr
 }
 

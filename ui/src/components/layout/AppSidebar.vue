@@ -17,6 +17,9 @@ const mainNavItems = [
   { label: 'Zones', icon: 'pi pi-globe', to: '/zones' },
   { label: 'Variables', icon: 'pi pi-code', to: '/variables' },
   { label: 'Git Repos', icon: 'pi pi-github', to: '/git-repos' },
+  { label: 'Snippets', icon: 'pi pi-copy', to: '/snippets' },
+  { label: 'SOA Presets', icon: 'pi pi-server', to: '/soa-presets' },
+  { label: 'Templates', icon: 'pi pi-sitemap', to: '/templates' },
   { label: 'Deployments', icon: 'pi pi-upload', to: '/deployments' },
   { label: 'Audit Log', icon: 'pi pi-history', to: '/audit' },
 ]

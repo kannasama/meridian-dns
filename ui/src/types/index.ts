@@ -48,6 +48,7 @@ export interface Zone {
   deployment_retention: number | null
   manage_soa: boolean
   manage_ns: boolean
+  soa_preset_id: number | null
   sync_status?: string
   sync_checked_at?: string
   git_repo_id: number | null
@@ -61,6 +62,7 @@ export interface ZoneCreate {
   deployment_retention?: number | null
   manage_soa?: boolean
   manage_ns?: boolean
+  soa_preset_id?: number | null
   git_repo_id?: number | null
   git_branch?: string | null
 }

@@ -22,7 +22,9 @@ import { useRole } from '../composables/useRole'
 import * as zoneApi from '../api/zones'
 import * as viewApi from '../api/views'
 import * as gitRepoApi from '../api/gitRepos'
+import * as soaPresetApi from '../api/soaPresets'
 import type { Zone, ZoneCreate, View, GitRepo } from '../types'
+import type { SoaPreset } from '../api/soaPresets'
 
 const router = useRouter()
 const { isAdmin } = useRole()
@@ -34,6 +36,7 @@ type ZoneUpdateData = {
   deployment_retention?: number | null
   manage_soa?: boolean
   manage_ns?: boolean
+  soa_preset_id?: number | null
   git_repo_id?: number | null
   git_branch?: string | null
 }
@@ -54,6 +57,7 @@ const { items: zones, loading, fetch: fetchZones, create, update, remove } = use
 
 const allViews = ref<View[]>([])
 const allGitRepos = ref<GitRepo[]>([])
+const soaPresets = ref<SoaPreset[]>([])
 const drawerVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({
@@ -62,13 +66,14 @@ const form = ref({
   deployment_retention: null as number | null,
   manage_soa: false,
   manage_ns: false,
+  soa_preset_id: null as number | null,
   git_repo_id: null as number | null,
   git_branch: '' as string,
 })
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', view_id: null, deployment_retention: null, manage_soa: false, manage_ns: false, git_repo_id: null, git_branch: '' }
+  form.value = { name: '', view_id: null, deployment_retention: null, manage_soa: false, manage_ns: false, soa_preset_id: null, git_repo_id: null, git_branch: '' }
   drawerVisible.value = true
 }
 
@@ -80,6 +85,7 @@ function openEdit(zone: Zone) {
     deployment_retention: zone.deployment_retention,
     manage_soa: zone.manage_soa,
     manage_ns: zone.manage_ns,
+    soa_preset_id: zone.soa_preset_id ?? null,
     git_repo_id: zone.git_repo_id,
     git_branch: zone.git_branch || '',
   }
@@ -96,6 +102,7 @@ async function handleSubmit() {
       deployment_retention: form.value.deployment_retention,
       manage_soa: form.value.manage_soa,
       manage_ns: form.value.manage_ns,
+      soa_preset_id: form.value.soa_preset_id,
       git_repo_id: form.value.git_repo_id,
       git_branch: gitBranch,
     })
@@ -106,6 +113,7 @@ async function handleSubmit() {
       deployment_retention: form.value.deployment_retention,
       manage_soa: form.value.manage_soa,
       manage_ns: form.value.manage_ns,
+      soa_preset_id: form.value.soa_preset_id,
       git_repo_id: form.value.git_repo_id,
       git_branch: gitBranch,
     })
@@ -130,6 +138,7 @@ onMounted(async () => {
     fetchZones(),
     viewApi.listViews().then((v) => (allViews.value = v)),
     gitRepoApi.listGitRepos().then((r) => (allGitRepos.value = r)),
+    soaPresetApi.listSoaPresets().then((r) => { soaPresets.value = r }).catch(() => {}),
   ])
 })
 </script>
@@ -243,6 +252,16 @@ onMounted(async () => {
           <div class="toggle-row">
             <ToggleSwitch id="zone-manage-soa" v-model="form.manage_soa" />
             <label for="zone-manage-soa" class="toggle-label" v-tooltip.right="'When enabled, SOA records are included in diff previews and deployments. Usually leave off — most providers manage SOA automatically.'">Manage SOA records</label>
+          </div>
+          <div v-if="form.manage_soa" class="field">
+            <label>SOA Preset</label>
+            <Select v-model="form.soa_preset_id"
+                    :options="soaPresets"
+                    optionLabel="name"
+                    optionValue="id"
+                    placeholder="None (use defaults)"
+                    :showClear="true"
+                    class="w-full" />
           </div>
           <div class="toggle-row">
             <ToggleSwitch id="zone-manage-ns" v-model="form.manage_ns" />
