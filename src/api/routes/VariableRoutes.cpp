@@ -43,6 +43,12 @@ nlohmann::json variableRowToJson(const dns::dal::VariableRow& row) {
   } else {
     j["zone_id"] = nullptr;
   }
+  j["variable_kind"] = row.sVariableKind;
+  if (row.osDynamicFormat.has_value()) {
+    j["dynamic_format"] = row.osDynamicFormat.value();
+  } else {
+    j["dynamic_format"] = nullptr;
+  }
   return j;
 }
 
@@ -100,7 +106,28 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
             oZoneId = jBody["zone_id"].get<int64_t>();
           }
 
-          int64_t iId = _varRepo.create(sName, sValue, sType, sScope, oZoneId);
+          std::string sVariableKind = "static";
+          if (jBody.contains("variable_kind")) {
+            sVariableKind = jBody["variable_kind"].get<std::string>();
+            if (sVariableKind != "static" && sVariableKind != "dynamic") {
+              return invalidJsonResponse();
+            }
+          }
+          std::optional<std::string> osDynamicFormat = std::nullopt;
+          if (jBody.contains("dynamic_format") && !jBody["dynamic_format"].is_null()) {
+            osDynamicFormat = jBody["dynamic_format"].get<std::string>();
+          }
+          if (sVariableKind == "dynamic" && !osDynamicFormat.has_value()) {
+            throw common::ValidationError("INVALID_VARIABLE",
+                                          "dynamic_format is required for dynamic variables");
+          }
+          if (sVariableKind == "static" && osDynamicFormat.has_value()) {
+            throw common::ValidationError("INVALID_VARIABLE",
+                                          "dynamic_format is not allowed for static variables");
+          }
+
+          int64_t iId = _varRepo.create(sName, sValue, sType, sScope, oZoneId, sVariableKind,
+                                        osDynamicFormat);
           return jsonResponse(201, {{"id", iId}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
@@ -138,7 +165,12 @@ void VariableRoutes::registerRoutes(crow::SimpleApp& app) {
 
           RequestValidator::validateVariableValue(sValue);
 
-          _varRepo.update(iId, sValue);
+          std::optional<std::string> osDynamicFormat = std::nullopt;
+          if (jBody.contains("dynamic_format") && !jBody["dynamic_format"].is_null()) {
+            osDynamicFormat = jBody["dynamic_format"].get<std::string>();
+          }
+
+          _varRepo.update(iId, sValue, osDynamicFormat);
           return jsonResponse(200, {{"message", "Variable updated"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
