@@ -61,3 +61,19 @@ TEST_F(VariableEngineListDepsTest, UnderscoreAndDigitsInName) {
   ASSERT_EQ(vDeps.size(), 1u);
   EXPECT_EQ(vDeps[0], "my_var_2");
 }
+
+// --- Sys variable regex tests (no DB needed) ---
+
+TEST_F(VariableEngineListDepsTest, SysDotNotation) {
+  auto vDeps = _ve.listDependencies("{{sys.zone}} {{sys.date}}");
+  ASSERT_EQ(vDeps.size(), 2u);
+  EXPECT_EQ(vDeps[0], "sys.zone");
+  EXPECT_EQ(vDeps[1], "sys.date");
+}
+
+TEST_F(VariableEngineListDepsTest, MixedSysAndUser) {
+  auto vDeps = _ve.listDependencies("{{server_ip}} IN {{sys.zone}}");
+  ASSERT_EQ(vDeps.size(), 2u);
+  EXPECT_EQ(vDeps[0], "server_ip");
+  EXPECT_EQ(vDeps[1], "sys.zone");
+}
