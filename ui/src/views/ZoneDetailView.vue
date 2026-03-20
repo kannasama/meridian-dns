@@ -29,6 +29,10 @@ import { downloadZoneExport } from '../api/backup'
 import { captureCurrentState } from '../api/deployments'
 import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
+import * as snippetApi from '../api/snippets'
+import type { Snippet } from '../api/snippets'
+import * as templateApi from '../api/templates'
+import type { ComplianceCheckResult } from '../api/templates'
 import { useVariableAutocomplete } from '../composables/useVariableAutocomplete'
 import type { Zone, DnsRecord, RecordCreate, Provider } from '../types'
 import Toolbar from 'primevue/toolbar'
@@ -36,7 +40,7 @@ import Toolbar from 'primevue/toolbar'
 const route = useRoute()
 const router = useRouter()
 const { isOperator } = useRole()
-const { confirmDelete } = useConfirmAction()
+const { confirmDelete, confirmAction } = useConfirmAction()
 const notify = useNotificationStore()
 
 const zoneId = computed(() => Number(route.params.id))
@@ -55,6 +59,13 @@ const bulkAutoTtlDialogVisible = ref(false)
 const bulkAutoTtlValue = ref(true)
 const bulkProxyDialogVisible = ref(false)
 const bulkProxyValue = ref(false)
+
+const snippetPickerVisible = ref(false)
+const snippets = ref<Snippet[]>([])
+
+const complianceResult = ref<ComplianceCheckResult | null>(null)
+const complianceDialogVisible = ref(false)
+const selectedComplianceDiffs = ref<{ name: string; type: string }[]>([])
 
 const {
   variables, varFilter, varPanelRef, filteredVars,
@@ -428,6 +439,72 @@ watch(zoneId, () => {
   fetchData()
 })
 
+async function openSnippetPicker() {
+  try {
+    snippets.value = await snippetApi.listSnippets()
+    snippetPickerVisible.value = true
+  } catch (e: unknown) {
+    notify.error('Failed to load snippets', (e as Error).message)
+  }
+}
+
+async function applySnippet(snippet: Snippet) {
+  try {
+    await snippetApi.applySnippetToZone(zoneId.value, snippet.id)
+    notify.success(`Snippet "${snippet.name}" applied`)
+    snippetPickerVisible.value = false
+    await fetchData()
+  } catch (e: unknown) {
+    notify.error('Failed to apply snippet', (e as Error).message)
+  }
+}
+
+async function openComplianceDialog() {
+  try {
+    complianceResult.value = await templateApi.checkTemplateCompliance(zoneId.value)
+    selectedComplianceDiffs.value = []
+    complianceDialogVisible.value = true
+  } catch (e: unknown) {
+    notify.error('Failed to check compliance', (e as Error).message)
+  }
+}
+
+async function applySelectedCompliance() {
+  try {
+    await templateApi.applyComplianceRecords(zoneId.value, selectedComplianceDiffs.value)
+    notify.success('Compliance records applied')
+    complianceDialogVisible.value = false
+    await fetchData()
+  } catch (e: unknown) {
+    notify.error('Failed to apply compliance records', (e as Error).message)
+  }
+}
+
+async function ignoreCompliance() {
+  try {
+    await templateApi.applyComplianceRecords(zoneId.value, [])
+    await fetchData()
+  } catch (e: unknown) {
+    notify.error('Failed to dismiss compliance', (e as Error).message)
+  }
+}
+
+async function doUnlinkTemplate() {
+  confirmAction(
+    'Remove zone from template compliance tracking?',
+    'Unlink Template',
+    async () => {
+      try {
+        await templateApi.unlinkTemplate(zoneId.value)
+        notify.success('Template unlinked')
+        await fetchData()
+      } catch (e: unknown) {
+        notify.error('Failed to unlink template', (e as Error).message)
+      }
+    },
+  )
+}
+
 onMounted(fetchData)
 </script>
 
@@ -485,6 +562,14 @@ onMounted(fetchData)
         />
         <Button
           v-if="isOperator"
+          label="Insert Snippet"
+          icon="pi pi-puzzle"
+          severity="secondary"
+          @click="openSnippetPicker"
+          class="mr-2"
+        />
+        <Button
+          v-if="isOperator"
           label="Add Record"
           icon="pi pi-plus"
           @click="openCreateRecord"
@@ -503,6 +588,16 @@ onMounted(fetchData)
           @click="openCreateRecord"
         />
       </EmptyState>
+
+      <div v-if="(zone as any).template_check_pending" class="compliance-banner">
+        <i class="pi pi-exclamation-triangle" style="color: var(--p-amber-500)" />
+        <span>This zone has pending template changes.</span>
+        <div class="compliance-banner-actions">
+          <Button label="Review" size="small" @click="openComplianceDialog" />
+          <Button label="Ignore" severity="secondary" size="small" @click="ignoreCompliance" />
+          <Button label="Unlink" severity="danger" size="small" @click="doUnlinkTemplate" />
+        </div>
+      </div>
 
       <Toolbar v-if="selectedRecords.length > 0" class="mb-2">
         <template #start>
@@ -808,12 +903,70 @@ onMounted(fetchData)
         <Button label="Apply" icon="pi pi-check" class="w-full" @click="handleBulkSetProxy" />
       </div>
     </Dialog>
+
+    <Dialog v-model:visible="snippetPickerVisible" header="Insert Snippet" modal :style="{ width: '32rem' }">
+      <DataTable :value="snippets" size="small" @row-click="applySnippet($event.data)">
+        <Column field="name" header="Name" />
+        <Column header="Records">
+          <template #body="{ data }">{{ data.records?.length ?? '—' }}</template>
+        </Column>
+      </DataTable>
+    </Dialog>
+
+    <Dialog v-model:visible="complianceDialogVisible" header="Template Compliance" modal :style="{ width: '48rem' }">
+      <DataTable
+        v-if="complianceResult"
+        :value="complianceResult.diffs"
+        size="small"
+        v-model:selection="selectedComplianceDiffs"
+        dataKey="name"
+        selectionMode="multiple"
+      >
+        <Column selectionMode="multiple" style="width: 3rem" />
+        <Column field="action" header="Action">
+          <template #body="{ data }">
+            <Tag :severity="data.action === 'add' ? 'success' : 'warning'" :value="data.action" />
+          </template>
+        </Column>
+        <Column field="name" header="Name" />
+        <Column field="type" header="Type" />
+        <Column field="source_value" header="Expected Value" />
+      </DataTable>
+      <template #footer>
+        <Button
+          label="Apply Selected"
+          @click="applySelectedCompliance"
+          :disabled="selectedComplianceDiffs.length === 0"
+        />
+        <Button label="Close" severity="secondary" @click="complianceDialogVisible = false" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <style scoped>
 .zone-switcher {
   width: 14rem;
+}
+
+.compliance-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--p-amber-950, rgba(120, 80, 0, 0.15));
+  border: 1px solid var(--p-amber-700, #92400e);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.compliance-banner span {
+  flex: 1;
+}
+
+.compliance-banner-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .mb-2 {
