@@ -104,6 +104,16 @@ const router = createRouter({
           component: () => import('../views/AuditView.vue'),
         },
         {
+          path: 'tags',
+          name: 'tags',
+          component: () => import('../views/TagsView.vue'),
+        },
+        {
+          path: 'search',
+          name: 'search',
+          component: () => import('../views/SearchView.vue'),
+        },
+        {
           path: 'profile',
           name: 'profile',
           component: () => import('../views/ProfileView.vue'),

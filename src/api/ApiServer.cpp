@@ -17,6 +17,8 @@
 #include "api/routes/SnippetRoutes.hpp"
 #include "api/routes/SoaPresetRoutes.hpp"
 #include "api/routes/ZoneTemplateRoutes.hpp"
+#include "api/routes/SearchRoutes.hpp"
+#include "api/routes/TagRoutes.hpp"
 
 namespace dns::api {
 
@@ -33,7 +35,9 @@ ApiServer::ApiServer(crow::SimpleApp& app,
                      routes::VariableRoutes& varRoutes,
                      routes::SnippetRoutes&      snrRoutes,
                      routes::SoaPresetRoutes&    sprRoutes,
-                     routes::ZoneTemplateRoutes& ztrRoutes)
+                     routes::ZoneTemplateRoutes& ztrRoutes,
+                     routes::SearchRoutes&       srchRoutes,
+                     routes::TagRoutes&          tagrRoutes)
     : _app(app),
       _arRoutes(arRoutes),
       _audrRoutes(audrRoutes),
@@ -47,7 +51,9 @@ ApiServer::ApiServer(crow::SimpleApp& app,
       _varRoutes(varRoutes),
       _snrRoutes(snrRoutes),
       _sprRoutes(sprRoutes),
-      _ztrRoutes(ztrRoutes) {}
+      _ztrRoutes(ztrRoutes),
+      _srchRoutes(srchRoutes),
+      _tagrRoutes(tagrRoutes) {}
 
 ApiServer::~ApiServer() = default;
 
@@ -65,6 +71,8 @@ void ApiServer::registerRoutes() {
   _snrRoutes.registerRoutes(_app);
   _sprRoutes.registerRoutes(_app);
   _ztrRoutes.registerRoutes(_app);
+  _srchRoutes.registerRoutes(_app);
+  _tagrRoutes.registerRoutes(_app);
 }
 
 void ApiServer::start(int iPort, int iThreads) {

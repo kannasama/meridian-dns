@@ -3,7 +3,7 @@
 // This file is part of Meridian DNS. See LICENSE for details.
 
 import { get, post, put, del } from './client'
-import type { DnsRecord, RecordCreate } from '../types'
+import type { DnsRecord, RecordCreate, RecordCreateResponse, RecordUpdateResponse } from '../types'
 
 export function listRecords(zoneId: number): Promise<DnsRecord[]> {
   return get(`/zones/${zoneId}/records`)
@@ -13,7 +13,7 @@ export function getRecord(zoneId: number, recordId: number): Promise<DnsRecord> 
   return get(`/zones/${zoneId}/records/${recordId}`)
 }
 
-export function createRecord(zoneId: number, data: RecordCreate): Promise<{ id: number }> {
+export function createRecord(zoneId: number, data: RecordCreate): Promise<RecordCreateResponse> {
   return post(`/zones/${zoneId}/records`, data)
 }
 
@@ -21,8 +21,19 @@ export function updateRecord(
   zoneId: number,
   recordId: number,
   data: RecordCreate,
-): Promise<{ message: string }> {
+): Promise<RecordUpdateResponse> {
   return put(`/zones/${zoneId}/records/${recordId}`, data)
+}
+
+export function bulkUpdateTtl(
+  zoneId: number,
+  ttl: number,
+  filter_type?: string,
+): Promise<{ affected: number }> {
+  return post(`/zones/${zoneId}/records/bulk-ttl`, {
+    ttl,
+    ...(filter_type ? { filter_type } : {}),
+  })
 }
 
 export function deleteRecord(zoneId: number, recordId: number): Promise<{ message: string }> {

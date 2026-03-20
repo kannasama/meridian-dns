@@ -22,11 +22,13 @@ const mainNavItems = [
   { label: 'Templates', icon: 'pi pi-sitemap', to: '/templates' },
   { label: 'Deployments', icon: 'pi pi-upload', to: '/deployments' },
   { label: 'Audit Log', icon: 'pi pi-history', to: '/audit' },
+  { label: 'Search', icon: 'pi pi-search', to: '/search' },
 ]
 
 const adminNavItems = [
   { label: 'Auth', icon: 'pi pi-users', to: '/admin/auth' },
   { label: 'SSO', icon: 'pi pi-key', to: '/admin/identity-providers' },
+  { label: 'Tags', icon: 'pi pi-tag', to: '/tags' },
   { label: 'Settings', icon: 'pi pi-cog', to: '/admin/settings' },
   { label: 'Backup & Restore', icon: 'pi pi-download', to: '/admin/backup' },
 ]

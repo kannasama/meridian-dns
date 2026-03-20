@@ -23,6 +23,8 @@ class VariableRoutes;
 class SnippetRoutes;
 class SoaPresetRoutes;
 class ZoneTemplateRoutes;
+class SearchRoutes;
+class TagRoutes;
 }  // namespace dns::api::routes
 
 namespace dns::api {
@@ -44,7 +46,9 @@ class ApiServer {
             routes::VariableRoutes& varRoutes,
             routes::SnippetRoutes&      snrRoutes,
             routes::SoaPresetRoutes&    sprRoutes,
-            routes::ZoneTemplateRoutes& ztrRoutes);
+            routes::ZoneTemplateRoutes& ztrRoutes,
+            routes::SearchRoutes&       srchRoutes,
+            routes::TagRoutes&          tagrRoutes);
   ~ApiServer();
 
   /// Register all route handlers on the Crow app.
@@ -71,6 +75,8 @@ class ApiServer {
   routes::SnippetRoutes&      _snrRoutes;
   routes::SoaPresetRoutes&    _sprRoutes;
   routes::ZoneTemplateRoutes& _ztrRoutes;
+  routes::SearchRoutes&       _srchRoutes;
+  routes::TagRoutes&          _tagrRoutes;
 };
 
 }  // namespace dns::api

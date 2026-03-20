@@ -49,3 +49,20 @@ export interface SyncCheckAllResult {
 export async function syncCheckAll(): Promise<SyncCheckAllResult> {
   return post('/zones/sync-check')
 }
+
+export function cloneZone(id: number, data: { name: string; view_id: number }): Promise<Zone> {
+  return post(`/zones/${id}/clone`, data)
+}
+
+export async function exportZone(id: number): Promise<Blob> {
+  const token = localStorage.getItem('jwt') ?? ''
+  const res = await fetch(`/api/v1/zones/${id}/export`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`)
+  return res.blob()
+}
+
+export function updateZoneTags(id: number, tags: string[]): Promise<Zone> {
+  return put(`/zones/${id}/tags`, { tags })
+}

@@ -39,9 +39,14 @@
 #include "common/Logger.hpp"
 #include "api/routes/AuditRoutes.hpp"
 #include "api/routes/DeploymentRoutes.hpp"
+#include "api/routes/SearchRoutes.hpp"
 #include "api/routes/SnippetRoutes.hpp"
 #include "api/routes/SoaPresetRoutes.hpp"
+#include "api/routes/TagRoutes.hpp"
 #include "api/routes/ZoneTemplateRoutes.hpp"
+#include "core/BindExporter.hpp"
+#include "core/RecordValidator.hpp"
+#include "dal/TagRepository.hpp"
 #include "core/BackupService.hpp"
 #include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
@@ -304,6 +309,7 @@ int main(int argc, char* argv[]) {
     auto sprRepo = std::make_unique<dns::dal::SoaPresetRepository>(*cpPool);
     auto scrRepo = std::make_unique<dns::dal::SystemConfigRepository>(*cpPool);
     auto ztrRepo = std::make_unique<dns::dal::ZoneTemplateRepository>(*cpPool);
+    auto trRepo  = std::make_unique<dns::dal::TagRepository>(*cpPool);
     auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
     auto roleRepo = std::make_unique<dns::dal::RoleRepository>(*cpPool);
     auto settingsRepo = std::make_unique<dns::dal::SettingsRepository>(*cpPool);
@@ -398,7 +404,9 @@ int main(int argc, char* argv[]) {
     auto depEngine = std::make_unique<dns::core::DeploymentEngine>(
         *deEngine, *veEngine, *zrRepo, *vrRepo, *rrRepo, *prRepo,
         *drRepo, *arRepo, *scrRepo, upGitRepoManager.get(), cfgApp.iDeploymentRetentionCount);
-    auto reEngine = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
+    auto reEngine    = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
+    auto beExporter  = std::make_unique<dns::core::BindExporter>(*veEngine);
+    auto rvValidator = std::make_unique<dns::core::RecordValidator>(*rrRepo);
     spLog->info("Step 9: Core engines initialized "
                 "(VariableEngine, DiffEngine, DeploymentEngine, RollbackEngine)");
 
@@ -494,9 +502,10 @@ int main(int argc, char* argv[]) {
     auto authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*asService, *amMiddleware, *urRepo, *srRepo);
     auto providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*prRepo, *amMiddleware);
     auto viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*vrRepo, *amMiddleware);
-    auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware, *deEngine);
+    auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(
+        *zrRepo, *amMiddleware, *deEngine, *rrRepo, *arRepo, *beExporter, *trRepo);
     auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
-        *rrRepo, *zrRepo, *arRepo, *amMiddleware, *deEngine, *depEngine);
+        *rrRepo, *zrRepo, *arRepo, *amMiddleware, *deEngine, *depEngine, *rvValidator);
     auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
     auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>(
         *cpPool, *gitRepoRepo, *prRepo);
@@ -528,12 +537,17 @@ int main(int argc, char* argv[]) {
         *sprRepo, *amMiddleware);
     auto zoneTemplateRoutes = std::make_unique<dns::api::routes::ZoneTemplateRoutes>(
         *ztrRepo, *snrRepo, *zrRepo, *rrRepo, *arRepo, *amMiddleware);
+    auto searchRoutes = std::make_unique<dns::api::routes::SearchRoutes>(
+        *rrRepo, *amMiddleware);
+    auto tagRoutes = std::make_unique<dns::api::routes::TagRoutes>(
+        *trRepo, *amMiddleware);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
         crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
         *providerRoutes, *setupRoutes, *viewRoutes, *zoneRoutes, *recordRoutes,
-        *variableRoutes, *snippetRoutes, *soaPresetRoutes, *zoneTemplateRoutes);
+        *variableRoutes, *snippetRoutes, *soaPresetRoutes, *zoneTemplateRoutes,
+        *searchRoutes, *tagRoutes);
 
     apiServer->registerRoutes();
     userRoutes->registerRoutes(crowApp);
