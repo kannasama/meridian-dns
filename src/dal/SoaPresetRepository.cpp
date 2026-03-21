@@ -130,17 +130,26 @@ void SoaPresetRepository::deleteById(int64_t iId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
 
-  try {
-    auto result = txn.exec("DELETE FROM soa_presets WHERE id = $1", pqxx::params{iId});
-    txn.commit();
-
-    if (result.affected_rows() == 0) {
-      throw common::NotFoundError("SOA_PRESET_NOT_FOUND",
-                                  "SOA preset with id " + std::to_string(iId) + " not found");
-    }
-  } catch (const pqxx::foreign_key_violation&) {
+  // Check for references before deleting (FK uses ON DELETE SET NULL, so no
+  // foreign_key_violation is raised by PostgreSQL — we must check manually).
+  auto rRefs = txn.exec(
+      "SELECT COUNT(*) FROM ("
+      "  SELECT 1 FROM zone_templates WHERE soa_preset_id = $1"
+      "  UNION ALL"
+      "  SELECT 1 FROM zones WHERE soa_preset_id = $1"
+      ") AS refs",
+      pqxx::params{iId});
+  if (rRefs[0][0].as<int64_t>() > 0) {
     throw common::ConflictError("SOA_PRESET_IN_USE",
                                 "SOA preset is referenced by one or more zones or templates");
+  }
+
+  auto result = txn.exec("DELETE FROM soa_presets WHERE id = $1", pqxx::params{iId});
+  txn.commit();
+
+  if (result.affected_rows() == 0) {
+    throw common::NotFoundError("SOA_PRESET_NOT_FOUND",
+                                "SOA preset with id " + std::to_string(iId) + " not found");
   }
 }
 

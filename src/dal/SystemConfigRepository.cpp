@@ -59,11 +59,11 @@ std::string SystemConfigRepository::getAndIncrementSerial() {
     throw std::runtime_error("SOA serial suffix exhausted for today (max 99 per day)");
   }
 
-  txn.exec("UPDATE system_config SET value=$1, updated_at=NOW() "
-           "WHERE key='serial_counter_date'",
+  txn.exec("INSERT INTO system_config (key, value) VALUES ('serial_counter_date', $1) "
+           "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
            pqxx::params{sTodayDate});
-  txn.exec("UPDATE system_config SET value=$1, updated_at=NOW() "
-           "WHERE key='serial_counter_seq'",
+  txn.exec("INSERT INTO system_config (key, value) VALUES ('serial_counter_seq', $1) "
+           "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
            pqxx::params{std::to_string(iSeq)});
   txn.commit();
 

@@ -35,8 +35,9 @@ static dns::dal::ZoneRow parseZoneRow(const pqxx::row& row) {
     pqxx::array_parser ap(row[14].as<std::string>());
     for (;;) {
       auto [j, v] = ap.get_next();
-      if (j != pqxx::array_parser::juncture::string_value) break;
-      zr.vTags.push_back(v);
+      if (j == pqxx::array_parser::juncture::done) break;
+      if (j == pqxx::array_parser::juncture::string_value)
+        zr.vTags.push_back(v);
     }
   }
   return zr;
