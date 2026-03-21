@@ -48,7 +48,7 @@ services:
       - internal
 
   app:
-    image: ghcr.io/meridiandns/meridian-dns:${MERIDIAN_VERSION:-latest}
+    image: ghcr.io/kannasama/meridian-dns:${MERIDIAN_VERSION:-latest}
     depends_on:
       db:
         condition: service_healthy
@@ -140,7 +140,7 @@ docker pull kannasama/meridian-dns:latest
 ### GitHub Container Registry
 
 ```bash
-docker pull ghcr.io/meridiandns/meridian-dns:v1.0.0
+docker pull ghcr.io/kannasama/meridian-dns:v1.0.0
 ```
 
 ### Tag Format
