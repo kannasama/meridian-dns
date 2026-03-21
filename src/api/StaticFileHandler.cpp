@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 namespace fs = std::filesystem;
@@ -66,8 +67,11 @@ void StaticFileHandler::registerRoutes(crow::SimpleApp& app) {
       if (!_sSetupToken.empty()) {
         auto nPos = sContent.find("</head>");
         if (nPos != std::string::npos) {
-          std::string sScript = "<script>window.__SETUP_TOKEN__=\"" +
-                                _sSetupToken + "\";</script>";
+          // nlohmann::json(string).dump() produces a properly quoted and escaped JSON
+          // string literal, safe for injection into a <script> block regardless of
+          // token content.
+          std::string sScript = "<script>window.__SETUP_TOKEN__=" +
+                                nlohmann::json(_sSetupToken).dump() + ";</script>";
           sContent.insert(nPos, sScript);
         }
       }
