@@ -33,6 +33,12 @@ inline constexpr std::string_view kProvidersCreate = "providers.create";
 inline constexpr std::string_view kProvidersEdit   = "providers.edit";
 inline constexpr std::string_view kProvidersDelete = "providers.delete";
 
+// Provider Definitions
+inline constexpr std::string_view kProviderDefinitionsView   = "provider_definitions.view";
+inline constexpr std::string_view kProviderDefinitionsCreate = "provider_definitions.create";
+inline constexpr std::string_view kProviderDefinitionsEdit   = "provider_definitions.edit";
+inline constexpr std::string_view kProviderDefinitionsDelete = "provider_definitions.delete";
+
 // Views
 inline constexpr std::string_view kViewsView       = "views.view";
 inline constexpr std::string_view kViewsCreate     = "views.create";
@@ -105,6 +111,8 @@ inline constexpr std::array kAllPermissions = {
     kZonesView, kZonesCreate, kZonesEdit, kZonesDelete, kZonesDeploy, kZonesRollback,
     kRecordsView, kRecordsCreate, kRecordsEdit, kRecordsDelete, kRecordsImport,
     kProvidersView, kProvidersCreate, kProvidersEdit, kProvidersDelete,
+    kProviderDefinitionsView, kProviderDefinitionsCreate,
+    kProviderDefinitionsEdit, kProviderDefinitionsDelete,
     kViewsView, kViewsCreate, kViewsEdit, kViewsDelete,
     kVariablesView, kVariablesCreate, kVariablesEdit, kVariablesDelete,
     kSnippetsView, kSnippetsCreate, kSnippetsEdit, kSnippetsDelete,
