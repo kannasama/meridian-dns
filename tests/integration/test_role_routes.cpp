@@ -53,7 +53,7 @@ class RoleRoutesTest : public ::testing::Test {
     _roleRepo = std::make_unique<dns::dal::RoleRepository>(*_cpPool);
 
     _amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
-        *_jsSigner, *_srRepo, *_akrRepo, *_urRepo, *_roleRepo, 3600, 300);
+        *_jsSigner, *_srRepo, *_akrRepo, *_urRepo, *_roleRepo, 3600, 86400, 300);
     _asService = std::make_unique<dns::security::AuthService>(
         *_urRepo, *_srRepo, *_roleRepo, *_jsSigner, 3600, 86400);
 

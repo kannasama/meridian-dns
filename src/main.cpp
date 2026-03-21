@@ -492,7 +492,8 @@ int main(int argc, char* argv[]) {
     // ── Step 10: Construct auth layer + route handlers ────────────────────
     auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
         *upSigner, *srRepo, *akrRepo, *urRepo, *roleRepo,
-        cfgApp.iJwtTtlSeconds, cfgApp.iApiKeyCleanupGraceSeconds);
+        cfgApp.iJwtTtlSeconds, cfgApp.iSessionAbsoluteTtlSeconds,
+        cfgApp.iApiKeyCleanupGraceSeconds);
 
     auto asService = std::make_unique<dns::security::AuthService>(
         *urRepo, *srRepo, *roleRepo, *upSigner,
