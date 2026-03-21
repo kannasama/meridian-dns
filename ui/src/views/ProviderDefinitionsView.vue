@@ -137,7 +137,7 @@ async function deleteDefinition(def: ProviderDefinition) {
 }
 
 function exportDefinition(def: ProviderDefinition) {
-  pdrApi.exportProviderDefinition(def.id)
+  pdrApi.exportProviderDefinition(def.id, def.type_slug)
 }
 
 onMounted(fetchDefinitions)

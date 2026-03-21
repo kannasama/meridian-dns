@@ -57,9 +57,13 @@ export function deleteProviderDefinition(id: number): Promise<{ message: string 
   return del(`/provider-definitions/${id}`)
 }
 
-export function exportProviderDefinition(id: number): void {
-  // Triggers browser download via anchor click
+export async function exportProviderDefinition(id: number, typeSlug: string): Promise<void> {
+  const data = await get(`/provider-definitions/${id}/export`)
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
-  a.href = `/api/v1/provider-definitions/${id}/export`
+  a.href = url
+  a.download = `${typeSlug}.json`
   a.click()
+  URL.revokeObjectURL(url)
 }
