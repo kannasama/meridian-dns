@@ -4,12 +4,11 @@
 
 #include "core/BindExporter.hpp"
 
+#include "common/TimeUtils.hpp"
 #include "core/VariableEngine.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/ZoneRepository.hpp"
 
-#include <chrono>
-#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -21,12 +20,7 @@ BindExporter::~BindExporter() = default;
 
 std::string BindExporter::serialize(const dns::dal::ZoneRow& zone,
                                      const std::vector<dns::dal::RecordRow>& vRecords) const {
-  // Build ISO timestamp
-  auto tNow  = std::chrono::system_clock::now();
-  auto tNowT = std::chrono::system_clock::to_time_t(tNow);
-  std::ostringstream osTs;
-  osTs << std::put_time(std::gmtime(&tNowT), "%Y-%m-%dT%H:%M:%SZ");
-  std::string sTimestamp = osTs.str();
+  std::string sTimestamp = dns::common::nowIso8601();
 
   // Ensure origin has trailing dot
   std::string sOrigin = zone.sName;
