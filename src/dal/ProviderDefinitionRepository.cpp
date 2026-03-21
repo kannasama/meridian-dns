@@ -26,12 +26,12 @@ ProviderDefinitionRepository::ProviderDefinitionRepository(ConnectionPool& cpPoo
 ProviderDefinitionRepository::~ProviderDefinitionRepository() = default;
 
 ProviderDefinitionRow ProviderDefinitionRepository::mapRow(
-    const std::string& sId, const std::string& sName, const std::string& sTypeSlug,
+    int64_t iId, const std::string& sName, const std::string& sTypeSlug,
     const std::string& sVersion, const std::string& sDefinitionStr,
     const std::string& sSourceUrl, int64_t iActiveCount,
     int64_t iImportedEpoch, int64_t iUpdatedEpoch) const {
   ProviderDefinitionRow row;
-  row.iId        = std::stoll(sId);
+  row.iId        = iId;
   row.sName      = sName;
   row.sTypeSlug  = sTypeSlug;
   row.sVersion   = sVersion;
@@ -82,7 +82,7 @@ std::vector<ProviderDefinitionRow> ProviderDefinitionRepository::listAll() {
   vRows.reserve(result.size());
   for (const auto& row : result) {
     vRows.push_back(mapRow(
-        row[0].as<std::string>(),
+        row[0].as<int64_t>(),
         row[1].as<std::string>(),
         row[2].as<std::string>(),
         row[3].as<std::string>(),
@@ -110,7 +110,7 @@ std::optional<ProviderDefinitionRow> ProviderDefinitionRepository::findById(int6
   }
 
   auto row = mapRow(
-      result[0][0].as<std::string>(),
+      result[0][0].as<int64_t>(),
       result[0][1].as<std::string>(),
       result[0][2].as<std::string>(),
       result[0][3].as<std::string>(),
@@ -139,7 +139,7 @@ std::optional<ProviderDefinitionRow> ProviderDefinitionRepository::findByTypeSlu
   }
 
   auto row = mapRow(
-      result[0][0].as<std::string>(),
+      result[0][0].as<int64_t>(),
       result[0][1].as<std::string>(),
       result[0][2].as<std::string>(),
       result[0][3].as<std::string>(),

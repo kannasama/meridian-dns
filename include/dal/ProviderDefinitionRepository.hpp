@@ -60,7 +60,7 @@ class ProviderDefinitionRepository {
  private:
   ConnectionPool& _cpPool;
 
-  ProviderDefinitionRow mapRow(const std::string& sId, const std::string& sName,
+  ProviderDefinitionRow mapRow(int64_t iId, const std::string& sName,
                                const std::string& sTypeSlug, const std::string& sVersion,
                                const std::string& sDefinitionStr,
                                const std::string& sSourceUrl,
