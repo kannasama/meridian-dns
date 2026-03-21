@@ -541,7 +541,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
       [this](const crow::request& req, int iZoneId) -> crow::response {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
-          requirePermission(rcCtx, Permissions::kRecordsView);
+          requirePermission(rcCtx, Permissions::kRecordsEdit);
           enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
