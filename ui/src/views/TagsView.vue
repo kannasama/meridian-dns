@@ -6,11 +6,11 @@
 import { ref, onMounted } from 'vue'
 import { listTags, renameTag, deleteTag } from '../api/tags'
 import type { Tag } from '../types'
-import { useNotification } from '../stores/notification'
-import { useConfirm } from '../composables/useConfirm'
+import { useNotificationStore } from '../stores/notification'
+import { useConfirmAction } from '../composables/useConfirm'
 
-const notify = useNotification()
-const confirm = useConfirm()
+const notify = useNotificationStore()
+const { confirmDelete } = useConfirmAction()
 
 const tags = ref<Tag[]>([])
 const loading = ref(false)
@@ -47,19 +47,16 @@ async function submitRename() {
   }
 }
 
-async function confirmDelete(tag: Tag) {
-  const ok = await confirm.danger(
-    'Delete Tag',
-    `Delete tag "${tag.name}"? It will be removed from all zones.`,
-  )
-  if (!ok) return
-  try {
-    await deleteTag(tag.id)
-    notify.success('Tag deleted')
-    await loadTags()
-  } catch {
-    notify.error('Failed to delete tag')
-  }
+function handleDelete(tag: Tag) {
+  confirmDelete(`Delete tag "${tag.name}"? It will be removed from all zones.`, async () => {
+    try {
+      await deleteTag(tag.id)
+      notify.success('Tag deleted')
+      await loadTags()
+    } catch {
+      notify.error('Failed to delete tag')
+    }
+  })
 }
 
 onMounted(loadTags)
@@ -71,24 +68,26 @@ onMounted(loadTags)
       <h1 class="text-xl font-semibold">Tags</h1>
     </div>
 
-    <DataTable :value="tags" :loading="loading" class="text-sm">
-      <Column field="name" header="Name" />
-      <Column field="zone_count" header="Zone Count" />
+    <DataTable :value="tags" :loading="loading" class="text-sm" size="small" stripedRows>
+      <Column field="name" header="Name" sortable />
+      <Column field="zone_count" header="Zone Count" sortable />
       <Column header="Created">
         <template #body="{ data }">
           {{ new Date(data.created_at * 1000).toLocaleDateString() }}
         </template>
       </Column>
-      <Column header="Actions">
+      <Column header="Actions" style="width: 10rem; text-align: right">
         <template #body="{ data }">
-          <Button size="small" label="Rename" class="mr-2" @click="openRename(data)" />
-          <Button size="small" severity="danger" label="Delete" @click="confirmDelete(data)" />
+          <div class="action-buttons">
+            <Button size="small" label="Rename" class="mr-2" @click="openRename(data)" />
+            <Button size="small" severity="danger" label="Delete" @click="handleDelete(data)" />
+          </div>
         </template>
       </Column>
     </DataTable>
 
     <Dialog v-model:visible="showRenameDialog" header="Rename Tag" modal>
-      <div class="p-4 flex flex-col gap-3">
+      <div class="dialog-body">
         <InputText v-model="editName" placeholder="Tag name" class="w-full" />
         <div class="flex justify-end gap-2">
           <Button label="Cancel" severity="secondary" @click="showRenameDialog = false" />
@@ -98,3 +97,67 @@ onMounted(loadTags)
     </Dialog>
   </div>
 </template>
+
+<style scoped>
+.p-4 {
+  padding: 1rem;
+}
+
+.flex {
+  display: flex;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.justify-end {
+  justify-content: flex-end;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.mb-4 {
+  margin-bottom: 1rem;
+}
+
+.text-xl {
+  font-size: 1.25rem;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.text-sm {
+  font-size: 0.875rem;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.mr-2 {
+  margin-right: 0.5rem;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  min-width: 20rem;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+</style>

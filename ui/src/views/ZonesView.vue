@@ -3,32 +3,38 @@
 <!-- This file is part of Meridian DNS. See LICENSE for details. -->
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
+import PrimeTag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import PageHeader from '../components/shared/PageHeader.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import { useCrud } from '../composables/useCrud'
 import { useConfirmAction } from '../composables/useConfirm'
 import { useRole } from '../composables/useRole'
+import { useNotificationStore } from '../stores/notification'
 import * as zoneApi from '../api/zones'
 import * as viewApi from '../api/views'
 import * as gitRepoApi from '../api/gitRepos'
 import * as soaPresetApi from '../api/soaPresets'
+import { listTags } from '../api/tags'
 import type { Zone, ZoneCreate, View, GitRepo } from '../types'
 import type { SoaPreset } from '../api/soaPresets'
 
 const router = useRouter()
 const { isAdmin } = useRole()
 const { confirmDelete } = useConfirmAction()
+const notify = useNotificationStore()
 
 type ZoneUpdateData = {
   name: string
@@ -70,6 +76,23 @@ const form = ref({
   git_repo_id: null as number | null,
   git_branch: '' as string,
 })
+
+// Tag filter
+const allTags = ref<string[]>([])
+const selectedTagFilters = ref<string[]>([])
+
+const filteredZones = computed(() => {
+  if (selectedTagFilters.value.length === 0) return zones.value
+  return zones.value.filter(z =>
+    selectedTagFilters.value.every(tag => (z.tags ?? []).includes(tag))
+  )
+})
+
+// Clone
+const showCloneDialog = ref(false)
+const cloneName = ref('')
+const cloneViewId = ref<number | null>(null)
+const cloningSourceId = ref<number | null>(null)
 
 function openCreate() {
   editingId.value = null
@@ -133,12 +156,35 @@ function navigateToZone(zone: Zone) {
   router.push({ name: 'zone-detail', params: { id: zone.id } })
 }
 
+function openClone(zone: Zone) {
+  cloningSourceId.value = zone.id
+  cloneName.value = ''
+  cloneViewId.value = zone.view_id
+  showCloneDialog.value = true
+}
+
+async function submitClone() {
+  if (!cloningSourceId.value || !cloneViewId.value || !cloneName.value) return
+  try {
+    const newZone = await zoneApi.cloneZone(cloningSourceId.value, {
+      name: cloneName.value,
+      view_id: cloneViewId.value,
+    })
+    notify.success('Zone cloned')
+    showCloneDialog.value = false
+    router.push(`/zones/${newZone.id}`)
+  } catch {
+    notify.error('Failed to clone zone')
+  }
+}
+
 onMounted(async () => {
   await Promise.all([
     fetchZones(),
     viewApi.listViews().then((v) => (allViews.value = v)),
     gitRepoApi.listGitRepos().then((r) => (allGitRepos.value = r)),
     soaPresetApi.listSoaPresets().then((r) => { soaPresets.value = r }).catch(() => {}),
+    listTags().then((t) => { allTags.value = t.map(tag => tag.name) }).catch(() => {}),
   ])
 })
 </script>
@@ -161,56 +207,90 @@ onMounted(async () => {
       <Button v-if="isAdmin" label="Add Zone" icon="pi pi-plus" @click="openCreate" />
     </EmptyState>
 
-    <DataTable
-      v-else
-      :value="zones"
-      size="small"
-      paginator
-      :rows="25"
-      :rowsPerPageOptions="[25, 50, 100]"
-      sortField="name"
-      :sortOrder="1"
-      stripedRows
-      selectionMode="single"
-      @rowSelect="(e: any) => navigateToZone(e.data)"
-      class="cursor-pointer"
-    >
-      <Column field="name" header="Name" sortable>
-        <template #body="{ data }">
-          <span class="font-mono">{{ data.name }}</span>
-        </template>
-      </Column>
-      <Column field="view_id" header="View" sortable>
-        <template #body="{ data }">
-          {{ viewName(data.view_id) }}
-        </template>
-      </Column>
-      <Column v-if="isAdmin" header="Actions" style="width: 6rem; text-align: right">
-        <template #body="{ data }">
-          <div class="action-buttons" @click.stop>
-            <Button
-              icon="pi pi-pencil"
-              text
-              rounded
-              size="small"
-              aria-label="Edit"
-              v-tooltip.top="'Edit'"
-              @click="openEdit(data)"
+    <template v-else>
+      <div class="filter-bar">
+        <MultiSelect
+          v-model="selectedTagFilters"
+          :options="allTags"
+          placeholder="Filter by tag"
+          class="tag-filter"
+          :showClear="true"
+        />
+      </div>
+
+      <DataTable
+        :value="filteredZones"
+        size="small"
+        paginator
+        :rows="25"
+        :rowsPerPageOptions="[25, 50, 100]"
+        sortField="name"
+        :sortOrder="1"
+        stripedRows
+        selectionMode="single"
+        @rowSelect="(e: any) => navigateToZone(e.data)"
+        class="cursor-pointer"
+      >
+        <Column field="name" header="Name" sortable>
+          <template #body="{ data }">
+            <span class="font-mono">{{ data.name }}</span>
+          </template>
+        </Column>
+        <Column field="view_id" header="View" sortable>
+          <template #body="{ data }">
+            {{ viewName(data.view_id) }}
+          </template>
+        </Column>
+        <Column header="Tags">
+          <template #body="{ data }">
+            <PrimeTag
+              v-for="tag in (data.tags ?? []).slice(0, 3)"
+              :key="tag"
+              :value="tag"
+              class="mr-1 text-xs"
+              severity="secondary"
             />
-            <Button
-              icon="pi pi-trash"
-              text
-              rounded
-              size="small"
-              severity="danger"
-              aria-label="Delete"
-              v-tooltip.top="'Delete'"
-              @click="handleDelete(data)"
-            />
-          </div>
-        </template>
-      </Column>
-    </DataTable>
+            <span v-if="(data.tags ?? []).length > 3" class="text-sm text-muted">
+              +{{ data.tags.length - 3 }}
+            </span>
+          </template>
+        </Column>
+        <Column v-if="isAdmin" header="Actions" style="width: 8rem; text-align: right">
+          <template #body="{ data }">
+            <div class="action-buttons" @click.stop>
+              <Button
+                icon="pi pi-pencil"
+                text
+                rounded
+                size="small"
+                aria-label="Edit"
+                v-tooltip.top="'Edit'"
+                @click="openEdit(data)"
+              />
+              <Button
+                icon="pi pi-copy"
+                text
+                rounded
+                size="small"
+                aria-label="Clone"
+                v-tooltip.top="'Clone'"
+                @click="openClone(data)"
+              />
+              <Button
+                icon="pi pi-trash"
+                text
+                rounded
+                size="small"
+                severity="danger"
+                aria-label="Delete"
+                v-tooltip.top="'Delete'"
+                @click="handleDelete(data)"
+              />
+            </div>
+          </template>
+        </Column>
+      </DataTable>
+    </template>
 
     <Drawer
       v-model:visible="drawerVisible"
@@ -296,6 +376,26 @@ onMounted(async () => {
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
     </Drawer>
+
+    <Dialog v-model:visible="showCloneDialog" header="Clone Zone" modal>
+      <div class="clone-dialog-body">
+        <label class="text-sm">New Zone Name</label>
+        <InputText v-model="cloneName" placeholder="new-zone.example.com" class="w-full" />
+        <label class="text-sm">View</label>
+        <Select
+          v-model="cloneViewId"
+          :options="allViews"
+          optionLabel="name"
+          optionValue="id"
+          placeholder="Select view"
+          class="w-full"
+        />
+        <div class="flex justify-end gap-2">
+          <Button label="Cancel" severity="secondary" @click="showCloneDialog = false" />
+          <Button label="Clone" icon="pi pi-copy" @click="submitClone" />
+        </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -366,5 +466,52 @@ onMounted(async () => {
 .toggle-label {
   font-size: 0.875rem;
   cursor: pointer;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.tag-filter {
+  width: 16rem;
+}
+
+.text-xs {
+  font-size: 0.75rem;
+}
+
+.text-sm {
+  font-size: 0.875rem;
+}
+
+.text-muted {
+  color: var(--p-text-muted-color);
+}
+
+.mr-1 {
+  margin-right: 0.25rem;
+}
+
+.clone-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  min-width: 22rem;
+}
+
+.flex {
+  display: flex;
+}
+
+.justify-end {
+  justify-content: flex-end;
+}
+
+.gap-2 {
+  gap: 0.5rem;
 }
 </style>

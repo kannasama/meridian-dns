@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
 import Menu from 'primevue/menu'
 import Tag from 'primevue/tag'
 import { useAuthStore } from '../../stores/auth'
@@ -41,6 +42,15 @@ const userMenuItems = ref([
   },
 ])
 
+const searchQuery = ref('')
+
+function onSearchSubmit() {
+  const q = searchQuery.value.trim()
+  if (!q) return
+  router.push({ path: '/search', query: { q } })
+  searchQuery.value = ''
+}
+
 function toggleUserMenu(event: Event) {
   userMenu.value.toggle(event)
 }
@@ -50,6 +60,14 @@ function toggleUserMenu(event: Event) {
   <header class="app-topbar">
     <div class="app-topbar-start">
       <span class="app-wordmark">Meridian DNS</span>
+    </div>
+    <div class="app-topbar-center">
+      <InputText
+        v-model="searchQuery"
+        placeholder="Search records..."
+        class="search-input"
+        @keydown.enter="onSearchSubmit"
+      />
     </div>
     <div class="app-topbar-end">
       <Button
@@ -103,6 +121,18 @@ function toggleUserMenu(event: Event) {
 
 :root:not(.app-dark) .app-wordmark {
   color: var(--p-primary-600);
+}
+
+.app-topbar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 1rem;
+}
+
+.search-input {
+  width: 240px;
+  font-size: 0.875rem;
 }
 
 .app-topbar-end {
