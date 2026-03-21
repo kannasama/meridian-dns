@@ -274,7 +274,19 @@ std::string GitRepoManager::readFile(int64_t iRepoId, const std::string& sRelati
   }
 
   auto sLocalPath = computeLocalPath(_sBasePath, oRepo->iId, oRepo->sLocalPath);
-  auto sFullPath = std::filesystem::path(sLocalPath) / sRelativePath;
+  auto sBase      = std::filesystem::weakly_canonical(sLocalPath);
+  auto sResolved  = std::filesystem::weakly_canonical(sBase / sRelativePath);
+
+  // Enforce path confinement: resolved path must remain inside the repo root.
+  // weakly_canonical collapses ".." segments; if sRelativePath is absolute it
+  // replaces sBase entirely, producing a path that will fail the prefix check.
+  // Trailing '/' prevents directory-prefix confusion (e.g. /repos/1 vs /repos/10).
+  auto sBasePrefix = sBase.string() + "/";
+  if (sResolved.string().find(sBasePrefix) != 0) {
+    throw common::ValidationError("PATH_TRAVERSAL",
+                                  "Backup path escapes repository boundary");
+  }
+  auto sFullPath = sResolved;
 
   std::ifstream ifs(sFullPath);
   if (!ifs.is_open()) {
