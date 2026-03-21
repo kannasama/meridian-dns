@@ -316,7 +316,7 @@ common::PushResult GenericRestProvider::createRecord(const std::string& sZoneNam
   }
 
   spLog->info("GenericRest: created record '{}' in zone {}", drRecord.sName, sZoneName);
-  return {true, sNewId, ""};
+  return {true, sNewId.empty() ? drRecord.sName + "/" + drRecord.sType : sNewId, ""};
 }
 
 common::PushResult GenericRestProvider::updateRecord(const std::string& sZoneName,
@@ -364,6 +364,7 @@ bool GenericRestProvider::deleteRecord(const std::string& sZoneName,
   auto spLog = common::Logger::get();
 
   if (!_jDef.contains("endpoints") || !_jDef["endpoints"].contains("delete_record")) {
+    spLog->warn("GenericRestProvider::deleteRecord: definition missing endpoints.delete_record");
     return false;
   }
 
@@ -381,8 +382,15 @@ bool GenericRestProvider::deleteRecord(const std::string& sZoneName,
       sProviderRecordId);
 
   auto res = _upClient->Delete(sEndpoint);
-  if (!res) return false;
-  if (res->status != 200 && res->status != 204) return false;
+  if (!res) {
+    spLog->warn("GenericRestProvider::deleteRecord: connection failed for zone {}", sZoneName);
+    return false;
+  }
+  if (res->status != 200 && res->status != 204) {
+    spLog->warn("GenericRestProvider::deleteRecord: unexpected status {} for record '{}' in zone {}",
+                res->status, sProviderRecordId, sZoneName);
+    return false;
+  }
 
   spLog->info("GenericRest: deleted record '{}' from zone {}", sProviderRecordId, sZoneName);
   return true;

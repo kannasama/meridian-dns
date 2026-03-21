@@ -49,7 +49,7 @@ nlohmann::json SubprocessProvider::invoke(const std::string& sMethod,
   auto spLog = common::Logger::get();
 
   // Build request JSON
-  json jRequest = {{"method", sMethod}, {"params", jParams}, {"id", 1}};
+  json jRequest = {{"method", sMethod}, {"params", jParams}, {"id", 1}, {"token", _sToken}};
   std::string sInput = jRequest.dump();
 
   // Escape single quotes in the JSON payload for shell embedding
