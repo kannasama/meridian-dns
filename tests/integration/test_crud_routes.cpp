@@ -19,6 +19,7 @@
 #include "api/routes/SoaPresetRoutes.hpp"
 #include "api/routes/TagRoutes.hpp"
 #include "api/routes/ZoneTemplateRoutes.hpp"
+#include "api/routes/ProviderDefinitionRoutes.hpp"
 #include "core/BindExporter.hpp"
 #include "core/RecordValidator.hpp"
 #include "dal/TagRepository.hpp"
@@ -44,6 +45,7 @@
 #include "dal/SoaPresetRepository.hpp"
 #include "dal/SystemConfigRepository.hpp"
 #include "dal/ZoneTemplateRepository.hpp"
+#include "dal/ProviderDefinitionRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
 #include "security/HmacJwtSigner.hpp"
@@ -147,6 +149,9 @@ class CrudRoutesTest : public ::testing::Test {
         *_rrRepo, *_amMiddleware);
     _tagRoutes = std::make_unique<dns::api::routes::TagRoutes>(
         *_trRepo, *_amMiddleware);
+    _pdrRepo = std::make_unique<dns::dal::ProviderDefinitionRepository>(*_cpPool);
+    _pdrRoutes = std::make_unique<dns::api::routes::ProviderDefinitionRoutes>(
+        *_pdrRepo, *_amMiddleware);
 
     // Crow app + server
     _app = std::make_unique<crow::SimpleApp>();
@@ -154,7 +159,7 @@ class CrudRoutesTest : public ::testing::Test {
         *_app, *_authRoutes, *_auditRoutes, *_deploymentRoutes, *_healthRoutes,
         *_providerRoutes, *_setupRoutes, *_viewRoutes, *_zoneRoutes, *_recordRoutes,
         *_variableRoutes, *_snippetRoutes, *_soaPresetRoutes, *_zoneTemplateRoutes,
-        *_searchRoutes, *_tagRoutes);
+        *_searchRoutes, *_tagRoutes, *_pdrRoutes);
     _apiServer->registerRoutes();
     _app->validate();
 
@@ -271,8 +276,10 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::dal::TagRepository>              _trRepo;
   std::unique_ptr<dns::core::BindExporter>              _beExporter;
   std::unique_ptr<dns::core::RecordValidator>           _rvValidator;
-  std::unique_ptr<dns::api::routes::SearchRoutes>       _searchRoutes;
-  std::unique_ptr<dns::api::routes::TagRoutes>          _tagRoutes;
+  std::unique_ptr<dns::api::routes::SearchRoutes>             _searchRoutes;
+  std::unique_ptr<dns::api::routes::TagRoutes>                _tagRoutes;
+  std::unique_ptr<dns::dal::ProviderDefinitionRepository>     _pdrRepo;
+  std::unique_ptr<dns::api::routes::ProviderDefinitionRoutes> _pdrRoutes;
   std::unique_ptr<crow::SimpleApp> _app;
   std::unique_ptr<dns::api::ApiServer> _apiServer;
 };

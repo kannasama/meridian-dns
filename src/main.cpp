@@ -44,6 +44,7 @@
 #include "api/routes/SoaPresetRoutes.hpp"
 #include "api/routes/TagRoutes.hpp"
 #include "api/routes/ZoneTemplateRoutes.hpp"
+#include "api/routes/ProviderDefinitionRoutes.hpp"
 #include "core/BindExporter.hpp"
 #include "core/RecordValidator.hpp"
 #include "dal/TagRepository.hpp"
@@ -77,6 +78,7 @@
 #include "dal/SoaPresetRepository.hpp"
 #include "dal/SystemConfigRepository.hpp"
 #include "dal/ZoneTemplateRepository.hpp"
+#include "dal/ProviderDefinitionRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
 #include "security/FederatedAuthService.hpp"
@@ -310,6 +312,7 @@ int main(int argc, char* argv[]) {
     auto scrRepo = std::make_unique<dns::dal::SystemConfigRepository>(*cpPool);
     auto ztrRepo = std::make_unique<dns::dal::ZoneTemplateRepository>(*cpPool);
     auto trRepo  = std::make_unique<dns::dal::TagRepository>(*cpPool);
+    auto pdrRepo = std::make_unique<dns::dal::ProviderDefinitionRepository>(*cpPool);
     auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
     auto roleRepo = std::make_unique<dns::dal::RoleRepository>(*cpPool);
     auto settingsRepo = std::make_unique<dns::dal::SettingsRepository>(*cpPool);
@@ -541,13 +544,15 @@ int main(int argc, char* argv[]) {
         *rrRepo, *amMiddleware);
     auto tagRoutes = std::make_unique<dns::api::routes::TagRoutes>(
         *trRepo, *amMiddleware);
+    auto pdrRoutes = std::make_unique<dns::api::routes::ProviderDefinitionRoutes>(
+        *pdrRepo, *amMiddleware);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
         crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
         *providerRoutes, *setupRoutes, *viewRoutes, *zoneRoutes, *recordRoutes,
         *variableRoutes, *snippetRoutes, *soaPresetRoutes, *zoneTemplateRoutes,
-        *searchRoutes, *tagRoutes);
+        *searchRoutes, *tagRoutes, *pdrRoutes);
 
     apiServer->registerRoutes();
     userRoutes->registerRoutes(crowApp);
