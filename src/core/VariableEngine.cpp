@@ -27,12 +27,12 @@ VariableEngine::~VariableEngine() = default;
 
 std::string VariableEngine::expand(const std::string& sTmpl, int64_t iZoneId,
                                     const SysContext& sysCtx) const {
+  auto vDeps = listDependencies(sTmpl);
+  if (vDeps.empty()) return sTmpl;
+
   if (!_pVarRepo) {
     throw std::runtime_error("VariableEngine: no VariableRepository injected");
   }
-
-  auto vDeps = listDependencies(sTmpl);
-  if (vDeps.empty()) return sTmpl;
 
   // Fetch all variables for this zone (static zone-scoped + global + dynamic)
   auto vRows = _pVarRepo->listByZoneId(iZoneId);
