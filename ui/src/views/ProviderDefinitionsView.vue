@@ -126,9 +126,13 @@ async function saveDefinition() {
 
 async function deleteDefinition(def: ProviderDefinition) {
   await confirmDelete(def.name, async () => {
-    await pdrApi.deleteProviderDefinition(def.id)
-    notify.success('Definition deleted')
-    await fetchDefinitions()
+    try {
+      await pdrApi.deleteProviderDefinition(def.id)
+      notify.success('Definition deleted')
+      await fetchDefinitions()
+    } catch (e: unknown) {
+      notify.error(e instanceof Error ? e.message : 'Delete failed')
+    }
   })
 }
 
