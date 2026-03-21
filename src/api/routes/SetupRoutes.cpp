@@ -97,8 +97,9 @@ void SetupRoutes::registerRoutes(crow::SimpleApp& app) {
                                       {"message", "Initial setup has already been completed"}});
           }
 
-          // 4b. Check no users exist
-          auto rCount = txn.exec("SELECT COUNT(*) FROM users");
+          // 4b. Check no human users exist (exclude _system service account)
+          auto rCount = txn.exec(
+              "SELECT COUNT(*) FROM users WHERE username != '_system'");
           if (rCount[0][0].as<int64_t>() > 0) {
             txn.abort();
             return jsonResponse(403, {{"error", "SETUP_COMPLETED"},

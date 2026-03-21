@@ -338,33 +338,6 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
         }
       });
 
-  // GET /api/v1/zones/<int>/export
-  CROW_ROUTE(app, "/api/v1/zones/<int>/export").methods("GET"_method)(
-      [this](const crow::request& req, int iZoneId) -> crow::response {
-        try {
-          auto rcCtx = authenticate(_amMiddleware, req);
-          requirePermission(rcCtx, Permissions::kZonesView);
-
-          auto oZone = _zrRepo.findById(iZoneId);
-          if (!oZone) {
-            throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
-          }
-
-          auto vRecords   = _rrRepo.listByZoneId(iZoneId);
-          std::string sOut = _beExporter.serialize(*oZone, vRecords);
-
-          auto sSafeName = sanitizeFilename(oZone->sName, "zone") + ".zone";
-
-          crow::response res{200, sOut};
-          res.set_header("Content-Type", "text/plain; charset=utf-8");
-          res.set_header("Content-Disposition",
-              "attachment; filename=\"" + sSafeName + "\"");
-          return res;
-        } catch (const common::AppError& e) {
-          return errorResponse(e);
-        }
-      });
-
   // PUT /api/v1/zones/<int>/tags
   CROW_ROUTE(app, "/api/v1/zones/<int>/tags").methods("PUT"_method)(
       [this](const crow::request& req, int iZoneId) -> crow::response {

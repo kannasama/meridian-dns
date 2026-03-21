@@ -56,7 +56,7 @@ export function cloneZone(id: number, data: { name: string; view_id: number }): 
 
 export async function exportZone(id: number): Promise<Blob> {
   const token = localStorage.getItem('jwt') ?? ''
-  const res = await fetch(`/api/v1/zones/${id}/export`, {
+  const res = await fetch(`/api/v1/zones/${id}/export?format=bind`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!res.ok) throw new Error(`Export failed: ${res.status}`)

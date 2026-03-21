@@ -534,7 +534,8 @@ int main(int argc, char* argv[]) {
     auto samlRoutes = std::make_unique<dns::api::routes::SamlRoutes>(
         *idpRepo, *srRepo, *samlService, *fedAuthService);
     auto backupRoutes = std::make_unique<dns::api::routes::BackupRoutes>(
-        *backupService, *settingsRepo, *amMiddleware, upGitRepoManager.get());
+        *backupService, *settingsRepo, *amMiddleware,
+        *beExporter, *zrRepo, *rrRepo, upGitRepoManager.get());
     auto snippetRoutes = std::make_unique<dns::api::routes::SnippetRoutes>(
         *snrRepo, *zrRepo, *rrRepo, *arRepo, *amMiddleware);
     auto soaPresetRoutes = std::make_unique<dns::api::routes::SoaPresetRoutes>(
