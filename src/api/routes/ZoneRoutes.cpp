@@ -17,6 +17,7 @@
 #include "dal/ZoneRepository.hpp"
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 namespace dns::api::routes {
 using namespace dns::common;
@@ -83,7 +84,11 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
             try {
               auto preview = _deEngine.preview(zone.iId);
               sStatus = preview.bHasDrift ? "drift" : "in_sync";
+            } catch (const std::exception& ex) {
+              spdlog::warn("Sync check failed for zone {}: {}", zone.iId, ex.what());
+              sStatus = "error";
             } catch (...) {
+              spdlog::warn("Sync check failed for zone {} (unknown exception)", zone.iId);
               sStatus = "error";
             }
             _zrRepo.updateSyncStatus(zone.iId, sStatus);
@@ -117,7 +122,11 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           try {
             auto preview = _deEngine.preview(iZoneId);
             sStatus = preview.bHasDrift ? "drift" : "in_sync";
+          } catch (const std::exception& ex) {
+            spdlog::warn("Sync check failed for zone {}: {}", iZoneId, ex.what());
+            sStatus = "error";
           } catch (...) {
+            spdlog::warn("Sync check failed for zone {} (unknown exception)", iZoneId);
             sStatus = "error";
           }
           _zrRepo.updateSyncStatus(iZoneId, sStatus);
