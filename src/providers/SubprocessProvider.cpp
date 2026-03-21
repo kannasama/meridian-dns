@@ -117,6 +117,7 @@ std::string SubprocessProvider::callSubprocess(const std::string& sInput) const 
   }
 
   // ── Read one JSON line from child's stdout ────────────────────────────────
+  static constexpr size_t kMaxResponseBytes = 16 * 1024 * 1024;  // 16 MB
   std::string sResponse;
   char aBuf[4096];
   ssize_t nRead = 0;
@@ -124,6 +125,12 @@ std::string SubprocessProvider::callSubprocess(const std::string& sInput) const 
          (nRead < 0 && errno == EINTR)) {
     if (nRead < 0) continue;  // EINTR, retry
     sResponse.append(aBuf, static_cast<size_t>(nRead));
+    if (sResponse.size() > kMaxResponseBytes) {
+      close(aStdoutPipe[0]);
+      waitpid(pid, nullptr, 0);
+      throw common::ProviderError("SUBPROCESS_RESPONSE_TOO_LARGE",
+                                  "Subprocess response exceeds 16 MB limit");
+    }
     if (sResponse.find('\n') != std::string::npos) break;
   }
   close(aStdoutPipe[0]);
