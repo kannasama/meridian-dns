@@ -140,6 +140,11 @@ const router = createRouter({
           name: 'admin-backup',
           component: () => import('../views/BackupRestoreView.vue'),
         },
+        {
+          path: 'admin/provider-definitions',
+          name: 'admin-provider-definitions',
+          component: () => import('../views/ProviderDefinitionsView.vue'),
+        },
 
         // ─── Backward-compatible redirects ───
         {
