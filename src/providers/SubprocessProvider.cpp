@@ -20,15 +20,23 @@ using json = nlohmann::json;
 
 SubprocessProvider::SubprocessProvider(std::string /*sApiEndpoint*/, std::string sToken,
                                        nlohmann::json jDefinition)
-    : _iTimeoutMs(5000),
-      _sToken(std::move(sToken)),
+    : _sToken(std::move(sToken)),
       _jDef(std::move(jDefinition)) {
   _sBinaryPath = _jDef.value("binary_path", "");
-  _iTimeoutMs = _jDef.value("timeout_ms", 5000);
 
   if (_sBinaryPath.empty()) {
     throw common::ValidationError("SUBPROCESS_NO_BINARY",
                                   "Subprocess provider definition missing 'binary_path'");
+  }
+
+  // Validate path safety — binary_path feeds into a shell command
+  static const std::string kAllowedChars =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/_-.";
+  if (_sBinaryPath[0] != '/' ||
+      _sBinaryPath.find_first_not_of(kAllowedChars) != std::string::npos) {
+    throw common::ValidationError(
+        "SUBPROCESS_INVALID_BINARY_PATH",
+        "binary_path must be an absolute path containing only safe characters (a-z, A-Z, 0-9, /, -, _, .)");
   }
 }
 
@@ -170,6 +178,8 @@ common::PushResult SubprocessProvider::createRecord(const std::string& sZoneName
 
     return {true, sId, ""};
   } catch (const std::exception& e) {
+    auto spLog = common::Logger::get();
+    spLog->warn("SubprocessProvider::createRecord failed for zone {}: {}", sZoneName, e.what());
     return {false, "", e.what()};
   }
 }
@@ -190,6 +200,8 @@ common::PushResult SubprocessProvider::updateRecord(const std::string& sZoneName
     invoke("updateRecord", jParams);
     return {true, drRecord.sProviderRecordId, ""};
   } catch (const std::exception& e) {
+    auto spLog = common::Logger::get();
+    spLog->warn("SubprocessProvider::updateRecord failed for zone {}: {}", sZoneName, e.what());
     return {false, "", e.what()};
   }
 }

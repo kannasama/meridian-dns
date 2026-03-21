@@ -47,7 +47,6 @@ class SubprocessProvider : public IProvider {
   common::DnsRecord mapRecord(const nlohmann::json& jRecord) const;
 
   std::string _sBinaryPath;
-  int _iTimeoutMs;
   std::string _sToken;
   nlohmann::json _jDef;
 };
