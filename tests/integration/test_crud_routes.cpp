@@ -42,6 +42,7 @@
 #include "dal/ZoneRepository.hpp"
 #include "dal/SnippetRepository.hpp"
 #include "dal/SoaPresetRepository.hpp"
+#include "dal/SystemConfigRepository.hpp"
 #include "dal/ZoneTemplateRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
@@ -97,6 +98,7 @@ class CrudRoutesTest : public ::testing::Test {
     _ztrRepo = std::make_unique<dns::dal::ZoneTemplateRepository>(*_cpPool);
     _roleRepo = std::make_unique<dns::dal::RoleRepository>(*_cpPool);
     _gitRepoRepo = std::make_unique<dns::dal::GitRepoRepository>(*_cpPool, *_csService);
+    _scrRepo = std::make_unique<dns::dal::SystemConfigRepository>(*_cpPool);
 
     // Engines
     _veEngine = std::make_unique<dns::core::VariableEngine>(*_varRepo);
@@ -104,7 +106,7 @@ class CrudRoutesTest : public ::testing::Test {
         *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo, *_veEngine);
     _depEngine = std::make_unique<dns::core::DeploymentEngine>(
         *_deEngine, *_veEngine, *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo,
-        *_drRepo, *_arRepo, nullptr, 10);
+        *_drRepo, *_arRepo, *_scrRepo, nullptr, 10);
     _reEngine = std::make_unique<dns::core::RollbackEngine>(*_drRepo, *_rrRepo, *_arRepo);
 
     // Auth layer
@@ -246,6 +248,7 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::dal::ZoneTemplateRepository> _ztrRepo;
   std::unique_ptr<dns::dal::RoleRepository> _roleRepo;
   std::unique_ptr<dns::dal::GitRepoRepository> _gitRepoRepo;
+  std::unique_ptr<dns::dal::SystemConfigRepository> _scrRepo;
   std::unique_ptr<dns::core::VariableEngine> _veEngine;
   std::unique_ptr<dns::core::DiffEngine> _deEngine;
   std::unique_ptr<dns::core::DeploymentEngine> _depEngine;
