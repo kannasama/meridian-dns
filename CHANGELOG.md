@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   communicates via JSON over stdin/stdout
 - **Provider Definition Management** — Create, edit, and delete provider type
   definitions through the admin UI
+- **Expanded RBAC permissions** — 18 new permissions for templates, snippets, SOA presets,
+  and provider definitions (62 total, up from 44 in 1.0)
 
 ### Security
 
