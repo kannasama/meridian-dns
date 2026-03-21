@@ -45,24 +45,18 @@ void TagRepository::upsertVocabulary(const std::vector<std::string>& vTags) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
 
-  // Build a PostgreSQL text[] literal: {"tag1","tag2"}
-  std::string sArray = "{";
+  // Build a PostgreSQL ARRAY[] literal using txn.quote() for proper escaping
+  std::string sArray = "ARRAY[";
   for (size_t i = 0; i < vTags.size(); ++i) {
     if (i > 0) sArray += ",";
-    std::string sEscaped;
-    for (char c : vTags[i]) {
-      if (c == '"' || c == '\\') sEscaped += '\\';
-      sEscaped += c;
-    }
-    sArray += "\"" + sEscaped + "\"";
+    sArray += txn.quote(vTags[i]);
   }
-  sArray += "}";
+  sArray += "]";
 
   txn.exec(
       "INSERT INTO tags (name, created_at) "
-      "SELECT unnest($1::text[]), NOW() "
-      "ON CONFLICT (name) DO NOTHING",
-      pqxx::params{sArray});
+      "SELECT unnest(" + sArray + "::text[]), NOW() "
+      "ON CONFLICT (name) DO NOTHING");
   txn.commit();
 }
 
