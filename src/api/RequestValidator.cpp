@@ -72,10 +72,10 @@ void RequestValidator::validateVariableName(const std::string& sName) {
 }
 
 void RequestValidator::validateProviderType(const std::string& sType) {
-  static const std::unordered_set<std::string> st = {"powerdns","cloudflare","digitalocean"};
+  static const std::unordered_set<std::string> st = {"powerdns","cloudflare","digitalocean","generic_rest","subprocess"};
   if (st.find(sType) == st.end())
     throw common::ValidationError("INVALID_PROVIDER_TYPE",
-        "Provider type must be one of: powerdns, cloudflare, digitalocean");
+        "Provider type must be one of: powerdns, cloudflare, digitalocean, generic_rest, subprocess");
 }
 
 void RequestValidator::validateApiKeyDescription(const std::string& s) {
