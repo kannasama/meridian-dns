@@ -44,6 +44,10 @@ class SubprocessProvider : public IProvider {
   nlohmann::json invoke(const std::string& sMethod,
                         const nlohmann::json& jParams) const;
 
+  /// Runs _sBinaryPath as a subprocess, writes sInput to its stdin, reads one
+  /// newline-terminated line from its stdout. No shell is involved.
+  std::string callSubprocess(const std::string& sInput) const;
+
   common::DnsRecord mapRecord(const nlohmann::json& jRecord) const;
 
   std::string _sBinaryPath;

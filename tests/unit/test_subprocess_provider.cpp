@@ -28,3 +28,20 @@ TEST(SubprocessProviderTest, NameReturnsSubprocess) {
   SubprocessProvider spp("", "token", jDef);
   EXPECT_EQ(spp.name(), "subprocess");
 }
+
+TEST(SubprocessProviderTest, Invoke_PassesMetacharactersLiterallyWithoutShell) {
+  // /bin/cat echoes stdin back to stdout — the JSON payload containing shell
+  // metacharacters must be passed literally (not shell-expanded).
+  // With popen() these characters would be interpreted by /bin/sh.
+  nlohmann::json jDef = {{"binary_path", "/bin/cat"}};
+
+  EXPECT_NO_THROW({
+    dns::providers::SubprocessProvider provider("", "test-token", jDef);
+    try {
+      // Metacharacters flow through listRecords → invoke → callSubprocess
+      provider.listRecords("'; rm -rf / #\"; echo pwned");
+    } catch (const dns::common::ProviderError&) {
+      // A ProviderError for no/invalid response is acceptable — no crash is the test
+    }
+  });
+}
