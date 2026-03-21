@@ -5,6 +5,7 @@
 #include "api/routes/ProviderDefinitionRoutes.hpp"
 
 #include "api/AuthMiddleware.hpp"
+#include "api/RequestValidator.hpp"
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "common/Permissions.hpp"
@@ -80,12 +81,18 @@ void ProviderDefinitionRoutes::registerRoutes(crow::SimpleApp& app) {
             throw common::ValidationError("MISSING_FIELDS",
                                           "name, type_slug, and version are required");
           }
+          dns::api::RequestValidator::validateStringLength(sName, "name", 255);
+          dns::api::RequestValidator::validateStringLength(sTypeSlug, "type_slug", 100);
+          dns::api::RequestValidator::validateStringLength(sVersion, "version", 50);
+          if (!sSourceUrl.empty()) {
+            dns::api::RequestValidator::validateStringLength(sSourceUrl, "source_url", 500);
+          }
 
           try {
             int64_t iId = _pdrRepo.create(sName, sTypeSlug, sVersion, jDefinition, sSourceUrl);
             return jsonResponse(201, {{"id", iId}, {"updated", false}});
           } catch (const common::ConflictError& ce) {
-            if (std::string(ce._sErrorCode) != "DEFINITION_EXISTS") throw;
+            if (ce._sErrorCode != "DEFINITION_EXISTS") throw;
             // Upsert: find existing by type_slug and update
             auto oExisting = _pdrRepo.findByTypeSlug(sTypeSlug);
             if (!oExisting.has_value()) {
@@ -137,6 +144,11 @@ void ProviderDefinitionRoutes::registerRoutes(crow::SimpleApp& app) {
           if (sName.empty() || sVersion.empty()) {
             throw common::ValidationError("MISSING_FIELDS", "name and version are required");
           }
+          dns::api::RequestValidator::validateStringLength(sName, "name", 255);
+          dns::api::RequestValidator::validateStringLength(sVersion, "version", 50);
+          if (!sSourceUrl.empty()) {
+            dns::api::RequestValidator::validateStringLength(sSourceUrl, "source_url", 500);
+          }
 
           _pdrRepo.update(static_cast<int64_t>(iId), sName, sVersion, jDefinition, sSourceUrl);
           return jsonResponse(200, {{"message", "Provider definition updated"}});
@@ -177,6 +189,9 @@ void ProviderDefinitionRoutes::registerRoutes(crow::SimpleApp& app) {
           resp.set_header("Content-Type", "application/json");
           resp.set_header("Content-Disposition",
                           "attachment; filename=\"" + oRow->sTypeSlug + ".json\"");
+          resp.set_header("X-Content-Type-Options", "nosniff");
+          resp.set_header("X-Frame-Options", "DENY");
+          resp.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
           return resp;
         } catch (const common::AppError& e) {
           return errorResponse(e);
