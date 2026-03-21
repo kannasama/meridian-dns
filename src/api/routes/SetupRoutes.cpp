@@ -65,6 +65,7 @@ void SetupRoutes::registerRoutes(crow::SimpleApp& app) {
             return jsonResponse(403, {{"error", "SETUP_COMPLETED"},
                                       {"message", "Initial setup has already been completed"}});
           }
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sSetupToken = jBody.value("setup_token", "");

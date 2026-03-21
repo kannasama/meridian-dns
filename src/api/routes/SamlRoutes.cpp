@@ -86,6 +86,8 @@ void SamlRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/auth/saml/<int>/acs").methods("POST"_method)(
       [this](const crow::request& req, int iIdpId) -> crow::response {
         try {
+          enforceBodyLimit(req);
+
           // Parse URL-encoded form body
           std::string sSamlResponse;
           std::string sRelayState;
@@ -361,6 +363,8 @@ void SamlRoutes::registerRoutes(crow::SimpleApp& app) {
   CROW_ROUTE(app, "/api/v1/auth/saml/<int>/slo/callback").methods("POST"_method)(
       [this](const crow::request& req, int iIdpId) -> crow::response {
         try {
+          enforceBodyLimit(req);
+
           auto oIdp = _irRepo.findById(iIdpId);
           if (!oIdp.has_value() || !oIdp->bIsEnabled || oIdp->sType != "saml") {
             throw common::NotFoundError("IDP_NOT_FOUND", "SAML identity provider not found");

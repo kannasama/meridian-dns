@@ -80,7 +80,14 @@ void ApiServer::registerRoutes() {
 }
 
 void ApiServer::start(int iPort, int iThreads) {
-  _app.port(iPort).multithreaded().concurrency(iThreads).run();
+  // 10 MB Crow stream threshold — bodies larger than this are streamed rather
+  // than fully buffered. This is NOT a hard reject; per-route enforceBodyLimit()
+  // calls provide the actual size enforcement (default 64 KB, 10 MB for backup).
+  // See Crow v1.3.1 limitations: max_payload_ is private and not settable.
+  static constexpr size_t kGlobalBodyLimitBytes = 10UL * 1024UL * 1024UL;
+  _app.port(iPort).multithreaded().concurrency(iThreads)
+      .stream_threshold(kGlobalBodyLimitBytes)
+      .run();
 }
 
 void ApiServer::stop() {

@@ -57,6 +57,7 @@ void GroupRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kGroupsCreate);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -122,6 +123,7 @@ void GroupRoutes::registerRoutes(crow::SimpleApp& app) {
 
           auto oGroup = _grRepo.findById(iGroupId);
           if (!oGroup) throw common::NotFoundError("GROUP_NOT_FOUND", "Group not found");
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", oGroup->sName);

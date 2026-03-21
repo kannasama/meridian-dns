@@ -63,6 +63,7 @@ void UserRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kUsersCreate);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sUsername = jBody.value("username", "");
@@ -140,6 +141,7 @@ void UserRoutes::registerRoutes(crow::SimpleApp& app) {
 
           auto oUser = _urRepo.findById(iUserId);
           if (!oUser) throw common::NotFoundError("USER_NOT_FOUND", "User not found");
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sEmail = jBody.value("email", oUser->sEmail);
@@ -193,6 +195,7 @@ void UserRoutes::registerRoutes(crow::SimpleApp& app) {
 
           auto oUser = _urRepo.findById(iUserId);
           if (!oUser) throw common::NotFoundError("USER_NOT_FOUND", "User not found");
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sNewPassword = jBody.value("password", "");

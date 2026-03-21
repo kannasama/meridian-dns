@@ -66,6 +66,7 @@ void IdpRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kSettingsEdit);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body, nullptr, false);
           if (jBody.is_discarded()) return invalidJsonResponse();
@@ -147,6 +148,7 @@ void IdpRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kSettingsEdit);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body, nullptr, false);
           if (jBody.is_discarded()) return invalidJsonResponse();
@@ -284,6 +286,7 @@ void IdpRoutes::registerRoutes(crow::SimpleApp& app) {
             try {
               auto rcCtx = authenticate(_amMiddleware, req);
               requirePermission(rcCtx, Permissions::kSettingsEdit);
+              enforceBodyLimit(req);
 
               auto jBody = nlohmann::json::parse(req.body, nullptr, false);
               std::string sEntityId;

@@ -50,6 +50,9 @@ nlohmann::json restoreResultToJson(const dns::core::RestoreResult& result) {
   };
 }
 
+/// Allow up to 10 MB for backup/restore payloads; legitimate backups can be several MB.
+static constexpr size_t kBackupBodyLimit = 10UL * 1024UL * 1024UL;
+
 }  // namespace
 
 BackupRoutes::BackupRoutes(dns::core::BackupService& bsService,
@@ -126,6 +129,7 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kBackupRestore);
+          enforceBodyLimit(req, kBackupBodyLimit);
 
           auto jBackup = nlohmann::json::parse(req.body, nullptr, false);
           if (jBackup.is_discarded()) {
@@ -226,6 +230,7 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kBackupRestore);
+          enforceBodyLimit(req, kBackupBodyLimit);
 
           auto jImport = nlohmann::json::parse(req.body, nullptr, false);
           if (jImport.is_discarded()) {

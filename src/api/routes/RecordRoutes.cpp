@@ -93,6 +93,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRecordsCreate);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -182,6 +183,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRecordsEdit);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -391,6 +393,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kZonesDeploy);
+          enforceBodyLimit(req);
 
           std::vector<common::DriftAction> vDriftActions;
           if (!req.body.empty()) {
@@ -483,6 +486,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRecordsImport);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           if (!jBody.is_array()) {
@@ -538,6 +542,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRecordsView);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
 
