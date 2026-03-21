@@ -12,6 +12,7 @@
 #include "providers/DigitalOceanProvider.hpp"
 #include "providers/GenericRestProvider.hpp"
 #include "providers/PowerDnsProvider.hpp"
+#include "providers/SubprocessProvider.hpp"
 
 namespace dns::providers {
 
@@ -30,6 +31,9 @@ std::unique_ptr<IProvider> ProviderFactory::create(const std::string& sType,
   }
   if (sType == "generic_rest") {
     return std::make_unique<GenericRestProvider>(sApiEndpoint, sDecryptedToken, jConfig);
+  }
+  if (sType == "subprocess") {
+    return std::make_unique<SubprocessProvider>(sApiEndpoint, sDecryptedToken, jConfig);
   }
   throw common::ValidationError(
       "UNKNOWN_PROVIDER_TYPE",
