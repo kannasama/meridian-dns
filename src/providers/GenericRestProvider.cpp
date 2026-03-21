@@ -155,8 +155,9 @@ common::HealthStatus GenericRestProvider::testConnectivity() {
   }
 
   if (sEndpoint.empty()) {
-    spLog->warn("GenericRest {}: no health or list_zones endpoint defined", _sApiEndpoint);
-    return common::HealthStatus::Degraded;
+    spLog->warn("GenericRest {}: no health or list_zones endpoint defined, probing /",
+                _sApiEndpoint);
+    sEndpoint = "/";
   }
 
   try {
@@ -196,10 +197,20 @@ common::DnsRecord GenericRestProvider::mapRecord(const nlohmann::json& jRecord) 
   dr.sValue = jsonPathGet(jRecord, sValueField);
 
   std::string sTtlStr = jsonPathGet(jRecord, sTtlField);
-  dr.uTtl = sTtlStr.empty() ? 300 : static_cast<uint32_t>(std::stoi(sTtlStr));
+  try {
+    dr.uTtl = sTtlStr.empty() ? 300u : static_cast<uint32_t>(std::stoi(sTtlStr));
+  } catch (const std::exception&) {
+    auto spLog = dns::common::Logger::get();
+    spLog->warn("GenericRestProvider::mapRecord: invalid TTL '{}', defaulting to 300", sTtlStr);
+    dr.uTtl = 300u;
+  }
 
   std::string sPriorityStr = jsonPathGet(jRecord, sPriorityField);
-  dr.iPriority = sPriorityStr.empty() ? 0 : std::stoi(sPriorityStr);
+  try {
+    dr.iPriority = sPriorityStr.empty() ? 0 : std::stoi(sPriorityStr);
+  } catch (const std::exception&) {
+    dr.iPriority = 0;
+  }
 
   return dr;
 }
@@ -226,7 +237,11 @@ std::vector<common::DnsRecord> GenericRestProvider::listRecords(const std::strin
                                 "list_records returned status " + std::to_string(res->status));
   }
 
-  json jBody = json::parse(res->body);
+  auto jBody = nlohmann::json::parse(res->body, nullptr, false);
+  if (jBody.is_discarded()) {
+    throw common::ProviderError("GENERIC_REST_BAD_RECORDS_RESPONSE",
+                                "Provider returned invalid JSON for records");
+  }
 
   // Determine which part of the response contains the records array
   std::string sRecordsArray = "";
@@ -355,7 +370,9 @@ bool GenericRestProvider::deleteRecord(const std::string& sZoneName,
   std::string sZoneId;
   try {
     sZoneId = resolveZoneId(sZoneName);
-  } catch (const common::ProviderError&) {
+  } catch (const common::ProviderError& e) {
+    auto spLog = dns::common::Logger::get();
+    spLog->warn("GenericRestProvider::deleteRecord: {}", e.what());
     return false;
   }
 
