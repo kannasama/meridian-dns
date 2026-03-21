@@ -208,12 +208,12 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
 
           auto sZoneName = jExport.value("zone", nlohmann::json::object())
                                .value("name", "zone");
-          auto sFilename = sZoneName + "-export.json";
+          auto sSafeFilename = sanitizeFilename(sZoneName, "zone") + "-export.json";
 
           crow::response resp(200, jExport.dump(2));
           resp.set_header("Content-Type", "application/json");
           resp.set_header("Content-Disposition",
-                          "attachment; filename=\"" + sFilename + "\"");
+                          "attachment; filename=\"" + sSafeFilename + "\"");
           return resp;
         } catch (const common::AppError& e) {
           return errorResponse(e);

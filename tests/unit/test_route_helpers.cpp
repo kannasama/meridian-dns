@@ -30,3 +30,25 @@ TEST(RouteHelpersTest, InvalidJsonResponseReturns400) {
   EXPECT_EQ(resp.code, 400);
   EXPECT_EQ(resp.get_header_value("Content-Type"), "application/json");
 }
+
+// --- sanitizeFilename tests ---
+
+TEST(RouteHelpersTest, SanitizeFilenameKeepsSafeChars) {
+  EXPECT_EQ(sanitizeFilename("example.com"), "example.com");
+  EXPECT_EQ(sanitizeFilename("my-zone_1.test"), "my-zone_1.test");
+}
+
+TEST(RouteHelpersTest, SanitizeFilenameReplacesUnsafeChars) {
+  EXPECT_EQ(sanitizeFilename("evil\"zone"), "evil_zone");
+  EXPECT_EQ(sanitizeFilename("a b/c\\d"), "a_b_c_d");
+  EXPECT_EQ(sanitizeFilename("cr\r\nlf"), "cr__lf");
+}
+
+TEST(RouteHelpersTest, SanitizeFilenameReturnsFallbackWhenEmpty) {
+  EXPECT_EQ(sanitizeFilename(""), "export");
+  EXPECT_EQ(sanitizeFilename("", "zone"), "zone");
+}
+
+TEST(RouteHelpersTest, SanitizeFilenameAllUnsafeReturnsFallback) {
+  EXPECT_EQ(sanitizeFilename("!!!"), "___");
+}

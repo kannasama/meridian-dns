@@ -342,10 +342,12 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           auto vRecords   = _rrRepo.listByZoneId(iZoneId);
           std::string sOut = _beExporter.serialize(*oZone, vRecords);
 
+          auto sSafeName = sanitizeFilename(oZone->sName, "zone") + ".zone";
+
           crow::response res{200, sOut};
           res.set_header("Content-Type", "text/plain; charset=utf-8");
           res.set_header("Content-Disposition",
-              "attachment; filename=\"" + oZone->sName + ".zone\"");
+              "attachment; filename=\"" + sSafeName + "\"");
           return res;
         } catch (const common::AppError& e) {
           return errorResponse(e);

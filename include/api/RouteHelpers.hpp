@@ -43,4 +43,10 @@ std::string formatAuditIdentity(const common::RequestContext& rcCtx);
 /// Build an AuditContext from a RequestContext.
 common::AuditContext buildAuditContext(const common::RequestContext& rcCtx);
 
+/// Sanitize a string for safe use in Content-Disposition filenames.
+/// Keeps only alphanumeric chars, hyphens, underscores, and dots; replaces
+/// everything else with '_'. Returns @p sFallback if the result is empty.
+std::string sanitizeFilename(const std::string& sInput,
+                             const std::string& sFallback = "export");
+
 }  // namespace dns::api

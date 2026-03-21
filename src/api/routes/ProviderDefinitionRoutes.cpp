@@ -185,10 +185,12 @@ void ProviderDefinitionRoutes::registerRoutes(crow::SimpleApp& app) {
             throw common::NotFoundError("DEFINITION_NOT_FOUND",
                                         "Provider definition not found");
           }
+          auto sSafeSlug = sanitizeFilename(oRow->sTypeSlug, "definition") + ".json";
+
           crow::response resp(200, oRow->jDefinition.dump(2));
           resp.set_header("Content-Type", "application/json");
           resp.set_header("Content-Disposition",
-                          "attachment; filename=\"" + oRow->sTypeSlug + ".json\"");
+                          "attachment; filename=\"" + sSafeSlug + "\"");
           resp.set_header("X-Content-Type-Options", "nosniff");
           resp.set_header("X-Frame-Options", "DENY");
           resp.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
