@@ -5,6 +5,11 @@ architectural decisions, and development roadmap so context transfers across mac
 
 ---
 
+## Branching Policy
+
+All work is done in **feature branches**. Do NOT use git worktrees. When starting new work,
+create a feature branch from the appropriate base branch.
+
 ## Superpowers Skills (MANDATORY)
 Planning, debugging, verification, and code review are delegated to superpowers skills. **You MUST invoke the relevant skill before acting** — never skip this step, even if the task seems simple.  Leverage the `workflow-orchestration` skill in combination with the below.
 
