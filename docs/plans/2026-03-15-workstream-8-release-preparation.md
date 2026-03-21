@@ -932,7 +932,7 @@ docs/internal/
 ## Container Image Strategy
 
 - **Docker Hub:** `kannasama/meridian-dns` — primary public distribution
-- **GHCR:** `ghcr.io/meridiandns/meridian-dns` — secondary, alongside GitHub mirror
+- **GHCR:** `ghcr.io/kannasama/meridian-dns` — secondary, alongside GitHub mirror
 - **Tags:** `latest`, semver (`1.0.0`), major (`1`), major.minor (`1.0`)
 - **Architecture:** amd64-only for v1.0; arm64 planned for v1.1+
 
@@ -950,7 +950,7 @@ docs/internal/
    - License header check: `scripts/check-license-headers.sh`
 3. **Publish stage:**
    - Build and push to Docker Hub + GHCR
-   - Multi-registry push: `docker buildx build --push --tag kannasama/meridian-dns:1.0.0 --tag ghcr.io/meridiandns/meridian-dns:1.0.0 .`
+   - Multi-registry push: `docker buildx build --push --tag kannasama/meridian-dns:1.0.0 --tag ghcr.io/kannasama/meridian-dns:1.0.0 .`
    - Tag variants: `latest`, `1`, `1.0`, `1.0.0`
 4. **Release stage:**
    - Create GitLab release entry (primary repo)
@@ -980,10 +980,10 @@ docker buildx build \
   --tag kannasama/meridian-dns:1.0 \
   --tag kannasama/meridian-dns:1 \
   --tag kannasama/meridian-dns:latest \
-  --tag ghcr.io/meridiandns/meridian-dns:1.0.0 \
-  --tag ghcr.io/meridiandns/meridian-dns:1.0 \
-  --tag ghcr.io/meridiandns/meridian-dns:1 \
-  --tag ghcr.io/meridiandns/meridian-dns:latest \
+  --tag ghcr.io/kannasama/meridian-dns:1.0.0 \
+  --tag ghcr.io/kannasama/meridian-dns:1.0 \
+  --tag ghcr.io/kannasama/meridian-dns:1 \
+  --tag ghcr.io/kannasama/meridian-dns:latest \
   .
 ```
 

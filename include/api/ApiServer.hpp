@@ -20,6 +20,12 @@ class ViewRoutes;
 class ZoneRoutes;
 class RecordRoutes;
 class VariableRoutes;
+class SnippetRoutes;
+class SoaPresetRoutes;
+class ZoneTemplateRoutes;
+class SearchRoutes;
+class TagRoutes;
+class ProviderDefinitionRoutes;
 }  // namespace dns::api::routes
 
 namespace dns::api {
@@ -38,7 +44,13 @@ class ApiServer {
             routes::ViewRoutes& vrRoutes,
             routes::ZoneRoutes& zrRoutes,
             routes::RecordRoutes& rrRoutes,
-            routes::VariableRoutes& varRoutes);
+            routes::VariableRoutes& varRoutes,
+            routes::SnippetRoutes&      snrRoutes,
+            routes::SoaPresetRoutes&    sprRoutes,
+            routes::ZoneTemplateRoutes& ztrRoutes,
+            routes::SearchRoutes&       srchRoutes,
+            routes::TagRoutes&          tagrRoutes,
+            routes::ProviderDefinitionRoutes& pdrRoutes);
   ~ApiServer();
 
   /// Register all route handlers on the Crow app.
@@ -62,6 +74,12 @@ class ApiServer {
   routes::ZoneRoutes& _zrRoutes;
   routes::RecordRoutes& _rrRoutes;
   routes::VariableRoutes& _varRoutes;
+  routes::SnippetRoutes&      _snrRoutes;
+  routes::SoaPresetRoutes&    _sprRoutes;
+  routes::ZoneTemplateRoutes& _ztrRoutes;
+  routes::SearchRoutes&       _srchRoutes;
+  routes::TagRoutes&          _tagrRoutes;
+  routes::ProviderDefinitionRoutes& _pdrRoutes;
 };
 
 }  // namespace dns::api

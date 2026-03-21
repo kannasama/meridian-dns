@@ -33,6 +33,7 @@ struct ProviderRow {
   nlohmann::json jConfig = nlohmann::json::object();
   std::chrono::system_clock::time_point tpCreatedAt;
   std::chrono::system_clock::time_point tpUpdatedAt;
+  std::optional<int64_t> oDefinitionId;  // NULL for compiled providers
 };
 
 /// Manages the providers table; decrypts tokens on read.

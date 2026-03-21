@@ -7,10 +7,14 @@
 
 namespace dns::dal {
 class ZoneRepository;
+class RecordRepository;
+class AuditRepository;
+class TagRepository;
 }
 
 namespace dns::core {
 class DiffEngine;
+class BindExporter;
 }
 
 namespace dns::api {
@@ -25,7 +29,11 @@ class ZoneRoutes {
  public:
   ZoneRoutes(dns::dal::ZoneRepository& zrRepo,
              const dns::api::AuthMiddleware& amMiddleware,
-             dns::core::DiffEngine& deEngine);
+             dns::core::DiffEngine& deEngine,
+             dns::dal::RecordRepository& rrRepo,
+             dns::dal::AuditRepository& arRepo,
+             dns::core::BindExporter& beExporter,
+             dns::dal::TagRepository& trRepo);
   ~ZoneRoutes();
 
   void registerRoutes(crow::SimpleApp& app);
@@ -34,6 +42,10 @@ class ZoneRoutes {
   dns::dal::ZoneRepository& _zrRepo;
   const dns::api::AuthMiddleware& _amMiddleware;
   dns::core::DiffEngine& _deEngine;
+  dns::dal::RecordRepository& _rrRepo;
+  dns::dal::AuditRepository& _arRepo;
+  dns::core::BindExporter& _beExporter;
+  dns::dal::TagRepository& _trRepo;
 };
 
 }  // namespace dns::api::routes

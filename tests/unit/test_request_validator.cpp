@@ -68,3 +68,34 @@ TEST(RequestValidatorTest, ApiKeyDescriptionRejectsTooLong) {
   EXPECT_THROW(RequestValidator::validateApiKeyDescription(std::string(513, 'a')),
                dns::common::ValidationError);
 }
+
+// --- Zone name character-set validation (1.1-API-02) ---
+
+TEST(RequestValidatorTest, ValidateZoneName_RejectsDoubleQuote) {
+  EXPECT_THROW(
+    RequestValidator::validateZoneName("evil\"zone.com"),
+    dns::common::ValidationError
+  );
+}
+
+TEST(RequestValidatorTest, ValidateZoneName_RejectsCRLF) {
+  EXPECT_THROW(
+    RequestValidator::validateZoneName("evil\r\nzone.com"),
+    dns::common::ValidationError
+  );
+}
+
+TEST(RequestValidatorTest, ValidateZoneName_RejectsLeadingHyphen) {
+  EXPECT_THROW(
+    RequestValidator::validateZoneName("-badzone.com"),
+    dns::common::ValidationError
+  );
+}
+
+TEST(RequestValidatorTest, ValidateZoneName_AcceptsValidDnsNames) {
+  EXPECT_NO_THROW(RequestValidator::validateZoneName("example.com"));
+  EXPECT_NO_THROW(RequestValidator::validateZoneName("sub.example.com"));
+  EXPECT_NO_THROW(RequestValidator::validateZoneName("example.com."));  // trailing dot (FQDN)
+  EXPECT_NO_THROW(RequestValidator::validateZoneName("xn--nxasmq6b.com"));  // punycode
+  EXPECT_NO_THROW(RequestValidator::validateZoneName("my-zone.example.com"));
+}

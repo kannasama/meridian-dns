@@ -55,7 +55,7 @@ class AuthMiddlewareTest : public ::testing::Test {
     _rrRepo = std::make_unique<RoleRepository>(*_cpPool);
     _jsSigner = std::make_unique<HmacJwtSigner>("test-jwt-secret");
     _asService = std::make_unique<AuthService>(*_urRepo, *_srRepo, *_rrRepo, *_jsSigner, 3600, 86400);
-    _amMiddleware = std::make_unique<AuthMiddleware>(*_jsSigner, *_srRepo, *_akrRepo, *_urRepo, *_rrRepo, 3600, 300);
+    _amMiddleware = std::make_unique<AuthMiddleware>(*_jsSigner, *_srRepo, *_akrRepo, *_urRepo, *_rrRepo, 3600, 86400, 300);
 
     // Clean test data and create test user
     auto cg = _cpPool->checkout();
@@ -135,4 +135,24 @@ TEST_F(AuthMiddlewareTest, InvalidApiKeyThrows401) {
       throw;
     }
   }, AuthenticationError);
+}
+
+TEST_F(AuthMiddlewareTest, ValidateJwt_SessionAbsoluteExpiryPreservedAfterAuthenticate) {
+  // Arrange: create a valid session via AuthService, get back the JWT
+  std::string sToken = _asService->authenticateLocal("alice", "testpass");
+  std::string sHash = dns::security::CryptoService::sha256Hex(sToken);
+
+  // Act: call authenticate() which internally calls touch()
+  ASSERT_NO_THROW(_amMiddleware->authenticate("Bearer " + sToken, ""));
+
+  // Assert: session row should have absolute_expires_at set in the future
+  auto cg = _cpPool->checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      "SELECT absolute_expires_at FROM sessions WHERE token_hash = $1",
+      pqxx::params{sHash});
+  txn.commit();
+  ASSERT_FALSE(result.empty());
+  // absolute_expires_at should not be NULL or in the past
+  EXPECT_FALSE(result[0][0].is_null());
 }

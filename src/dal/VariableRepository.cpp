@@ -16,7 +16,9 @@ VariableRepository::~VariableRepository() = default;
 
 int64_t VariableRepository::create(const std::string& sName, const std::string& sValue,
                                    const std::string& sType, const std::string& sScope,
-                                   std::optional<int64_t> oZoneId) {
+                                   std::optional<int64_t> oZoneId,
+                                   const std::string& sVariableKind,
+                                   std::optional<std::string> osDynamicFormat) {
   // Validate scope/zone_id consistency before touching the database.
   if (sScope == "global" && oZoneId.has_value()) {
     throw common::ValidationError("SCOPE_ZONE_MISMATCH",
@@ -42,10 +44,20 @@ int64_t VariableRepository::create(const std::string& sName, const std::string& 
     }
 
     try {
-      auto result = txn.exec(
-          "INSERT INTO variables (name, value, type, scope) "
-          "VALUES ($1, $2, $3::variable_type, $4::variable_scope) RETURNING id",
-          pqxx::params{sName, sValue, sType, sScope});
+      pqxx::result result;
+      if (osDynamicFormat.has_value()) {
+        result = txn.exec(
+            "INSERT INTO variables (name, value, type, scope, variable_kind, dynamic_format) "
+            "VALUES ($1, $2, $3::variable_type, $4::variable_scope, "
+            "$5::variable_kind, $6) RETURNING id",
+            pqxx::params{sName, sValue, sType, sScope, sVariableKind, *osDynamicFormat});
+      } else {
+        result = txn.exec(
+            "INSERT INTO variables (name, value, type, scope, variable_kind) "
+            "VALUES ($1, $2, $3::variable_type, $4::variable_scope, "
+            "$5::variable_kind) RETURNING id",
+            pqxx::params{sName, sValue, sType, sScope, sVariableKind});
+      }
       txn.commit();
       return result.one_row()[0].as<int64_t>();
     } catch (const pqxx::check_violation&) {
@@ -59,10 +71,22 @@ int64_t VariableRepository::create(const std::string& sName, const std::string& 
   pqxx::work txn(*cg);
 
   try {
-    auto result = txn.exec(
-        "INSERT INTO variables (name, value, type, scope, zone_id) "
-        "VALUES ($1, $2, $3::variable_type, $4::variable_scope, $5) RETURNING id",
-        pqxx::params{sName, sValue, sType, sScope, *oZoneId});
+    pqxx::result result;
+    if (osDynamicFormat.has_value()) {
+      result = txn.exec(
+          "INSERT INTO variables (name, value, type, scope, zone_id, variable_kind, "
+          "dynamic_format) "
+          "VALUES ($1, $2, $3::variable_type, $4::variable_scope, $5, "
+          "$6::variable_kind, $7) RETURNING id",
+          pqxx::params{sName, sValue, sType, sScope, *oZoneId, sVariableKind,
+                       *osDynamicFormat});
+    } else {
+      result = txn.exec(
+          "INSERT INTO variables (name, value, type, scope, zone_id, variable_kind) "
+          "VALUES ($1, $2, $3::variable_type, $4::variable_scope, $5, "
+          "$6::variable_kind) RETURNING id",
+          pqxx::params{sName, sValue, sType, sScope, *oZoneId, sVariableKind});
+    }
     txn.commit();
     return result.one_row()[0].as<int64_t>();
   } catch (const pqxx::unique_violation&) {
@@ -87,15 +111,18 @@ VariableRow mapVariableRow(const pqxx::row& row) {
   vr.sType = row[3].as<std::string>();
   vr.sScope = row[4].as<std::string>();
   if (!row[5].is_null()) vr.oZoneId = row[5].as<int64_t>();
+  vr.sVariableKind = row[6].as<std::string>();
+  if (!row[7].is_null()) vr.osDynamicFormat = row[7].as<std::string>();
   vr.tpCreatedAt = std::chrono::system_clock::time_point(
-      std::chrono::seconds(row[6].as<int64_t>()));
+      std::chrono::seconds(row[8].as<int64_t>()));
   vr.tpUpdatedAt = std::chrono::system_clock::time_point(
-      std::chrono::seconds(row[7].as<int64_t>()));
+      std::chrono::seconds(row[9].as<int64_t>()));
   return vr;
 }
 
 const char* kSelectVariables =
     "SELECT id, name, value, type::text, scope::text, zone_id, "
+    "variable_kind::text, dynamic_format, "
     "EXTRACT(EPOCH FROM created_at)::bigint, "
     "EXTRACT(EPOCH FROM updated_at)::bigint "
     "FROM variables";
@@ -164,18 +191,43 @@ std::optional<VariableRow> VariableRepository::findById(int64_t iId) {
   return mapVariableRow(result[0]);
 }
 
-void VariableRepository::update(int64_t iId, const std::string& sValue) {
+void VariableRepository::update(int64_t iId, const std::string& sValue,
+                                std::optional<std::string> osDynamicFormat) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
-  auto result = txn.exec(
-      "UPDATE variables SET value = $2, updated_at = NOW() WHERE id = $1",
-      pqxx::params{iId, sValue});
+  pqxx::result result;
+  if (osDynamicFormat.has_value()) {
+    result = txn.exec(
+        "UPDATE variables SET value = $2, dynamic_format = $3, updated_at = NOW() "
+        "WHERE id = $1",
+        pqxx::params{iId, sValue, *osDynamicFormat});
+  } else {
+    result = txn.exec(
+        "UPDATE variables SET value = $2, dynamic_format = NULL, updated_at = NOW() "
+        "WHERE id = $1",
+        pqxx::params{iId, sValue});
+  }
   txn.commit();
 
   if (result.affected_rows() == 0) {
     throw common::NotFoundError("VARIABLE_NOT_FOUND",
                                 "Variable with id " + std::to_string(iId) + " not found");
   }
+}
+
+std::vector<VariableRow> VariableRepository::listDynamic() {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+  auto result = txn.exec(
+      std::string(kSelectVariables) + " WHERE variable_kind = 'dynamic' ORDER BY name");
+  txn.commit();
+
+  std::vector<VariableRow> vRows;
+  vRows.reserve(result.size());
+  for (const auto& row : result) {
+    vRows.push_back(mapVariableRow(row));
+  }
+  return vRows;
 }
 
 void VariableRepository::deleteById(int64_t iId) {

@@ -91,4 +91,19 @@ common::AuditContext buildAuditContext(const common::RequestContext& rcCtx) {
   return ac;
 }
 
+std::string sanitizeFilename(const std::string& sInput,
+                             const std::string& sFallback) {
+  std::string sSafe;
+  sSafe.reserve(sInput.size());
+  for (unsigned char c : sInput) {
+    if (std::isalnum(c) || c == '-' || c == '_' || c == '.') {
+      sSafe += static_cast<char>(c);
+    } else {
+      sSafe += '_';
+    }
+  }
+  if (sSafe.empty()) sSafe = sFallback;
+  return sSafe;
+}
+
 }  // namespace dns::api

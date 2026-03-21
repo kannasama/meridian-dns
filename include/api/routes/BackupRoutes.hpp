@@ -7,10 +7,13 @@
 
 namespace dns::core {
 class BackupService;
+class BindExporter;
 }
 
 namespace dns::dal {
 class SettingsRepository;
+class ZoneRepository;
+class RecordRepository;
 }
 
 namespace dns::api {
@@ -30,6 +33,9 @@ class BackupRoutes {
   BackupRoutes(dns::core::BackupService& bsService,
                dns::dal::SettingsRepository& stRepo,
                const dns::api::AuthMiddleware& amMiddleware,
+               dns::core::BindExporter& beExporter,
+               dns::dal::ZoneRepository& zrRepo,
+               dns::dal::RecordRepository& rrRepo,
                dns::gitops::GitRepoManager* pGitRepoManager = nullptr);
   ~BackupRoutes();
 
@@ -40,6 +46,9 @@ class BackupRoutes {
   dns::core::BackupService& _bsService;
   dns::dal::SettingsRepository& _stRepo;
   const dns::api::AuthMiddleware& _amMiddleware;
+  dns::core::BindExporter& _beExporter;
+  dns::dal::ZoneRepository& _zrRepo;
+  dns::dal::RecordRepository& _rrRepo;
   dns::gitops::GitRepoManager* _pGitRepoManager;
 };
 

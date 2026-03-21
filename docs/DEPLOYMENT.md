@@ -48,7 +48,7 @@ services:
       - internal
 
   app:
-    image: ghcr.io/meridiandns/meridian-dns:${MERIDIAN_VERSION:-latest}
+    image: ghcr.io/kannasama/meridian-dns:${MERIDIAN_VERSION:-latest}
     depends_on:
       db:
         condition: service_healthy
@@ -140,7 +140,7 @@ docker pull kannasama/meridian-dns:latest
 ### GitHub Container Registry
 
 ```bash
-docker pull ghcr.io/meridiandns/meridian-dns:v1.0.0
+docker pull ghcr.io/kannasama/meridian-dns:v1.0.0
 ```
 
 ### Tag Format
@@ -196,6 +196,24 @@ For custom deployments, ensure that:
 - PostgreSQL is not directly accessible from untrusted networks
 - Only the application container exposes its HTTP port
 - Database credentials are not shared with other services
+
+## Security: Outbound Request Considerations (SSRF)
+
+Meridian DNS providers (PowerDNS, Cloudflare, DigitalOcean, Generic REST, Subprocess) make
+outbound HTTP requests to admin-configured API endpoints. This is by design — DNS provider
+management requires external API access.
+
+**Cloud metadata services:** When deploying on cloud infrastructure (AWS, GCP, Azure), provider
+endpoints could theoretically be configured to target the instance metadata service
+(`169.254.169.254`). Since provider configurations are restricted to admin users, this is an
+accepted risk scoped to the admin trust boundary.
+
+To mitigate in sensitive environments:
+- Use network-level controls (iptables, security groups) to block outbound traffic to
+  `169.254.169.254` from the Meridian container
+- Use IMDSv2 (AWS) which requires a PUT-based token exchange that HTTP GET-based SSRF cannot
+  perform
+- Restrict the `Admin` role to trusted users who would already have infrastructure access
 
 ## Reverse Proxy — nginx
 

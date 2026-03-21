@@ -14,6 +14,12 @@
 #include "api/routes/VariableRoutes.hpp"
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
+#include "api/routes/SnippetRoutes.hpp"
+#include "api/routes/SoaPresetRoutes.hpp"
+#include "api/routes/ZoneTemplateRoutes.hpp"
+#include "api/routes/SearchRoutes.hpp"
+#include "api/routes/TagRoutes.hpp"
+#include "api/routes/ProviderDefinitionRoutes.hpp"
 
 namespace dns::api {
 
@@ -27,7 +33,13 @@ ApiServer::ApiServer(crow::SimpleApp& app,
                      routes::ViewRoutes& vrRoutes,
                      routes::ZoneRoutes& zrRoutes,
                      routes::RecordRoutes& rrRoutes,
-                     routes::VariableRoutes& varRoutes)
+                     routes::VariableRoutes& varRoutes,
+                     routes::SnippetRoutes&      snrRoutes,
+                     routes::SoaPresetRoutes&    sprRoutes,
+                     routes::ZoneTemplateRoutes& ztrRoutes,
+                     routes::SearchRoutes&       srchRoutes,
+                     routes::TagRoutes&          tagrRoutes,
+                     routes::ProviderDefinitionRoutes& pdrRoutes)
     : _app(app),
       _arRoutes(arRoutes),
       _audrRoutes(audrRoutes),
@@ -38,7 +50,13 @@ ApiServer::ApiServer(crow::SimpleApp& app,
       _vrRoutes(vrRoutes),
       _zrRoutes(zrRoutes),
       _rrRoutes(rrRoutes),
-      _varRoutes(varRoutes) {}
+      _varRoutes(varRoutes),
+      _snrRoutes(snrRoutes),
+      _sprRoutes(sprRoutes),
+      _ztrRoutes(ztrRoutes),
+      _srchRoutes(srchRoutes),
+      _tagrRoutes(tagrRoutes),
+      _pdrRoutes(pdrRoutes) {}
 
 ApiServer::~ApiServer() = default;
 
@@ -53,10 +71,23 @@ void ApiServer::registerRoutes() {
   _zrRoutes.registerRoutes(_app);
   _rrRoutes.registerRoutes(_app);
   _varRoutes.registerRoutes(_app);
+  _snrRoutes.registerRoutes(_app);
+  _sprRoutes.registerRoutes(_app);
+  _ztrRoutes.registerRoutes(_app);
+  _srchRoutes.registerRoutes(_app);
+  _tagrRoutes.registerRoutes(_app);
+  _pdrRoutes.registerRoutes(_app);
 }
 
 void ApiServer::start(int iPort, int iThreads) {
-  _app.port(iPort).multithreaded().concurrency(iThreads).run();
+  // 10 MB Crow stream threshold — bodies larger than this are streamed rather
+  // than fully buffered. This is NOT a hard reject; per-route enforceBodyLimit()
+  // calls provide the actual size enforcement (default 64 KB, 10 MB for backup).
+  // See Crow v1.3.1 limitations: max_payload_ is private and not settable.
+  static constexpr size_t kGlobalBodyLimitBytes = 10UL * 1024UL * 1024UL;
+  _app.port(iPort).multithreaded().concurrency(iThreads)
+      .stream_threshold(kGlobalBodyLimitBytes)
+      .run();
 }
 
 void ApiServer::stop() {

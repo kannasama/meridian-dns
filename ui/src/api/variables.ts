@@ -3,7 +3,7 @@
 // This file is part of Meridian DNS. See LICENSE for details.
 
 import { get, post, put, del } from './client'
-import type { Variable, VariableCreate } from '../types'
+import type { Variable, VariableCreate, VariableUpdate } from '../types'
 
 export function listVariables(scope?: string, zoneId?: number): Promise<Variable[]> {
   const params = new URLSearchParams()
@@ -21,8 +21,8 @@ export function createVariable(data: VariableCreate): Promise<{ id: number }> {
   return post('/variables', data)
 }
 
-export function updateVariable(id: number, value: string): Promise<{ message: string }> {
-  return put(`/variables/${id}`, { value })
+export function updateVariable(id: number, data: VariableUpdate): Promise<{ message: string }> {
+  return put(`/variables/${id}`, data)
 }
 
 export function deleteVariable(id: number): Promise<{ message: string }> {

@@ -39,6 +39,15 @@
 #include "common/Logger.hpp"
 #include "api/routes/AuditRoutes.hpp"
 #include "api/routes/DeploymentRoutes.hpp"
+#include "api/routes/SearchRoutes.hpp"
+#include "api/routes/SnippetRoutes.hpp"
+#include "api/routes/SoaPresetRoutes.hpp"
+#include "api/routes/TagRoutes.hpp"
+#include "api/routes/ZoneTemplateRoutes.hpp"
+#include "api/routes/ProviderDefinitionRoutes.hpp"
+#include "core/BindExporter.hpp"
+#include "core/RecordValidator.hpp"
+#include "dal/TagRepository.hpp"
 #include "core/BackupService.hpp"
 #include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
@@ -65,6 +74,11 @@
 #include "dal/VariableRepository.hpp"
 #include "dal/ViewRepository.hpp"
 #include "dal/ZoneRepository.hpp"
+#include "dal/SnippetRepository.hpp"
+#include "dal/SoaPresetRepository.hpp"
+#include "dal/SystemConfigRepository.hpp"
+#include "dal/ZoneTemplateRepository.hpp"
+#include "dal/ProviderDefinitionRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
 #include "security/FederatedAuthService.hpp"
@@ -293,6 +307,12 @@ int main(int argc, char* argv[]) {
     auto varRepo = std::make_unique<dns::dal::VariableRepository>(*cpPool);
     auto drRepo = std::make_unique<dns::dal::DeploymentRepository>(*cpPool);
     auto arRepo = std::make_unique<dns::dal::AuditRepository>(*cpPool);
+    auto snrRepo = std::make_unique<dns::dal::SnippetRepository>(*cpPool);
+    auto sprRepo = std::make_unique<dns::dal::SoaPresetRepository>(*cpPool);
+    auto scrRepo = std::make_unique<dns::dal::SystemConfigRepository>(*cpPool);
+    auto ztrRepo = std::make_unique<dns::dal::ZoneTemplateRepository>(*cpPool);
+    auto trRepo  = std::make_unique<dns::dal::TagRepository>(*cpPool);
+    auto pdrRepo = std::make_unique<dns::dal::ProviderDefinitionRepository>(*cpPool);
     auto grRepo = std::make_unique<dns::dal::GroupRepository>(*cpPool);
     auto roleRepo = std::make_unique<dns::dal::RoleRepository>(*cpPool);
     auto settingsRepo = std::make_unique<dns::dal::SettingsRepository>(*cpPool);
@@ -386,8 +406,10 @@ int main(int argc, char* argv[]) {
 
     auto depEngine = std::make_unique<dns::core::DeploymentEngine>(
         *deEngine, *veEngine, *zrRepo, *vrRepo, *rrRepo, *prRepo,
-        *drRepo, *arRepo, upGitRepoManager.get(), cfgApp.iDeploymentRetentionCount);
-    auto reEngine = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
+        *drRepo, *arRepo, *scrRepo, upGitRepoManager.get(), cfgApp.iDeploymentRetentionCount);
+    auto reEngine    = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
+    auto beExporter  = std::make_unique<dns::core::BindExporter>(*veEngine);
+    auto rvValidator = std::make_unique<dns::core::RecordValidator>(*rrRepo);
     spLog->info("Step 9: Core engines initialized "
                 "(VariableEngine, DiffEngine, DeploymentEngine, RollbackEngine)");
 
@@ -470,7 +492,8 @@ int main(int argc, char* argv[]) {
     // ── Step 10: Construct auth layer + route handlers ────────────────────
     auto amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
         *upSigner, *srRepo, *akrRepo, *urRepo, *roleRepo,
-        cfgApp.iJwtTtlSeconds, cfgApp.iApiKeyCleanupGraceSeconds);
+        cfgApp.iJwtTtlSeconds, cfgApp.iSessionAbsoluteTtlSeconds,
+        cfgApp.iApiKeyCleanupGraceSeconds);
 
     auto asService = std::make_unique<dns::security::AuthService>(
         *urRepo, *srRepo, *roleRepo, *upSigner,
@@ -483,9 +506,10 @@ int main(int argc, char* argv[]) {
     auto authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*asService, *amMiddleware, *urRepo, *srRepo);
     auto providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*prRepo, *amMiddleware);
     auto viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*vrRepo, *amMiddleware);
-    auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*zrRepo, *amMiddleware, *deEngine);
+    auto zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(
+        *zrRepo, *amMiddleware, *deEngine, *rrRepo, *arRepo, *beExporter, *trRepo);
     auto recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
-        *rrRepo, *zrRepo, *arRepo, *amMiddleware, *deEngine, *depEngine);
+        *rrRepo, *zrRepo, *arRepo, *amMiddleware, *deEngine, *depEngine, *rvValidator);
     auto variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*varRepo, *amMiddleware);
     auto healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>(
         *cpPool, *gitRepoRepo, *prRepo);
@@ -510,13 +534,27 @@ int main(int argc, char* argv[]) {
     auto samlRoutes = std::make_unique<dns::api::routes::SamlRoutes>(
         *idpRepo, *srRepo, *samlService, *fedAuthService);
     auto backupRoutes = std::make_unique<dns::api::routes::BackupRoutes>(
-        *backupService, *settingsRepo, *amMiddleware, upGitRepoManager.get());
+        *backupService, *settingsRepo, *amMiddleware,
+        *beExporter, *zrRepo, *rrRepo, upGitRepoManager.get());
+    auto snippetRoutes = std::make_unique<dns::api::routes::SnippetRoutes>(
+        *snrRepo, *zrRepo, *rrRepo, *arRepo, *amMiddleware);
+    auto soaPresetRoutes = std::make_unique<dns::api::routes::SoaPresetRoutes>(
+        *sprRepo, *amMiddleware);
+    auto zoneTemplateRoutes = std::make_unique<dns::api::routes::ZoneTemplateRoutes>(
+        *ztrRepo, *snrRepo, *zrRepo, *rrRepo, *arRepo, *amMiddleware);
+    auto searchRoutes = std::make_unique<dns::api::routes::SearchRoutes>(
+        *rrRepo, *amMiddleware);
+    auto tagRoutes = std::make_unique<dns::api::routes::TagRoutes>(
+        *trRepo, *amMiddleware);
+    auto pdrRoutes = std::make_unique<dns::api::routes::ProviderDefinitionRoutes>(
+        *pdrRepo, *amMiddleware);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
         crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
         *providerRoutes, *setupRoutes, *viewRoutes, *zoneRoutes, *recordRoutes,
-        *variableRoutes);
+        *variableRoutes, *snippetRoutes, *soaPresetRoutes, *zoneTemplateRoutes,
+        *searchRoutes, *tagRoutes, *pdrRoutes);
 
     apiServer->registerRoutes();
     userRoutes->registerRoutes(crowApp);

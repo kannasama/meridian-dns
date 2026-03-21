@@ -9,18 +9,28 @@
 #include "api/RouteHelpers.hpp"
 #include "common/Errors.hpp"
 #include "common/Permissions.hpp"
+#include "core/BindExporter.hpp"
 #include "core/DiffEngine.hpp"
+#include "dal/AuditRepository.hpp"
+#include "dal/RecordRepository.hpp"
+#include "dal/TagRepository.hpp"
 #include "dal/ZoneRepository.hpp"
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 namespace dns::api::routes {
 using namespace dns::common;
 
 ZoneRoutes::ZoneRoutes(dns::dal::ZoneRepository& zrRepo,
                        const dns::api::AuthMiddleware& amMiddleware,
-                       dns::core::DiffEngine& deEngine)
-    : _zrRepo(zrRepo), _amMiddleware(amMiddleware), _deEngine(deEngine) {}
+                       dns::core::DiffEngine& deEngine,
+                       dns::dal::RecordRepository& rrRepo,
+                       dns::dal::AuditRepository& arRepo,
+                       dns::core::BindExporter& beExporter,
+                       dns::dal::TagRepository& trRepo)
+    : _zrRepo(zrRepo), _amMiddleware(amMiddleware), _deEngine(deEngine),
+      _rrRepo(rrRepo), _arRepo(arRepo), _beExporter(beExporter), _trRepo(trRepo) {}
 
 ZoneRoutes::~ZoneRoutes() = default;
 
@@ -54,6 +64,7 @@ nlohmann::json zoneRowToJson(const dns::dal::ZoneRow& row) {
                                                   : nlohmann::json(nullptr);
   j["git_branch"] = row.oGitBranch.has_value() ? nlohmann::json(*row.oGitBranch)
                                                 : nlohmann::json(nullptr);
+  j["tags"] = row.vTags;
   return j;
 }
 
@@ -73,7 +84,11 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
             try {
               auto preview = _deEngine.preview(zone.iId);
               sStatus = preview.bHasDrift ? "drift" : "in_sync";
+            } catch (const std::exception& ex) {
+              spdlog::warn("Sync check failed for zone {}: {}", zone.iId, ex.what());
+              sStatus = "error";
             } catch (...) {
+              spdlog::warn("Sync check failed for zone {} (unknown exception)", zone.iId);
               sStatus = "error";
             }
             _zrRepo.updateSyncStatus(zone.iId, sStatus);
@@ -107,7 +122,11 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           try {
             auto preview = _deEngine.preview(iZoneId);
             sStatus = preview.bHasDrift ? "drift" : "in_sync";
+          } catch (const std::exception& ex) {
+            spdlog::warn("Sync check failed for zone {}: {}", iZoneId, ex.what());
+            sStatus = "error";
           } catch (...) {
+            spdlog::warn("Sync check failed for zone {} (unknown exception)", iZoneId);
             sStatus = "error";
           }
           _zrRepo.updateSyncStatus(iZoneId, sStatus);
@@ -162,6 +181,7 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kZonesEdit);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -224,6 +244,7 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kZonesEdit);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -275,6 +296,89 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           return jsonResponse(200, {{"message", "Zone deleted"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);
+        }
+      });
+
+  // POST /api/v1/zones/<int>/clone
+  CROW_ROUTE(app, "/api/v1/zones/<int>/clone").methods("POST"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requirePermission(rcCtx, Permissions::kZonesEdit);
+          enforceBodyLimit(req);
+          auto jBody = nlohmann::json::parse(req.body);
+
+          std::string sName = jBody.value("name", "");
+          int64_t iViewId   = jBody.value("view_id", int64_t{0});
+
+          RequestValidator::validateZoneName(sName);
+          if (iViewId <= 0) {
+            throw common::ValidationError("MISSING_FIELDS", "view_id is required");
+          }
+
+          auto oSource = _zrRepo.findById(iZoneId);
+          if (!oSource) {
+            throw common::NotFoundError("ZONE_NOT_FOUND", "Source zone not found");
+          }
+
+          int64_t iNewZoneId = _zrRepo.cloneZone(iZoneId, sName, iViewId);
+
+          auto acCtx = buildAuditContext(rcCtx);
+          _arRepo.insert("zone", iNewZoneId, "clone",
+                         std::nullopt,
+                         nlohmann::json{{"source_zone_id", iZoneId}, {"name", sName}},
+                         acCtx.sIdentity, acCtx.sAuthMethod, acCtx.sIpAddress);
+
+          auto oNew = _zrRepo.findById(iNewZoneId);
+          return jsonResponse(201, zoneRowToJson(*oNew));
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        } catch (const nlohmann::json::exception&) {
+          return invalidJsonResponse();
+        }
+      });
+
+  // PUT /api/v1/zones/<int>/tags
+  CROW_ROUTE(app, "/api/v1/zones/<int>/tags").methods("PUT"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requirePermission(rcCtx, Permissions::kZonesEdit);
+          enforceBodyLimit(req);
+          auto jBody = nlohmann::json::parse(req.body);
+
+          auto oZone = _zrRepo.findById(iZoneId);
+          if (!oZone) {
+            throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
+          }
+
+          std::vector<std::string> vTags;
+          if (jBody.contains("tags") && jBody["tags"].is_array()) {
+            for (const auto& jTag : jBody["tags"]) {
+              if (jTag.is_string()) {
+                vTags.push_back(jTag.get<std::string>());
+              }
+            }
+          }
+
+          if (vTags.size() > 20) {
+            throw common::ValidationError("TOO_MANY_TAGS", "Maximum 20 tags per zone");
+          }
+          for (const auto& sTag : vTags) {
+            if (sTag.empty() || sTag.size() > 64) {
+              throw common::ValidationError("INVALID_TAG", "Tag must be 1-64 characters");
+            }
+          }
+
+          _trRepo.upsertVocabulary(vTags);
+          _zrRepo.updateTags(iZoneId, vTags);
+
+          auto oUpdated = _zrRepo.findById(iZoneId);
+          return jsonResponse(200, zoneRowToJson(*oUpdated));
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        } catch (const nlohmann::json::exception&) {
+          return invalidJsonResponse();
         }
       });
 }

@@ -46,11 +46,15 @@ std::vector<ProviderRow> ProviderRepository::listAll() {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      "SELECT id, name, type::text, api_endpoint, encrypted_token, "
-      "EXTRACT(EPOCH FROM created_at)::bigint, "
-      "EXTRACT(EPOCH FROM updated_at)::bigint, "
-      "encrypted_config "
-      "FROM providers ORDER BY id");
+      "SELECT p.id, p.name, p.type::text, p.api_endpoint, p.encrypted_token, "
+      "EXTRACT(EPOCH FROM p.created_at)::bigint, "
+      "EXTRACT(EPOCH FROM p.updated_at)::bigint, "
+      "p.encrypted_config, "
+      "p.definition_id, "
+      "pd.definition::text AS pd_definition "
+      "FROM providers p "
+      "LEFT JOIN provider_definitions pd ON p.definition_id = pd.id "
+      "ORDER BY p.id");
   txn.commit();
 
   std::vector<ProviderRow> vRows;
@@ -65,11 +69,15 @@ std::optional<ProviderRow> ProviderRepository::findById(int64_t iId) {
   auto cg = _cpPool.checkout();
   pqxx::work txn(*cg);
   auto result = txn.exec(
-      "SELECT id, name, type::text, api_endpoint, encrypted_token, "
-      "EXTRACT(EPOCH FROM created_at)::bigint, "
-      "EXTRACT(EPOCH FROM updated_at)::bigint, "
-      "encrypted_config "
-      "FROM providers WHERE id = $1",
+      "SELECT p.id, p.name, p.type::text, p.api_endpoint, p.encrypted_token, "
+      "EXTRACT(EPOCH FROM p.created_at)::bigint, "
+      "EXTRACT(EPOCH FROM p.updated_at)::bigint, "
+      "p.encrypted_config, "
+      "p.definition_id, "
+      "pd.definition::text AS pd_definition "
+      "FROM providers p "
+      "LEFT JOIN provider_definitions pd ON p.definition_id = pd.id "
+      "WHERE p.id = $1",
       pqxx::params{iId});
   txn.commit();
 
@@ -150,6 +158,17 @@ ProviderRow ProviderRepository::mapRow(const pqxx::row& row) const {
   std::string sEncConfig = row[7].as<std::string>("");
   if (!sEncConfig.empty()) {
     pr.jConfig = nlohmann::json::parse(_csService.decrypt(sEncConfig));
+  }
+
+  // definition_id and definition JSON (for pluggable types)
+  if (!row[8].is_null()) {
+    pr.oDefinitionId = row[8].as<int64_t>();
+  }
+  if (!row[9].is_null()) {
+    auto jDef = nlohmann::json::parse(row[9].as<std::string>(), nullptr, false);
+    if (!jDef.is_discarded()) {
+      pr.jConfig = std::move(jDef);
+    }
   }
   return pr;
 }

@@ -59,6 +59,7 @@ void RoleRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRolesCreate);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -130,6 +131,7 @@ void RoleRoutes::registerRoutes(crow::SimpleApp& app) {
 
           auto oRole = _rrRepo.findById(iRoleId);
           if (!oRole) throw common::NotFoundError("ROLE_NOT_FOUND", "Role not found");
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", oRole->sName);
@@ -187,6 +189,7 @@ void RoleRoutes::registerRoutes(crow::SimpleApp& app) {
 
           auto oRole = _rrRepo.findById(iRoleId);
           if (!oRole) throw common::NotFoundError("ROLE_NOT_FOUND", "Role not found");
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           auto jPerms = jBody.value("permissions", nlohmann::json::array());

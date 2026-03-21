@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <pqxx/pqxx>
 
+#include "common/Errors.hpp"
 #include "common/Logger.hpp"
 #include "core/VariableEngine.hpp"
 #include "dal/ConnectionPool.hpp"
@@ -115,4 +116,34 @@ TEST_F(GitRepoManagerTest, RemoveRepoUnloadsMirror) {
   EXPECT_NO_THROW(mgr.removeRepo(iRepoId));
   // Removing again should also be fine (idempotent)
   EXPECT_NO_THROW(mgr.removeRepo(iRepoId));
+}
+
+TEST_F(GitRepoManagerTest, ReadFile_RejectsAbsolutePath) {
+  // Create a local-only repo so findById() succeeds
+  auto sRepoDir = _sTmpDir / "local-repo";
+  std::system(("git init " + sRepoDir.string() + " 2>/dev/null").c_str());
+
+  int64_t iRepoId = _grRepo->create("test-repo", "", "none", "",
+                                      "main", sRepoDir.string(), "");
+
+  dns::gitops::GitRepoManager mgr(*_grRepo, *_zrRepo, *_vrRepo, *_rrRepo,
+                                   *_veEngine, _sTmpDir.string());
+
+  EXPECT_THROW(mgr.readFile(iRepoId, "/etc/passwd"),
+               dns::common::ValidationError);
+}
+
+TEST_F(GitRepoManagerTest, ReadFile_RejectsPathTraversal) {
+  // Create a local-only repo so findById() succeeds
+  auto sRepoDir = _sTmpDir / "local-repo";
+  std::system(("git init " + sRepoDir.string() + " 2>/dev/null").c_str());
+
+  int64_t iRepoId = _grRepo->create("test-repo", "", "none", "",
+                                      "main", sRepoDir.string(), "");
+
+  dns::gitops::GitRepoManager mgr(*_grRepo, *_zrRepo, *_vrRepo, *_rrRepo,
+                                   *_veEngine, _sTmpDir.string());
+
+  EXPECT_THROW(mgr.readFile(iRepoId, "../../etc/passwd"),
+               dns::common::ValidationError);
 }

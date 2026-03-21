@@ -16,6 +16,7 @@ import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
+import AutoComplete from 'primevue/autocomplete'
 import PageHeader from '../components/shared/PageHeader.vue'
 import ImportDialog from '../components/records/ImportDialog.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
@@ -29,6 +30,11 @@ import { downloadZoneExport } from '../api/backup'
 import { captureCurrentState } from '../api/deployments'
 import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
+import * as snippetApi from '../api/snippets'
+import type { Snippet } from '../api/snippets'
+import { listTags } from '../api/tags'
+import * as templateApi from '../api/templates'
+import type { ComplianceCheckResult } from '../api/templates'
 import { useVariableAutocomplete } from '../composables/useVariableAutocomplete'
 import type { Zone, DnsRecord, RecordCreate, Provider } from '../types'
 import Toolbar from 'primevue/toolbar'
@@ -36,7 +42,7 @@ import Toolbar from 'primevue/toolbar'
 const route = useRoute()
 const router = useRouter()
 const { isOperator } = useRole()
-const { confirmDelete } = useConfirmAction()
+const { confirmDelete, confirmAction } = useConfirmAction()
 const notify = useNotificationStore()
 
 const zoneId = computed(() => Number(route.params.id))
@@ -55,6 +61,24 @@ const bulkAutoTtlDialogVisible = ref(false)
 const bulkAutoTtlValue = ref(true)
 const bulkProxyDialogVisible = ref(false)
 const bulkProxyValue = ref(false)
+
+// Tag editing
+const zoneTags = ref<string[]>([])
+const tagSuggestions = ref<string[]>([])
+let allTagNames: string[] = []
+
+// Zone-wide bulk TTL adjustment
+const adjustTtlVisible = ref(false)
+const adjustTtlValue = ref(300)
+const adjustTtlType = ref<string | null>(null)
+const adjustTtlTypeOptions = ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'TXT', 'SRV', 'CAA', 'PTR']
+
+const snippetPickerVisible = ref(false)
+const snippets = ref<Snippet[]>([])
+
+const complianceResult = ref<ComplianceCheckResult | null>(null)
+const complianceDialogVisible = ref(false)
+const selectedComplianceDiffs = ref<{ name: string; type: string }[]>([])
 
 const {
   variables, varFilter, varPanelRef, filteredVars,
@@ -120,6 +144,7 @@ async function fetchData() {
     const [z, r] = await Promise.all([zoneApi.getZone(zoneId.value), recordApi.listRecords(zoneId.value)])
     zone.value = z
     records.value = r
+    zoneTags.value = [...(z.tags ?? [])]
 
     // Fetch view providers to detect Cloudflare
     if (z.view_id) {
@@ -134,6 +159,7 @@ async function fetchData() {
       }
     }
     loadVariables()
+    listTags().then(t => { allTagNames = t.map(tag => tag.name) }).catch(() => {})
   } catch {
     notify.error('Failed to load zone')
   } finally {
@@ -221,7 +247,12 @@ async function handleSubmitRecord() {
         created_at: Date.now(),
         updated_at: Date.now(),
       })
-      notify.success('Record created')
+      if (result.warnings && result.warnings.length > 0) {
+        const warnMsg = result.warnings.map((w: { message: string }) => w.message).join('; ')
+        notify.add({ severity: 'warn', summary: 'Record created with warnings', detail: warnMsg })
+      } else {
+        notify.success('Record created')
+      }
     }
     dialogVisible.value = false
   } catch (err) {
@@ -400,6 +431,54 @@ async function doExportZone() {
   }
 }
 
+async function exportBind() {
+  if (!zone.value) return
+  try {
+    const blob = await zoneApi.exportZone(zone.value.id)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${zone.value.name}.zone`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    notify.error('Export BIND failed')
+  }
+}
+
+function onTagSearch(event: { query: string }) {
+  tagSuggestions.value = allTagNames.filter(t =>
+    t.toLowerCase().includes(event.query.toLowerCase())
+  )
+}
+
+async function saveTags() {
+  if (!zone.value) return
+  try {
+    await zoneApi.updateZoneTags(zone.value.id, zoneTags.value)
+    notify.success('Tags updated')
+    await fetchData()
+  } catch {
+    notify.error('Failed to update tags')
+  }
+}
+
+async function submitZoneAdjustTtl() {
+  if (!zone.value) return
+  try {
+    const result = await recordApi.bulkUpdateTtl(
+      zone.value.id,
+      adjustTtlValue.value,
+      adjustTtlType.value ?? undefined,
+    )
+    notify.success(`Updated TTL on ${result.affected} records`)
+    adjustTtlVisible.value = false
+    await fetchData()
+  } catch {
+    notify.error('Bulk TTL update failed')
+  }
+}
+
 const showPriority = computed(() => form.value.type === 'MX' || form.value.type === 'SRV')
 
 const hasPriorityRecords = computed(() =>
@@ -427,6 +506,72 @@ watch(proxied, (bProxied) => {
 watch(zoneId, () => {
   fetchData()
 })
+
+async function openSnippetPicker() {
+  try {
+    snippets.value = await snippetApi.listSnippets()
+    snippetPickerVisible.value = true
+  } catch (e: unknown) {
+    notify.error('Failed to load snippets', (e as Error).message)
+  }
+}
+
+async function applySnippet(snippet: Snippet) {
+  try {
+    await snippetApi.applySnippetToZone(zoneId.value, snippet.id)
+    notify.success(`Snippet "${snippet.name}" applied`)
+    snippetPickerVisible.value = false
+    await fetchData()
+  } catch (e: unknown) {
+    notify.error('Failed to apply snippet', (e as Error).message)
+  }
+}
+
+async function openComplianceDialog() {
+  try {
+    complianceResult.value = await templateApi.checkTemplateCompliance(zoneId.value)
+    selectedComplianceDiffs.value = []
+    complianceDialogVisible.value = true
+  } catch (e: unknown) {
+    notify.error('Failed to check compliance', (e as Error).message)
+  }
+}
+
+async function applySelectedCompliance() {
+  try {
+    await templateApi.applyComplianceRecords(zoneId.value, selectedComplianceDiffs.value)
+    notify.success('Compliance records applied')
+    complianceDialogVisible.value = false
+    await fetchData()
+  } catch (e: unknown) {
+    notify.error('Failed to apply compliance records', (e as Error).message)
+  }
+}
+
+async function ignoreCompliance() {
+  try {
+    await templateApi.applyComplianceRecords(zoneId.value, [])
+    await fetchData()
+  } catch (e: unknown) {
+    notify.error('Failed to dismiss compliance', (e as Error).message)
+  }
+}
+
+async function doUnlinkTemplate() {
+  confirmAction(
+    'Remove zone from template compliance tracking?',
+    'Unlink Template',
+    async () => {
+      try {
+        await templateApi.unlinkTemplate(zoneId.value)
+        notify.success('Template unlinked')
+        await fetchData()
+      } catch (e: unknown) {
+        notify.error('Failed to unlink template', (e as Error).message)
+      }
+    },
+  )
+}
 
 onMounted(fetchData)
 </script>
@@ -467,6 +612,13 @@ onMounted(fetchData)
           class="mr-2"
         />
         <Button
+          label="Export BIND"
+          icon="pi pi-download"
+          severity="secondary"
+          @click="exportBind"
+          class="mr-2"
+        />
+        <Button
           v-if="isOperator && zone?.git_repo_id"
           label="Capture State"
           icon="pi pi-camera"
@@ -481,6 +633,22 @@ onMounted(fetchData)
           icon="pi pi-download"
           severity="secondary"
           @click="importDialogVisible = true"
+          class="mr-2"
+        />
+        <Button
+          v-if="isOperator"
+          label="Insert Snippet"
+          icon="pi pi-puzzle"
+          severity="secondary"
+          @click="openSnippetPicker"
+          class="mr-2"
+        />
+        <Button
+          v-if="isOperator"
+          label="Bulk Adjust TTL"
+          icon="pi pi-clock"
+          severity="secondary"
+          @click="adjustTtlVisible = true"
           class="mr-2"
         />
         <Button
@@ -503,6 +671,32 @@ onMounted(fetchData)
           @click="openCreateRecord"
         />
       </EmptyState>
+
+      <div v-if="(zone as any).template_check_pending" class="compliance-banner">
+        <i class="pi pi-exclamation-triangle" style="color: var(--p-amber-500)" />
+        <span>This zone has pending template changes.</span>
+        <div class="compliance-banner-actions">
+          <Button label="Review" size="small" @click="openComplianceDialog" />
+          <Button label="Ignore" severity="secondary" size="small" @click="ignoreCompliance" />
+          <Button label="Unlink" severity="danger" size="small" @click="doUnlinkTemplate" />
+        </div>
+      </div>
+
+      <div class="tags-section mb-4">
+        <div class="flex items-center gap-2 mb-2">
+          <h3 class="text-sm font-semibold">Tags</h3>
+        </div>
+        <div class="flex items-start gap-2">
+          <AutoComplete
+            v-model="zoneTags"
+            :suggestions="tagSuggestions"
+            multiple
+            @complete="onTagSearch"
+            class="flex-1"
+          />
+          <Button label="Save Tags" size="small" @click="saveTags" />
+        </div>
+      </div>
 
       <Toolbar v-if="selectedRecords.length > 0" class="mb-2">
         <template #start>
@@ -808,12 +1002,94 @@ onMounted(fetchData)
         <Button label="Apply" icon="pi pi-check" class="w-full" @click="handleBulkSetProxy" />
       </div>
     </Dialog>
+
+    <Dialog v-model:visible="snippetPickerVisible" header="Insert Snippet" modal :style="{ width: '32rem' }">
+      <DataTable :value="snippets" size="small" @row-click="applySnippet($event.data)">
+        <Column field="name" header="Name" />
+        <Column header="Records">
+          <template #body="{ data }">{{ data.records?.length ?? '—' }}</template>
+        </Column>
+      </DataTable>
+    </Dialog>
+
+    <Dialog v-model:visible="adjustTtlVisible" header="Bulk Adjust TTL" modal class="w-20rem">
+      <div class="dialog-form" style="min-width: 300px">
+        <div class="field">
+          <label for="adj-ttl">New TTL (seconds)</label>
+          <InputNumber id="adj-ttl" v-model="adjustTtlValue" :min="1" :max="2147483647" class="w-full" />
+        </div>
+        <div class="field">
+          <label for="adj-type">Filter by Type (optional)</label>
+          <Select
+            id="adj-type"
+            v-model="adjustTtlType"
+            :options="adjustTtlTypeOptions"
+            placeholder="All types"
+            :showClear="true"
+            class="w-full"
+          />
+        </div>
+        <div class="flex justify-end gap-2">
+          <Button label="Cancel" severity="secondary" @click="adjustTtlVisible = false" />
+          <Button label="Update TTL" icon="pi pi-check" @click="submitZoneAdjustTtl" />
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog v-model:visible="complianceDialogVisible" header="Template Compliance" modal :style="{ width: '48rem' }">
+      <DataTable
+        v-if="complianceResult"
+        :value="complianceResult.diffs"
+        size="small"
+        v-model:selection="selectedComplianceDiffs"
+        dataKey="name"
+        selectionMode="multiple"
+      >
+        <Column selectionMode="multiple" style="width: 3rem" />
+        <Column field="action" header="Action">
+          <template #body="{ data }">
+            <Tag :severity="data.action === 'add' ? 'success' : 'warning'" :value="data.action" />
+          </template>
+        </Column>
+        <Column field="name" header="Name" />
+        <Column field="type" header="Type" />
+        <Column field="source_value" header="Expected Value" />
+      </DataTable>
+      <template #footer>
+        <Button
+          label="Apply Selected"
+          @click="applySelectedCompliance"
+          :disabled="selectedComplianceDiffs.length === 0"
+        />
+        <Button label="Close" severity="secondary" @click="complianceDialogVisible = false" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <style scoped>
 .zone-switcher {
   width: 14rem;
+}
+
+.compliance-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--p-amber-950, rgba(120, 80, 0, 0.15));
+  border: 1px solid var(--p-amber-700, #92400e);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.compliance-banner span {
+  flex: 1;
+}
+
+.compliance-banner-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .mb-2 {
@@ -923,6 +1199,50 @@ onMounted(fetchData)
 
 .text-muted {
   color: var(--p-text-muted-color);
+}
+
+.tags-section {
+  padding: 0.75rem 1rem;
+  background: var(--p-surface-800);
+  border: 1px solid var(--p-surface-700);
+  border-radius: 6px;
+}
+
+:root:not(.app-dark) .tags-section {
+  background: var(--p-surface-50);
+  border-color: var(--p-surface-200);
+}
+
+.flex {
+  display: flex;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.items-start {
+  align-items: flex-start;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.justify-end {
+  justify-content: flex-end;
+}
+
+.mb-4 {
+  margin-bottom: 1rem;
+}
+
+.mb-2 {
+  margin-bottom: 0.5rem;
 }
 
 .flex-1 {

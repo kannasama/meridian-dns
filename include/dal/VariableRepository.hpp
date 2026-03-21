@@ -21,6 +21,8 @@ struct VariableRow {
   std::string sType;
   std::string sScope;
   std::optional<int64_t> oZoneId;
+  std::string sVariableKind;                   // "static" or "dynamic"
+  std::optional<std::string> osDynamicFormat;  // set only when sVariableKind == "dynamic"
   std::chrono::system_clock::time_point tpCreatedAt;
   std::chrono::system_clock::time_point tpUpdatedAt;
 };
@@ -35,7 +37,9 @@ class VariableRepository {
   /// Create a variable. Returns the new ID.
   int64_t create(const std::string& sName, const std::string& sValue,
                  const std::string& sType, const std::string& sScope,
-                 std::optional<int64_t> oZoneId);
+                 std::optional<int64_t> oZoneId,
+                 const std::string& sVariableKind = "static",
+                 std::optional<std::string> osDynamicFormat = std::nullopt);
 
   /// List all variables.
   std::vector<VariableRow> listAll();
@@ -49,8 +53,12 @@ class VariableRepository {
   /// Find a variable by ID. Returns nullopt if not found.
   std::optional<VariableRow> findById(int64_t iId);
 
-  /// Update a variable's value only.
-  void update(int64_t iId, const std::string& sValue);
+  /// Update a variable's value and optional dynamic_format.
+  void update(int64_t iId, const std::string& sValue,
+              std::optional<std::string> osDynamicFormat = std::nullopt);
+
+  /// Return all variables with variable_kind = 'dynamic'.
+  std::vector<VariableRow> listDynamic();
 
   /// Delete a variable by ID. Throws NotFoundError if not found.
   void deleteById(int64_t iId);

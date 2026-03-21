@@ -125,6 +125,7 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
       [this](const crow::request& req) -> crow::response {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sEmail = jBody.value("email", "");
@@ -158,6 +159,7 @@ void AuthRoutes::registerRoutes(crow::SimpleApp& app) {
                                            "Too many attempts. Try again later.");
 
           auto rcCtx = authenticate(_amMiddleware, req);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sCurrentPassword = jBody.value("current_password", "");

@@ -30,6 +30,7 @@ class AuthMiddleware {
                  dns::dal::UserRepository& urRepo,
                  dns::dal::RoleRepository& rrRepo,
                  int iJwtTtlSeconds,
+                 int iSessionAbsoluteTtlSeconds,
                  int iApiKeyCleanupGraceSeconds);
   ~AuthMiddleware();
 
@@ -52,6 +53,7 @@ class AuthMiddleware {
   dns::dal::UserRepository& _urRepo;
   dns::dal::RoleRepository& _rrRepo;
   int _iJwtTtlSeconds;
+  int _iSessionAbsoluteTtlSeconds;
   int _iApiKeyCleanupGraceSeconds;
 };
 

@@ -14,6 +14,15 @@
 #include "api/routes/VariableRoutes.hpp"
 #include "api/routes/ViewRoutes.hpp"
 #include "api/routes/ZoneRoutes.hpp"
+#include "api/routes/SearchRoutes.hpp"
+#include "api/routes/SnippetRoutes.hpp"
+#include "api/routes/SoaPresetRoutes.hpp"
+#include "api/routes/TagRoutes.hpp"
+#include "api/routes/ZoneTemplateRoutes.hpp"
+#include "api/routes/ProviderDefinitionRoutes.hpp"
+#include "core/BindExporter.hpp"
+#include "core/RecordValidator.hpp"
+#include "dal/TagRepository.hpp"
 #include "common/Logger.hpp"
 #include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
@@ -32,6 +41,11 @@
 #include "dal/VariableRepository.hpp"
 #include "dal/ViewRepository.hpp"
 #include "dal/ZoneRepository.hpp"
+#include "dal/SnippetRepository.hpp"
+#include "dal/SoaPresetRepository.hpp"
+#include "dal/SystemConfigRepository.hpp"
+#include "dal/ZoneTemplateRepository.hpp"
+#include "dal/ProviderDefinitionRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
 #include "security/HmacJwtSigner.hpp"
@@ -81,8 +95,12 @@ class CrudRoutesTest : public ::testing::Test {
     _varRepo = std::make_unique<dns::dal::VariableRepository>(*_cpPool);
     _drRepo = std::make_unique<dns::dal::DeploymentRepository>(*_cpPool);
     _arRepo = std::make_unique<dns::dal::AuditRepository>(*_cpPool);
+    _snrRepo = std::make_unique<dns::dal::SnippetRepository>(*_cpPool);
+    _sprRepo = std::make_unique<dns::dal::SoaPresetRepository>(*_cpPool);
+    _ztrRepo = std::make_unique<dns::dal::ZoneTemplateRepository>(*_cpPool);
     _roleRepo = std::make_unique<dns::dal::RoleRepository>(*_cpPool);
     _gitRepoRepo = std::make_unique<dns::dal::GitRepoRepository>(*_cpPool, *_csService);
+    _scrRepo = std::make_unique<dns::dal::SystemConfigRepository>(*_cpPool);
 
     // Engines
     _veEngine = std::make_unique<dns::core::VariableEngine>(*_varRepo);
@@ -90,12 +108,12 @@ class CrudRoutesTest : public ::testing::Test {
         *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo, *_veEngine);
     _depEngine = std::make_unique<dns::core::DeploymentEngine>(
         *_deEngine, *_veEngine, *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo,
-        *_drRepo, *_arRepo, nullptr, 10);
+        *_drRepo, *_arRepo, *_scrRepo, nullptr, 10);
     _reEngine = std::make_unique<dns::core::RollbackEngine>(*_drRepo, *_rrRepo, *_arRepo);
 
     // Auth layer
     _amMiddleware = std::make_unique<dns::api::AuthMiddleware>(
-        *_jsSigner, *_srRepo, *_akrRepo, *_urRepo, *_roleRepo, 3600, 300);
+        *_jsSigner, *_srRepo, *_akrRepo, *_urRepo, *_roleRepo, 3600, 86400, 300);
     _asService = std::make_unique<dns::security::AuthService>(
         *_urRepo, *_srRepo, *_roleRepo, *_jsSigner, 3600, 86400);
 
@@ -103,9 +121,13 @@ class CrudRoutesTest : public ::testing::Test {
     _authRoutes = std::make_unique<dns::api::routes::AuthRoutes>(*_asService, *_amMiddleware, *_urRepo, *_srRepo);
     _providerRoutes = std::make_unique<dns::api::routes::ProviderRoutes>(*_prRepo, *_amMiddleware);
     _viewRoutes = std::make_unique<dns::api::routes::ViewRoutes>(*_vrRepo, *_amMiddleware);
-    _zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(*_zrRepo, *_amMiddleware, *_deEngine);
+    _trRepo      = std::make_unique<dns::dal::TagRepository>(*_cpPool);
+    _beExporter  = std::make_unique<dns::core::BindExporter>(*_veEngine);
+    _rvValidator = std::make_unique<dns::core::RecordValidator>(*_rrRepo);
+    _zoneRoutes = std::make_unique<dns::api::routes::ZoneRoutes>(
+        *_zrRepo, *_amMiddleware, *_deEngine, *_rrRepo, *_arRepo, *_beExporter, *_trRepo);
     _recordRoutes = std::make_unique<dns::api::routes::RecordRoutes>(
-        *_rrRepo, *_zrRepo, *_arRepo, *_amMiddleware, *_deEngine, *_depEngine);
+        *_rrRepo, *_zrRepo, *_arRepo, *_amMiddleware, *_deEngine, *_depEngine, *_rvValidator);
     _variableRoutes = std::make_unique<dns::api::routes::VariableRoutes>(*_varRepo, *_amMiddleware);
     _healthRoutes = std::make_unique<dns::api::routes::HealthRoutes>(
         *_cpPool, *_gitRepoRepo, *_prRepo);
@@ -117,13 +139,27 @@ class CrudRoutesTest : public ::testing::Test {
     // Setup routes
     _setupRoutes = std::make_unique<dns::api::routes::SetupRoutes>(
         *_cpPool, *_urRepo, *_jsSigner);
+    _snippetRoutes = std::make_unique<dns::api::routes::SnippetRoutes>(
+        *_snrRepo, *_zrRepo, *_rrRepo, *_arRepo, *_amMiddleware);
+    _soaPresetRoutes = std::make_unique<dns::api::routes::SoaPresetRoutes>(
+        *_sprRepo, *_amMiddleware);
+    _zoneTemplateRoutes = std::make_unique<dns::api::routes::ZoneTemplateRoutes>(
+        *_ztrRepo, *_snrRepo, *_zrRepo, *_rrRepo, *_arRepo, *_amMiddleware);
+    _searchRoutes = std::make_unique<dns::api::routes::SearchRoutes>(
+        *_rrRepo, *_amMiddleware);
+    _tagRoutes = std::make_unique<dns::api::routes::TagRoutes>(
+        *_trRepo, *_amMiddleware);
+    _pdrRepo = std::make_unique<dns::dal::ProviderDefinitionRepository>(*_cpPool);
+    _pdrRoutes = std::make_unique<dns::api::routes::ProviderDefinitionRoutes>(
+        *_pdrRepo, *_amMiddleware);
 
     // Crow app + server
     _app = std::make_unique<crow::SimpleApp>();
     _apiServer = std::make_unique<dns::api::ApiServer>(
         *_app, *_authRoutes, *_auditRoutes, *_deploymentRoutes, *_healthRoutes,
         *_providerRoutes, *_setupRoutes, *_viewRoutes, *_zoneRoutes, *_recordRoutes,
-        *_variableRoutes);
+        *_variableRoutes, *_snippetRoutes, *_soaPresetRoutes, *_zoneTemplateRoutes,
+        *_searchRoutes, *_tagRoutes, *_pdrRoutes);
     _apiServer->registerRoutes();
     _app->validate();
 
@@ -212,8 +248,12 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::dal::VariableRepository> _varRepo;
   std::unique_ptr<dns::dal::DeploymentRepository> _drRepo;
   std::unique_ptr<dns::dal::AuditRepository> _arRepo;
+  std::unique_ptr<dns::dal::SnippetRepository> _snrRepo;
+  std::unique_ptr<dns::dal::SoaPresetRepository> _sprRepo;
+  std::unique_ptr<dns::dal::ZoneTemplateRepository> _ztrRepo;
   std::unique_ptr<dns::dal::RoleRepository> _roleRepo;
   std::unique_ptr<dns::dal::GitRepoRepository> _gitRepoRepo;
+  std::unique_ptr<dns::dal::SystemConfigRepository> _scrRepo;
   std::unique_ptr<dns::core::VariableEngine> _veEngine;
   std::unique_ptr<dns::core::DiffEngine> _deEngine;
   std::unique_ptr<dns::core::DeploymentEngine> _depEngine;
@@ -230,6 +270,16 @@ class CrudRoutesTest : public ::testing::Test {
   std::unique_ptr<dns::api::routes::DeploymentRoutes> _deploymentRoutes;
   std::unique_ptr<dns::api::routes::AuditRoutes> _auditRoutes;
   std::unique_ptr<dns::api::routes::SetupRoutes> _setupRoutes;
+  std::unique_ptr<dns::api::routes::SnippetRoutes> _snippetRoutes;
+  std::unique_ptr<dns::api::routes::SoaPresetRoutes> _soaPresetRoutes;
+  std::unique_ptr<dns::api::routes::ZoneTemplateRoutes> _zoneTemplateRoutes;
+  std::unique_ptr<dns::dal::TagRepository>              _trRepo;
+  std::unique_ptr<dns::core::BindExporter>              _beExporter;
+  std::unique_ptr<dns::core::RecordValidator>           _rvValidator;
+  std::unique_ptr<dns::api::routes::SearchRoutes>             _searchRoutes;
+  std::unique_ptr<dns::api::routes::TagRoutes>                _tagRoutes;
+  std::unique_ptr<dns::dal::ProviderDefinitionRepository>     _pdrRepo;
+  std::unique_ptr<dns::api::routes::ProviderDefinitionRoutes> _pdrRoutes;
   std::unique_ptr<crow::SimpleApp> _app;
   std::unique_ptr<dns::api::ApiServer> _apiServer;
 };

@@ -14,6 +14,7 @@ class ZoneRepository;
 namespace dns::core {
 class DeploymentEngine;
 class DiffEngine;
+class RecordValidator;
 }  // namespace dns::core
 
 namespace dns::api {
@@ -31,7 +32,8 @@ class RecordRoutes {
                dns::dal::AuditRepository& arRepo,
                const dns::api::AuthMiddleware& amMiddleware,
                dns::core::DiffEngine& deEngine,
-               dns::core::DeploymentEngine& depEngine);
+               dns::core::DeploymentEngine& depEngine,
+               dns::core::RecordValidator& rvValidator);
   ~RecordRoutes();
 
   void registerRoutes(crow::SimpleApp& app);
@@ -43,6 +45,7 @@ class RecordRoutes {
   const dns::api::AuthMiddleware& _amMiddleware;
   dns::core::DiffEngine& _deEngine;
   dns::core::DeploymentEngine& _depEngine;
+  dns::core::RecordValidator& _rvValidator;
 };
 
 }  // namespace dns::api::routes

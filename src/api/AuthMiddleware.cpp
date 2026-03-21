@@ -22,6 +22,7 @@ AuthMiddleware::AuthMiddleware(const dns::security::IJwtSigner& jsSigner,
                                dns::dal::UserRepository& urRepo,
                                dns::dal::RoleRepository& rrRepo,
                                int iJwtTtlSeconds,
+                               int iSessionAbsoluteTtlSeconds,
                                int iApiKeyCleanupGraceSeconds)
     : _jsSigner(jsSigner),
       _srRepo(srRepo),
@@ -29,6 +30,7 @@ AuthMiddleware::AuthMiddleware(const dns::security::IJwtSigner& jsSigner,
       _urRepo(urRepo),
       _rrRepo(rrRepo),
       _iJwtTtlSeconds(iJwtTtlSeconds),
+      _iSessionAbsoluteTtlSeconds(iSessionAbsoluteTtlSeconds),
       _iApiKeyCleanupGraceSeconds(iApiKeyCleanupGraceSeconds) {}
 
 AuthMiddleware::~AuthMiddleware() = default;
@@ -70,8 +72,9 @@ common::RequestContext AuthMiddleware::validateJwt(const std::string& sBearerTok
                                        "Session has expired");
   }
 
-  // Touch session to extend sliding window
-  _srRepo.touch(sTokenHash, _iJwtTtlSeconds, 0);
+  // Pass the configured absolute TTL for API correctness; SessionRepository::touch()
+  // currently clamps against the DB-stored absolute_expires_at set at session creation.
+  _srRepo.touch(sTokenHash, _iJwtTtlSeconds, _iSessionAbsoluteTtlSeconds);
 
   // Build RequestContext from JWT payload
   common::RequestContext rcCtx;

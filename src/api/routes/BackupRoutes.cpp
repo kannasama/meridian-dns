@@ -16,7 +16,10 @@
 #include "common/Permissions.hpp"
 #include "common/TimeUtils.hpp"
 #include "core/BackupService.hpp"
+#include "core/BindExporter.hpp"
+#include "dal/RecordRepository.hpp"
 #include "dal/SettingsRepository.hpp"
+#include "dal/ZoneRepository.hpp"
 #include "gitops/GitRepoManager.hpp"
 
 #include <nlohmann/json.hpp>
@@ -50,15 +53,24 @@ nlohmann::json restoreResultToJson(const dns::core::RestoreResult& result) {
   };
 }
 
+/// Allow up to 10 MB for backup/restore payloads; legitimate backups can be several MB.
+static constexpr size_t kBackupBodyLimit = 10UL * 1024UL * 1024UL;
+
 }  // namespace
 
 BackupRoutes::BackupRoutes(dns::core::BackupService& bsService,
                            dns::dal::SettingsRepository& stRepo,
                            const dns::api::AuthMiddleware& amMiddleware,
+                           dns::core::BindExporter& beExporter,
+                           dns::dal::ZoneRepository& zrRepo,
+                           dns::dal::RecordRepository& rrRepo,
                            dns::gitops::GitRepoManager* pGitRepoManager)
     : _bsService(bsService),
       _stRepo(stRepo),
       _amMiddleware(amMiddleware),
+      _beExporter(beExporter),
+      _zrRepo(zrRepo),
+      _rrRepo(rrRepo),
       _pGitRepoManager(pGitRepoManager) {}
 
 BackupRoutes::~BackupRoutes() = default;
@@ -126,6 +138,7 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kBackupRestore);
+          enforceBodyLimit(req, kBackupBodyLimit);
 
           auto jBackup = nlohmann::json::parse(req.body, nullptr, false);
           if (jBackup.is_discarded()) {
@@ -197,23 +210,49 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
         }
       });
 
-  // GET /api/v1/zones/<int>/export — backup.create permission
+  // GET /api/v1/zones/<int>/export — ?format=bind for BIND zone file, default JSON backup
   CROW_ROUTE(app, "/api/v1/zones/<int>/export").methods("GET"_method)(
       [this](const crow::request& req, int iZoneId) -> crow::response {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
+
+          auto pFormat = req.url_params.get("format");
+          bool bBindFormat = pFormat && std::string(pFormat) == "bind";
+
+          if (bBindFormat) {
+            // BIND zone file export — requires zones.view permission
+            requirePermission(rcCtx, Permissions::kZonesView);
+
+            auto oZone = _zrRepo.findById(iZoneId);
+            if (!oZone) {
+              throw NotFoundError("ZONE_NOT_FOUND", "Zone not found");
+            }
+
+            auto vRecords = _rrRepo.listByZoneId(iZoneId);
+            std::string sOut = _beExporter.serialize(*oZone, vRecords);
+
+            auto sSafeName = sanitizeFilename(oZone->sName, "zone") + ".zone";
+
+            crow::response res{200, sOut};
+            res.set_header("Content-Type", "text/plain; charset=utf-8");
+            res.set_header("Content-Disposition",
+                "attachment; filename=\"" + sSafeName + "\"");
+            return res;
+          }
+
+          // Default: JSON backup export — requires backup.create permission
           requirePermission(rcCtx, Permissions::kBackupCreate);
 
           auto jExport = _bsService.exportZone(static_cast<int64_t>(iZoneId));
 
           auto sZoneName = jExport.value("zone", nlohmann::json::object())
                                .value("name", "zone");
-          auto sFilename = sZoneName + "-export.json";
+          auto sSafeFilename = sanitizeFilename(sZoneName, "zone") + "-export.json";
 
           crow::response resp(200, jExport.dump(2));
           resp.set_header("Content-Type", "application/json");
           resp.set_header("Content-Disposition",
-                          "attachment; filename=\"" + sFilename + "\"");
+                          "attachment; filename=\"" + sSafeFilename + "\"");
           return resp;
         } catch (const common::AppError& e) {
           return errorResponse(e);
@@ -226,6 +265,7 @@ void BackupRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kBackupRestore);
+          enforceBodyLimit(req, kBackupBodyLimit);
 
           auto jImport = nlohmann::json::parse(req.body, nullptr, false);
           if (jImport.is_discarded()) {

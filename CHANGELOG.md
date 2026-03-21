@@ -7,7 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-XX-XX
+## [1.1.0] - 2026-03-21
+
+### Added
+
+- **Zone Templates** — Combine SOA presets and snippets as reusable zone blueprints;
+  apply templates during zone creation or on-demand; advisory compliance check diffs
+  live zone against the source template and surfaces Add/Update actions only
+- **Snippets** — Named, reusable record sets; applying a snippet bulk-inserts its
+  records into a zone as a one-shot operation with no ongoing link to the snippet
+- **SOA Presets** — Named SOA timing profiles (`mname`, `rname`, `refresh`, `retry`,
+  `expire`, `minimum`, `default_ttl`) with `{{var}}` and `{{sys.*}}` placeholder support
+- **Built-in Dynamic Variables** — `{{sys.serial}}` (auto-incrementing SOA serial in
+  `YYYYMMDDNN` format, durable across restarts), `{{sys.date}}`, `{{sys.year}}`
+- **User-defined Dynamic Variable Types** — Custom variable types with configurable
+  dynamic value resolution
+- **Zone Clone** — Duplicate a zone and all its records within or across views
+- **Global Search** — Full-text search across zones, records, variables, and templates
+- **Tags** — Freeform label vocabulary attached to zones and records for grouping and
+  filtering
+- **BIND Zone Export** — Export any zone as a standards-compliant BIND zone file
+- **Bulk TTL Update** — Change TTL across multiple selected records in a single
+  operation
+- **Generic REST Provider** — Connect to HTTP APIs following the Meridian provider
+  protocol; configured entirely through the admin UI with no code required
+- **Subprocess Provider** — Execute a local binary as a DNS provider; the binary
+  communicates via JSON over stdin/stdout
+- **Provider Definition Management** — Create, edit, and delete provider type
+  definitions through the admin UI
+- **Expanded RBAC permissions** — 18 new permissions for templates, snippets, SOA presets,
+  and provider definitions (62 total, up from 44 in 1.0)
+
+### Security
+
+- Server-side session invalidation on logout
+- Password minimum length enforcement (8 characters minimum)
+- Rate limiting applied to the change-password endpoint in addition to login
+- Security response headers (`X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`) applied to all API and static responses
+- Email format validation on user create and update endpoints
+- Database credentials redacted from connection pool log output
+- Thread-safe ISO 8601 timestamp formatting via shared `TimeUtils` utility;
+  all call sites replaced from `std::gmtime` to `gmtime_r`
+- PostgreSQL network isolation via explicit internal Docker bridge network
+
+## [1.0.0] - 2026-03-18
 
 ### Added
 
@@ -29,8 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via file upload or GitOps pull; zone-level export/import
 - **Named theme presets** — 14 dark themes (Catppuccin Mocha, Dracula, Nord, Tokyo
   Night, etc.) and 9 light themes with independent accent color customization
-- **Granular RBAC** — 40+ discrete permissions collected into customizable roles with
-  view-level and zone-level scoping
+- **Granular RBAC** — 44 discrete permissions collected into customizable roles;
+  view-level and zone-level scoping is planned for a future release
 - **OIDC and SAML authentication** — Federated login with auto-provisioning, IdP
   group-to-Meridian-group mapping, claim/attribute test diagnostic
 - **User and group management** — Full CRUD, forced password change, self-service

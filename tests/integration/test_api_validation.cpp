@@ -112,3 +112,44 @@ TEST(ApiValidationTest, InvalidJsonResponseHasCorrectShape) {
   EXPECT_EQ(j["error"], "invalid_json");
   EXPECT_EQ(resp.code, 400);
 }
+
+// ── Body limit enforcement ──────────────────────────────────────────────────
+
+TEST(ApiValidationTest, EnforceBodyLimitAllowsWithinDefault) {
+  crow::request req;
+  req.body = std::string(65536, 'x');  // exactly 64 KB
+  EXPECT_NO_THROW(enforceBodyLimit(req));
+}
+
+TEST(ApiValidationTest, EnforceBodyLimitRejectsOverDefault) {
+  crow::request req;
+  req.body = std::string(65537, 'x');  // 64 KB + 1
+  EXPECT_THROW(enforceBodyLimit(req), PayloadTooLargeError);
+}
+
+TEST(ApiValidationTest, EnforceBodyLimitRejectsOverCustom) {
+  // 10 MB backup limit used by backup/restore routes
+  static constexpr size_t kBackupBodyLimit = 10UL * 1024UL * 1024UL;
+  crow::request req;
+  req.body = std::string(kBackupBodyLimit + 1, 'x');
+  EXPECT_THROW(enforceBodyLimit(req, kBackupBodyLimit), PayloadTooLargeError);
+}
+
+TEST(ApiValidationTest, EnforceBodyLimitAllowsWithinCustom) {
+  static constexpr size_t kBackupBodyLimit = 10UL * 1024UL * 1024UL;
+  crow::request req;
+  req.body = std::string(kBackupBodyLimit, 'x');  // exactly 10 MB
+  EXPECT_NO_THROW(enforceBodyLimit(req, kBackupBodyLimit));
+}
+
+TEST(ApiValidationTest, EnforceBodyLimitThrowsPayloadTooLargeError413) {
+  crow::request req;
+  req.body = std::string(100000, 'x');
+  try {
+    enforceBodyLimit(req);
+    FAIL() << "Expected PayloadTooLargeError";
+  } catch (const PayloadTooLargeError& e) {
+    EXPECT_EQ(e._iHttpStatus, 413);
+    EXPECT_EQ(e._sErrorCode, "PAYLOAD_TOO_LARGE");
+  }
+}

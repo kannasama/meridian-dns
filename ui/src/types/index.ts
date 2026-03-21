@@ -48,10 +48,12 @@ export interface Zone {
   deployment_retention: number | null
   manage_soa: boolean
   manage_ns: boolean
+  soa_preset_id: number | null
   sync_status?: string
   sync_checked_at?: string
   git_repo_id: number | null
   git_branch: string | null
+  tags: string[]
   created_at: number
 }
 
@@ -61,8 +63,10 @@ export interface ZoneCreate {
   deployment_retention?: number | null
   manage_soa?: boolean
   manage_ns?: boolean
+  soa_preset_id?: number | null
   git_repo_id?: number | null
   git_branch?: string | null
+  tags?: string[]
 }
 
 export interface DnsRecord {
@@ -96,6 +100,8 @@ export interface Variable {
   type: string
   scope: string
   zone_id: number | null
+  variable_kind: 'static' | 'dynamic'
+  dynamic_format: string | null
   created_at: number
   updated_at: number
 }
@@ -106,6 +112,13 @@ export interface VariableCreate {
   type: string
   scope?: string
   zone_id?: number | null
+  variable_kind?: 'static' | 'dynamic'
+  dynamic_format?: string | null
+}
+
+export interface VariableUpdate {
+  value?: string
+  dynamic_format?: string | null
 }
 
 export interface RecordDiff {
@@ -377,4 +390,38 @@ export interface GitRepoUpdate {
   local_path?: string
   known_hosts?: string
   is_enabled?: boolean
+}
+
+export interface Tag {
+  id: number
+  name: string
+  zone_count: number
+  created_at: number
+}
+
+export interface SearchResult {
+  id: number
+  zone_id: number
+  zone_name: string
+  view_name: string
+  name: string
+  type: string
+  ttl: number
+  value_template: string
+  priority: number
+}
+
+export interface ValidationWarning {
+  code: string
+  severity: 'error' | 'warning'
+  message: string
+}
+
+export interface RecordCreateResponse extends DnsRecord {
+  warnings?: ValidationWarning[]
+}
+
+export interface RecordUpdateResponse {
+  message: string
+  warnings?: ValidationWarning[]
 }

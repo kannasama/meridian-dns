@@ -164,6 +164,7 @@ void DeploymentRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kZonesRollback);
+          enforceBodyLimit(req);
 
           std::vector<int64_t> vCherryPickIds;
           if (!req.body.empty()) {

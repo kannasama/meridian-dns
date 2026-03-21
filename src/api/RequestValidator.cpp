@@ -24,7 +24,18 @@ void RequestValidator::validateRequired(const std::string& sValue,
     throw common::ValidationError("FIELD_REQUIRED", sFieldName + " is required");
 }
 
-void RequestValidator::validateZoneName(const std::string& s) { validateStringLength(s, "zone_name", 253); }
+void RequestValidator::validateZoneName(const std::string& s) {
+  validateStringLength(s, "zone_name", 253);
+  // Validate DNS name character set: labels are [A-Za-z0-9], may contain
+  // interior hyphens. Labels separated by dots. Optional trailing dot (FQDN).
+  // This rejects CRLF, quotes, and all other non-DNS characters.
+  static const std::regex rxDnsName(
+      R"(^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*\.?$)");
+  if (!std::regex_match(s, rxDnsName))
+    throw common::ValidationError("INVALID_ZONE_NAME",
+                                  "zone_name contains invalid characters (must be a valid DNS name)");
+}
+
 void RequestValidator::validateRecordName(const std::string& s) { validateStringLength(s, "record_name", 253); }
 void RequestValidator::validateValueTemplate(const std::string& s) { validateStringLength(s, "value_template", 4096); }
 void RequestValidator::validateVariableValue(const std::string& s) { validateStringLength(s, "variable_value", 4096); }
@@ -72,10 +83,10 @@ void RequestValidator::validateVariableName(const std::string& sName) {
 }
 
 void RequestValidator::validateProviderType(const std::string& sType) {
-  static const std::unordered_set<std::string> st = {"powerdns","cloudflare","digitalocean"};
+  static const std::unordered_set<std::string> st = {"powerdns","cloudflare","digitalocean","generic_rest","subprocess"};
   if (st.find(sType) == st.end())
     throw common::ValidationError("INVALID_PROVIDER_TYPE",
-        "Provider type must be one of: powerdns, cloudflare, digitalocean");
+        "Provider type must be one of: powerdns, cloudflare, digitalocean, generic_rest, subprocess");
 }
 
 void RequestValidator::validateApiKeyDescription(const std::string& s) {

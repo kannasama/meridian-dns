@@ -12,6 +12,7 @@
 #include "common/Types.hpp"
 #include "core/DeploymentEngine.hpp"
 #include "core/DiffEngine.hpp"
+#include "core/RecordValidator.hpp"
 #include "dal/AuditRepository.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/ZoneRepository.hpp"
@@ -26,9 +27,10 @@ RecordRoutes::RecordRoutes(dns::dal::RecordRepository& rrRepo,
                            dns::dal::AuditRepository& arRepo,
                            const dns::api::AuthMiddleware& amMiddleware,
                            dns::core::DiffEngine& deEngine,
-                           dns::core::DeploymentEngine& depEngine)
+                           dns::core::DeploymentEngine& depEngine,
+                           dns::core::RecordValidator& rvValidator)
     : _rrRepo(rrRepo), _zrRepo(zrRepo), _arRepo(arRepo), _amMiddleware(amMiddleware),
-      _deEngine(deEngine), _depEngine(depEngine) {}
+      _deEngine(deEngine), _depEngine(depEngine), _rvValidator(rvValidator) {}
 
 RecordRoutes::~RecordRoutes() = default;
 
@@ -91,6 +93,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRecordsCreate);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -109,6 +112,25 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
             jProviderMeta = jBody["provider_meta"];
           }
 
+          // Validate DNS rules
+          auto vWarnings = _rvValidator.validate(iZoneId, sName, sType, sValueTemplate);
+          {
+            std::vector<common::ValidationWarning> vErrors;
+            for (const auto& w : vWarnings) {
+              if (w.sSeverity == "error") vErrors.push_back(w);
+            }
+            if (!vErrors.empty()) {
+              nlohmann::json jWarnArr = nlohmann::json::array();
+              for (const auto& w : vWarnings) {
+                jWarnArr.push_back({{"code", w.sCode}, {"severity", w.sSeverity},
+                                    {"message", w.sMessage}});
+              }
+              return jsonResponse(422, {{"error", "RECORD_VALIDATION_ERROR"},
+                                        {"message", "Record validation failed"},
+                                        {"warnings", jWarnArr}});
+            }
+          }
+
           int64_t iId = _rrRepo.create(iZoneId, sName, sType, iTtl,
                                        sValueTemplate, iPriority, jProviderMeta);
 
@@ -121,7 +143,16 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
                          formatAuditIdentity(rcCtx), rcCtx.sAuthMethod, rcCtx.sIpAddress);
 
           auto oCreated = _rrRepo.findById(iId);
-          return jsonResponse(201, recordRowToJson(*oCreated));
+          nlohmann::json jResp = recordRowToJson(*oCreated);
+          if (!vWarnings.empty()) {
+            nlohmann::json jWarnArr = nlohmann::json::array();
+            for (const auto& w : vWarnings) {
+              jWarnArr.push_back({{"code", w.sCode}, {"severity", w.sSeverity},
+                                  {"message", w.sMessage}});
+            }
+            jResp["warnings"] = jWarnArr;
+          }
+          return jsonResponse(201, jResp);
         } catch (const common::AppError& e) {
           return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
@@ -148,10 +179,11 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
 
   // PUT /api/v1/zones/<int>/records/<int>
   CROW_ROUTE(app, "/api/v1/zones/<int>/records/<int>").methods("PUT"_method)(
-      [this](const crow::request& req, int /*iZoneId*/, int iRecordId) -> crow::response {
+      [this](const crow::request& req, int iZoneId, int iRecordId) -> crow::response {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRecordsEdit);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           std::string sName = jBody.value("name", "");
@@ -168,6 +200,26 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           nlohmann::json jProviderMeta;
           if (jBody.contains("provider_meta") && jBody["provider_meta"].is_object()) {
             jProviderMeta = jBody["provider_meta"];
+          }
+
+          // Validate DNS rules (exclude self from coexistence checks)
+          auto vWarnings = _rvValidator.validate(iZoneId, sName, sType, sValueTemplate,
+                                                 std::make_optional<int64_t>(iRecordId));
+          {
+            std::vector<common::ValidationWarning> vErrors;
+            for (const auto& w : vWarnings) {
+              if (w.sSeverity == "error") vErrors.push_back(w);
+            }
+            if (!vErrors.empty()) {
+              nlohmann::json jWarnArr = nlohmann::json::array();
+              for (const auto& w : vWarnings) {
+                jWarnArr.push_back({{"code", w.sCode}, {"severity", w.sSeverity},
+                                    {"message", w.sMessage}});
+              }
+              return jsonResponse(422, {{"error", "RECORD_VALIDATION_ERROR"},
+                                        {"message", "Record validation failed"},
+                                        {"warnings", jWarnArr}});
+            }
           }
 
           // Capture old state for audit
@@ -193,7 +245,16 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
                          formatAuditIdentity(rcCtx), rcCtx.sAuthMethod, rcCtx.sIpAddress);
 
           auto oUpdated = _rrRepo.findById(iRecordId);
-          return jsonResponse(200, recordRowToJson(*oUpdated));
+          nlohmann::json jResp = recordRowToJson(*oUpdated);
+          if (!vWarnings.empty()) {
+            nlohmann::json jWarnArr = nlohmann::json::array();
+            for (const auto& w : vWarnings) {
+              jWarnArr.push_back({{"code", w.sCode}, {"severity", w.sSeverity},
+                                  {"message", w.sMessage}});
+            }
+            jResp["warnings"] = jWarnArr;
+          }
+          return jsonResponse(200, jResp);
         } catch (const common::AppError& e) {
           return errorResponse(e);
         } catch (const nlohmann::json::exception&) {
@@ -332,6 +393,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kZonesDeploy);
+          enforceBodyLimit(req);
 
           std::vector<common::DriftAction> vDriftActions;
           if (!req.body.empty()) {
@@ -382,12 +444,49 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
         }
       });
 
+  // POST /api/v1/zones/<int>/records/bulk-ttl
+  CROW_ROUTE(app, "/api/v1/zones/<int>/records/bulk-ttl").methods("POST"_method)(
+      [this](const crow::request& req, int iZoneId) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requirePermission(rcCtx, Permissions::kRecordsEdit);
+          enforceBodyLimit(req);
+          auto jBody = nlohmann::json::parse(req.body);
+
+          if (!jBody.contains("ttl") || !jBody["ttl"].is_number_integer()) {
+            throw common::ValidationError("MISSING_FIELDS", "ttl is required");
+          }
+          int iTtl = jBody["ttl"].get<int>();
+          if (iTtl < 1 || iTtl > 2147483647) {
+            throw common::ValidationError("INVALID_TTL", "ttl must be 1-2147483647");
+          }
+
+          std::optional<std::string> osFilterType;
+          if (jBody.contains("filter_type") && jBody["filter_type"].is_string()) {
+            osFilterType = jBody["filter_type"].get<std::string>();
+          }
+
+          auto oZone = _zrRepo.findById(iZoneId);
+          if (!oZone) {
+            throw common::NotFoundError("ZONE_NOT_FOUND", "Zone not found");
+          }
+
+          int iAffected = _rrRepo.bulkUpdateTtl(iZoneId, iTtl, osFilterType);
+          return jsonResponse(200, {{"affected", iAffected}});
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        } catch (const nlohmann::json::exception&) {
+          return invalidJsonResponse();
+        }
+      });
+
   // POST /api/v1/zones/<int>/records/batch
   CROW_ROUTE(app, "/api/v1/zones/<int>/records/batch").methods("POST"_method)(
       [this](const crow::request& req, int iZoneId) -> crow::response {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
           requirePermission(rcCtx, Permissions::kRecordsImport);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
           if (!jBody.is_array()) {
@@ -442,7 +541,8 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
       [this](const crow::request& req, int iZoneId) -> crow::response {
         try {
           auto rcCtx = authenticate(_amMiddleware, req);
-          requirePermission(rcCtx, Permissions::kRecordsView);
+          requirePermission(rcCtx, Permissions::kRecordsEdit);
+          enforceBodyLimit(req);
 
           auto jBody = nlohmann::json::parse(req.body);
 

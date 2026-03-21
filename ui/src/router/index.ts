@@ -79,6 +79,21 @@ const router = createRouter({
           component: () => import('../views/GitReposView.vue'),
         },
         {
+          path: 'snippets',
+          name: 'snippets',
+          component: () => import('../views/SnippetsView.vue'),
+        },
+        {
+          path: 'soa-presets',
+          name: 'soa-presets',
+          component: () => import('../views/SoaPresetsView.vue'),
+        },
+        {
+          path: 'templates',
+          name: 'templates',
+          component: () => import('../views/TemplatesView.vue'),
+        },
+        {
           path: 'deployments',
           name: 'deployments',
           component: () => import('../views/DeploymentsView.vue'),
@@ -87,6 +102,16 @@ const router = createRouter({
           path: 'audit',
           name: 'audit',
           component: () => import('../views/AuditView.vue'),
+        },
+        {
+          path: 'tags',
+          name: 'tags',
+          component: () => import('../views/TagsView.vue'),
+        },
+        {
+          path: 'search',
+          name: 'search',
+          component: () => import('../views/SearchView.vue'),
         },
         {
           path: 'profile',
@@ -114,6 +139,11 @@ const router = createRouter({
           path: 'admin/backup',
           name: 'admin-backup',
           component: () => import('../views/BackupRestoreView.vue'),
+        },
+        {
+          path: 'admin/provider-definitions',
+          name: 'admin-provider-definitions',
+          component: () => import('../views/ProviderDefinitionsView.vue'),
         },
 
         // ─── Backward-compatible redirects ───
