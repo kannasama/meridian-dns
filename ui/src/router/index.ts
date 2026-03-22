@@ -5,6 +5,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePreferencesStore } from '../stores/preferences'
+import { useThemeStore } from '../stores/theme'
 import { getSetupStatus } from '../api/setup'
 
 let setupChecked = false
@@ -211,6 +212,11 @@ router.beforeEach(async (to) => {
   if (!preferences.loaded) {
     await preferences.fetch()
   }
+
+  // Apply theme from preferences (migrate from localStorage on first load)
+  const themeStore = useThemeStore()
+  themeStore.loadFromPreferences()
+  themeStore.migrateToPreferences()
 
   if (auth.user?.force_password_change && to.name !== 'change-password' && to.name !== 'login') {
     return { name: 'change-password' }

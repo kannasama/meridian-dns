@@ -8,6 +8,7 @@ import { updatePreset } from '@primevue/themes'
 import { getDarkPreset, getLightPreset, registerCustomPresets } from '../theme/presets'
 import type { ThemePreset } from '../theme/presets'
 import { listCustomThemes } from '../api/themes'
+import { usePreferencesStore } from './preferences'
 
 export type AccentColor =
   | 'noir' | 'emerald' | 'green' | 'lime'
@@ -160,41 +161,95 @@ export const useThemeStore = defineStore('theme', () => {
     }
   }
 
-  // Persist to localStorage
+  function loadFromPreferences() {
+    const preferences = usePreferencesStore()
+    if (!preferences.loaded) return
+
+    const d = preferences.data
+    if (d.theme_dark_mode !== undefined) darkMode.value = d.theme_dark_mode as boolean
+    if (d.theme_dark_preset) darkTheme.value = d.theme_dark_preset as string
+    if (d.theme_light_preset) lightTheme.value = d.theme_light_preset as string
+    if (d.theme_accent) accent.value = d.theme_accent as AccentColor
+    if (d.theme_accent_override !== undefined) accentOverride.value = d.theme_accent_override as boolean
+    if (d.theme_font_family) fontFamily.value = d.theme_font_family as string
+    if (d.theme_font_size) fontSize.value = d.theme_font_size as string
+    if (d.theme_grid_font_size) gridFontSize.value = d.theme_grid_font_size as string
+  }
+
+  async function migrateToPreferences() {
+    const preferences = usePreferencesStore()
+    if (!preferences.loaded) return
+
+    // Only migrate if DB has no theme preferences yet
+    if (preferences.data.theme_dark_mode !== undefined) return
+
+    const themePrefs: Record<string, unknown> = {}
+    themePrefs.theme_dark_mode = darkMode.value
+    themePrefs.theme_dark_preset = darkTheme.value
+    themePrefs.theme_light_preset = lightTheme.value
+    themePrefs.theme_accent = accent.value
+    themePrefs.theme_accent_override = accentOverride.value
+    themePrefs.theme_font_family = fontFamily.value
+    themePrefs.theme_font_size = fontSize.value
+    themePrefs.theme_grid_font_size = gridFontSize.value
+
+    await preferences.saveMany(themePrefs)
+  }
+
+  function saveThemePreference(key: string, value: unknown) {
+    try {
+      const preferences = usePreferencesStore()
+      if (preferences.loaded) {
+        preferences.save(key, value)
+      }
+    } catch {
+      // Silently fail if preferences not available
+    }
+  }
+
+  // Persist to localStorage and preferences
   watch(darkMode, (val) => {
     localStorage.setItem('theme-dark', String(val))
+    saveThemePreference('theme_dark_mode', val)
     applyDarkMode()
     applyPreset()
   })
 
   watch(darkTheme, (val) => {
     localStorage.setItem('theme-dark-preset', val)
+    saveThemePreference('theme_dark_preset', val)
     if (darkMode.value) applyPreset()
   })
 
   watch(lightTheme, (val) => {
     localStorage.setItem('theme-light-preset', val)
+    saveThemePreference('theme_light_preset', val)
     if (!darkMode.value) applyPreset()
   })
 
   watch(accent, (val) => {
     localStorage.setItem('theme-accent', val)
     localStorage.setItem('theme-accent-override', String(accentOverride.value))
+    saveThemePreference('theme_accent', val)
+    saveThemePreference('theme_accent_override', accentOverride.value)
     applyAccent(val)
   })
 
   watch(fontFamily, (val) => {
     localStorage.setItem('theme-font-family', val)
+    saveThemePreference('theme_font_family', val)
     applyFonts()
   })
 
   watch(fontSize, (val) => {
     localStorage.setItem('theme-font-size', val)
+    saveThemePreference('theme_font_size', val)
     applyFonts()
   })
 
   watch(gridFontSize, (val) => {
     localStorage.setItem('theme-grid-font-size', val)
+    saveThemePreference('theme_grid_font_size', val)
     applyFonts()
   })
 
@@ -209,5 +264,6 @@ export const useThemeStore = defineStore('theme', () => {
     fontFamily, fontSize, gridFontSize, activePreset,
     toggleDarkMode, setAccent, setDarkTheme, setLightTheme,
     setFontFamily, setFontSize, setGridFontSize, loadCustomPresets,
+    loadFromPreferences, migrateToPreferences,
   }
 })
