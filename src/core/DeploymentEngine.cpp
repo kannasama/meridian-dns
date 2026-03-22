@@ -234,6 +234,7 @@ void DeploymentEngine::push(int64_t iZoneId,
             dr.uTtl = diff.uTtl;
             dr.iPriority = diff.iPriority;
             dr.jProviderMeta = diff.jProviderMeta;
+            dr.sProviderRecordId = diff.sProviderRecordId;
             auto pushResult = upProvider->updateRecord(oZone->sName, dr);
             if (!pushResult.bSuccess) {
               throw common::ProviderError("PROVIDER_UPDATE_FAILED",
