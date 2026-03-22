@@ -8,7 +8,7 @@ import { ref, onMounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Skeleton from 'primevue/skeleton'
@@ -31,7 +31,7 @@ const { confirmDelete } = useConfirmAction()
 
 const definitions = ref<ProviderDefinition[]>([])
 const loading = ref(false)
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const saving = ref(false)
 
@@ -63,7 +63,7 @@ function openCreate() {
   editingId.value = null
   form.value = { name: '', type_slug: '', version: '1.0.0', source_url: '', definitionJson: '{}' }
   jsonError.value = ''
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function openEdit(def: ProviderDefinition) {
@@ -76,7 +76,7 @@ async function openEdit(def: ProviderDefinition) {
     definitionJson: JSON.stringify(def.definition, null, 2),
   }
   jsonError.value = ''
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 function validateJson(): Record<string, unknown> | null {
@@ -115,7 +115,7 @@ async function saveDefinition() {
       await pdrApi.updateProviderDefinition(editingId.value, payload)
       notify.success('Definition updated')
     }
-    drawerVisible.value = false
+    dialogVisible.value = false
     await fetchDefinitions()
   } catch (e: unknown) {
     notify.error(e instanceof Error ? e.message : 'Save failed')
@@ -225,9 +225,9 @@ onMounted(fetchDefinitions)
       </Column>
     </DataTable>
 
-    <!-- Create / Edit Drawer -->
-    <Drawer v-model:visible="drawerVisible" :header="editingId ? 'Edit Definition' : 'Upload Definition'" position="right" style="width: 40rem">
-      <div class="drawer-form">
+    <!-- Create / Edit Dialog -->
+    <Dialog v-model:visible="dialogVisible" :header="editingId ? 'Edit Definition' : 'Upload Definition'" modal class="w-40rem">
+      <div class="dialog-form">
         <div class="field">
           <label>Name</label>
           <InputText v-model="form.name" class="w-full" placeholder="Route53" />
@@ -257,7 +257,7 @@ onMounted(fetchDefinitions)
         </div>
       </div>
       <template #footer>
-        <Button label="Cancel" text @click="drawerVisible = false" />
+        <Button label="Cancel" text @click="dialogVisible = false" />
         <Button
           :label="editingId ? 'Save' : 'Upload'"
           icon="pi pi-check"
@@ -265,7 +265,7 @@ onMounted(fetchDefinitions)
           @click="saveDefinition"
         />
       </template>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 

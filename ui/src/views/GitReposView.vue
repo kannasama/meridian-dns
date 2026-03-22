@@ -7,7 +7,7 @@ import { onMounted, ref, computed } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
@@ -41,7 +41,7 @@ const { items: repos, loading, fetch: fetchRepos, create, update, remove } = use
   'Git Repository',
 )
 
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const testingId = ref<number | null>(null)
 const syncingId = ref<number | null>(null)
@@ -85,7 +85,7 @@ function openCreate() {
     known_hosts: '',
     is_enabled: true,
   }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function openEdit(repo: GitRepo) {
@@ -101,7 +101,7 @@ async function openEdit(repo: GitRepo) {
     known_hosts: full.known_hosts || '',
     is_enabled: full.is_enabled,
   }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function handleSubmit() {
@@ -130,7 +130,7 @@ async function handleSubmit() {
     if (form.value.credentials) data.credentials = form.value.credentials
     ok = await create(data)
   }
-  if (ok) drawerVisible.value = false
+  if (ok) dialogVisible.value = false
 }
 
 function handleDelete(repo: GitRepo) {
@@ -283,13 +283,13 @@ onMounted(fetchRepos)
       </Column>
     </DataTable>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId ? 'Edit Repository' : 'Add Repository'"
-      position="right"
-      class="w-25rem"
+      modal
+      class="w-30rem"
     >
-      <form @submit.prevent="handleSubmit" class="drawer-form">
+      <form @submit.prevent="handleSubmit" class="dialog-form">
         <div class="field">
           <label for="repo-name">Name</label>
           <InputText id="repo-name" v-model="form.name" class="w-full" placeholder="my-dns-repo" />
@@ -367,7 +367,7 @@ onMounted(fetchRepos)
         </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 
@@ -388,7 +388,7 @@ onMounted(fetchRepos)
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -407,10 +407,6 @@ onMounted(fetchRepos)
 
 .w-full {
   width: 100%;
-}
-
-.w-25rem {
-  width: 25rem;
 }
 
 .font-mono {

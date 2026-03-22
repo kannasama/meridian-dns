@@ -7,7 +7,6 @@ import { onMounted, ref } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
@@ -30,7 +29,7 @@ const users = ref<UserDetail[]>([])
 const groups = ref<Group[]>([])
 const loading = ref(true)
 
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 
 const createForm = ref({
@@ -65,7 +64,7 @@ async function fetchAll() {
 function openCreate() {
   editingId.value = null
   createForm.value = { username: '', email: '', password: '', group_ids: [], force_password_change: true }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 function openEdit(user: UserDetail) {
@@ -75,7 +74,7 @@ function openEdit(user: UserDetail) {
     is_active: user.is_active,
     group_ids: user.groups.map(g => g.id),
   }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function handleSubmit() {
@@ -87,7 +86,7 @@ async function handleSubmit() {
       await userApi.createUser(createForm.value)
       notify.success('User created')
     }
-    drawerVisible.value = false
+    dialogVisible.value = false
     await fetchAll()
   } catch (e: any) {
     notify.error(e.message || 'Failed to save user')
@@ -188,8 +187,8 @@ onMounted(fetchAll)
       </Column>
     </DataTable>
 
-    <Drawer v-model:visible="drawerVisible" :header="editingId ? 'Edit User' : 'Add User'" position="right" class="w-25rem">
-      <form @submit.prevent="handleSubmit" class="drawer-form">
+    <Dialog v-model:visible="dialogVisible" :header="editingId ? 'Edit User' : 'Add User'" modal class="w-30rem">
+      <form @submit.prevent="handleSubmit" class="dialog-form">
         <template v-if="editingId === null">
           <div class="field">
             <label>Username</label>
@@ -228,10 +227,10 @@ onMounted(fetchAll)
         </template>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
 
     <Dialog v-model:visible="resetDialogVisible" header="Reset Password" :style="{ width: '24rem' }" modal>
-      <form @submit.prevent="handleResetPassword" class="drawer-form">
+      <form @submit.prevent="handleResetPassword" class="dialog-form">
         <div class="field">
           <label>New Password</label>
           <Password v-model="resetPassword" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
@@ -250,10 +249,9 @@ onMounted(fetchAll)
 .mt-3 { margin-top: 0.75rem; }
 .text-surface-400 { color: var(--p-surface-400); }
 .action-buttons { display: flex; justify-content: flex-end; gap: 0.25rem; }
-.drawer-form { display: flex; flex-direction: column; gap: 1rem; }
+.dialog-form { display: flex; flex-direction: column; gap: 1rem; }
 .field { display: flex; flex-direction: column; gap: 0.375rem; }
 .field label { font-size: 0.875rem; font-weight: 500; }
 .field.flex-row { flex-direction: row; align-items: center; gap: 0.5rem; }
 .w-full { width: 100%; }
-.w-25rem { width: 25rem; }
 </style>

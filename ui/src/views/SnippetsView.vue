@@ -7,7 +7,7 @@ import { ref, computed, onMounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
@@ -29,7 +29,7 @@ const { confirmDelete } = useConfirmAction()
 
 const snippets = ref<Snippet[]>([])
 const loading = ref(false)
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const saving = ref(false)
 
@@ -51,7 +51,7 @@ async function fetchSnippets() {
 function openCreate() {
   editingId.value = null
   form.value = { name: '', description: '', records: [] }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function openEdit(snippet: Snippet) {
@@ -59,7 +59,7 @@ async function openEdit(snippet: Snippet) {
   try {
     const full = await snippetApi.getSnippet(snippet.id)
     form.value = { name: full.name, description: full.description, records: [...full.records] }
-    drawerVisible.value = true
+    dialogVisible.value = true
   } catch (e: unknown) {
     notify.error(e instanceof Error ? e.message : 'Failed to load snippet')
   }
@@ -93,7 +93,7 @@ async function save() {
       await snippetApi.updateSnippet(editingId.value, form.value)
       notify.success('Snippet updated')
     }
-    drawerVisible.value = false
+    dialogVisible.value = false
     await fetchSnippets()
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Save failed'
@@ -195,13 +195,13 @@ onMounted(fetchSnippets)
       </Column>
     </DataTable>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId !== null ? 'Edit Snippet' : 'New Snippet'"
-      position="right"
-      class="snippet-drawer"
+      modal
+      class="w-40rem"
     >
-      <form @submit.prevent="save" class="drawer-form">
+      <form @submit.prevent="save" class="dialog-form">
         <div class="field">
           <label for="snip-name">Name</label>
           <InputText id="snip-name" v-model="form.name" class="w-full" required />
@@ -290,7 +290,7 @@ onMounted(fetchSnippets)
           class="w-full"
         />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 
@@ -311,7 +311,7 @@ onMounted(fetchSnippets)
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -336,10 +336,6 @@ onMounted(fetchSnippets)
 
 .w-full {
   width: 100%;
-}
-
-.snippet-drawer {
-  width: 36rem;
 }
 
 .records-section {

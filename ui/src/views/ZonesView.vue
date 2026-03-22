@@ -9,7 +9,6 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import MultiSelect from 'primevue/multiselect'
@@ -64,7 +63,7 @@ const { items: zones, loading, fetch: fetchZones, create, update, remove } = use
 const allViews = ref<View[]>([])
 const allGitRepos = ref<GitRepo[]>([])
 const soaPresets = ref<SoaPreset[]>([])
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({
   name: '',
@@ -97,7 +96,7 @@ const cloningSourceId = ref<number | null>(null)
 function openCreate() {
   editingId.value = null
   form.value = { name: '', view_id: null, deployment_retention: null, manage_soa: false, manage_ns: false, soa_preset_id: null, git_repo_id: null, git_branch: '' }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 function openEdit(zone: Zone) {
@@ -112,7 +111,7 @@ function openEdit(zone: Zone) {
     git_repo_id: zone.git_repo_id,
     git_branch: zone.git_branch || '',
   }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function handleSubmit() {
@@ -141,7 +140,7 @@ async function handleSubmit() {
       git_branch: gitBranch,
     })
   }
-  if (ok) drawerVisible.value = false
+  if (ok) dialogVisible.value = false
 }
 
 function handleDelete(zone: Zone) {
@@ -292,13 +291,13 @@ onMounted(async () => {
       </DataTable>
     </template>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId ? 'Edit Zone' : 'Add Zone'"
-      position="right"
-      class="w-25rem"
+      modal
+      class="w-30rem"
     >
-      <form @submit.prevent="handleSubmit" class="drawer-form">
+      <form @submit.prevent="handleSubmit" class="dialog-form">
         <div class="field">
           <label for="zone-name">Name</label>
           <InputText id="zone-name" v-model="form.name" class="w-full" placeholder="example.com" />
@@ -375,7 +374,7 @@ onMounted(async () => {
         </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
 
     <Dialog v-model:visible="showCloneDialog" header="Clone Zone" modal>
       <div class="clone-dialog-body">
@@ -416,7 +415,7 @@ onMounted(async () => {
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -435,10 +434,6 @@ onMounted(async () => {
 
 .w-full {
   width: 100%;
-}
-
-.w-25rem {
-  width: 25rem;
 }
 
 .cursor-pointer :deep(tr) {

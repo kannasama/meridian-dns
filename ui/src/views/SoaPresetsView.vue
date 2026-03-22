@@ -7,7 +7,7 @@ import { ref, computed, onMounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Skeleton from 'primevue/skeleton'
@@ -27,7 +27,7 @@ const { confirmDelete } = useConfirmAction()
 
 const presets = ref<SoaPreset[]>([])
 const loading = ref(false)
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const saving = ref(false)
 
@@ -65,7 +65,7 @@ function openCreate() {
     minimum: 300,
     default_ttl: 3600,
   }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function openEdit(preset: SoaPreset) {
@@ -82,7 +82,7 @@ async function openEdit(preset: SoaPreset) {
       minimum: full.minimum,
       default_ttl: full.default_ttl,
     }
-    drawerVisible.value = true
+    dialogVisible.value = true
   } catch (e: unknown) {
     notify.error(e instanceof Error ? e.message : 'Failed to load SOA preset')
   }
@@ -98,7 +98,7 @@ async function save() {
       await soaPresetApi.updateSoaPreset(editingId.value, form.value)
       notify.success('SOA preset updated')
     }
-    drawerVisible.value = false
+    dialogVisible.value = false
     await fetchPresets()
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Save failed'
@@ -211,13 +211,13 @@ onMounted(fetchPresets)
       </Column>
     </DataTable>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId !== null ? 'Edit SOA Preset' : 'New SOA Preset'"
-      position="right"
-      class="soa-preset-drawer"
+      modal
+      class="w-30rem"
     >
-      <form @submit.prevent="save" class="drawer-form">
+      <form @submit.prevent="save" class="dialog-form">
         <div class="field">
           <label for="soa-name">Name</label>
           <InputText id="soa-name" v-model="form.name" class="w-full" required />
@@ -272,7 +272,7 @@ onMounted(fetchPresets)
           class="w-full"
         />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 
@@ -293,7 +293,7 @@ onMounted(fetchPresets)
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -318,10 +318,6 @@ onMounted(fetchPresets)
 
 .w-full {
   width: 100%;
-}
-
-.soa-preset-drawer {
-  width: 32rem;
 }
 
 .font-mono {

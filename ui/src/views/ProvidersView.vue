@@ -7,7 +7,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Password from 'primevue/password'
@@ -44,7 +44,7 @@ const { items: providers, loading, fetch: fetchProviders, create, update, remove
   'Provider',
 )
 
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({
   name: '',
@@ -72,7 +72,7 @@ watch(() => form.value.type, (newType) => {
 function openCreate() {
   editingId.value = null
   form.value = { name: '', type: 'powerdns', api_endpoint: '', token: '', server_id: '', account_id: '' }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function openEdit(provider: Provider) {
@@ -86,7 +86,7 @@ async function openEdit(provider: Provider) {
     server_id: full.config?.server_id ?? '',
     account_id: full.config?.account_id ?? '',
   }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 function buildConfig(): Record<string, string> {
@@ -122,7 +122,7 @@ async function handleSubmit() {
     })
   }
   if (ok) {
-    drawerVisible.value = false
+    dialogVisible.value = false
   }
 }
 
@@ -210,13 +210,13 @@ onMounted(fetchProviders)
       </Column>
     </DataTable>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId ? 'Edit Provider' : 'Add Provider'"
-      position="right"
-      class="w-25rem"
+      modal
+      class="w-30rem"
     >
-      <form @submit.prevent="handleSubmit" class="drawer-form">
+      <form @submit.prevent="handleSubmit" class="dialog-form">
         <div class="field">
           <label for="prov-name">Name</label>
           <InputText id="prov-name" v-model="form.name" class="w-full" />
@@ -268,7 +268,7 @@ onMounted(fetchProviders)
         </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 
@@ -289,7 +289,7 @@ onMounted(fetchProviders)
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -308,10 +308,6 @@ onMounted(fetchProviders)
 
 .w-full {
   width: 100%;
-}
-
-.w-25rem {
-  width: 25rem;
 }
 
 .endpoint-fieldset {

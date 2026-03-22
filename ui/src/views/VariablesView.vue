@@ -7,7 +7,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
@@ -52,7 +52,7 @@ const kindOptions = [
   { label: 'Dynamic', value: 'dynamic' },
 ]
 
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 
 const form = reactive({
@@ -95,7 +95,7 @@ function openCreate() {
   form.zone_id = null
   form.variable_kind = 'static'
   form.dynamic_format = ''
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 function openEdit(variable: Variable) {
@@ -107,7 +107,7 @@ function openEdit(variable: Variable) {
   form.zone_id = variable.zone_id
   form.variable_kind = variable.variable_kind
   form.dynamic_format = variable.dynamic_format ?? ''
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function handleSubmit() {
@@ -132,7 +132,7 @@ async function handleSubmit() {
       await varApi.createVariable(payload)
       notify.success('Variable created')
     }
-    drawerVisible.value = false
+    dialogVisible.value = false
     await fetchVariables()
   } catch (err) {
     const msg = err instanceof ApiRequestError ? err.body.message : 'Failed to save'
@@ -281,13 +281,13 @@ onMounted(async () => {
       </Column>
     </DataTable>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId ? 'Edit Variable' : 'Add Variable'"
-      position="right"
-      class="w-25rem"
+      modal
+      class="w-30rem"
     >
-      <form @submit.prevent="handleSubmit" class="drawer-form">
+      <form @submit.prevent="handleSubmit" class="dialog-form">
         <div class="field">
           <label for="var-name">Name</label>
           <InputText
@@ -363,7 +363,7 @@ onMounted(async () => {
 
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 
@@ -424,7 +424,7 @@ onMounted(async () => {
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -454,7 +454,4 @@ onMounted(async () => {
   width: 100%;
 }
 
-.w-25rem {
-  width: 25rem;
-}
 </style>

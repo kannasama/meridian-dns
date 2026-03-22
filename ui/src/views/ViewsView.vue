@@ -7,7 +7,7 @@ import { onMounted, ref } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import MultiSelect from 'primevue/multiselect'
 import Skeleton from 'primevue/skeleton'
@@ -41,7 +41,7 @@ const { items: views, loading, fetch: fetchViews, create, update, remove } = use
 
 const allProviders = ref<Provider[]>([])
 const viewZones = ref<Zone[]>([])
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({
   name: '',
@@ -52,7 +52,7 @@ const form = ref({
 function openCreate() {
   editingId.value = null
   form.value = { name: '', description: '', providerIds: [] }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function openEdit(view: View) {
@@ -67,7 +67,7 @@ async function openEdit(view: View) {
     providerIds: full.provider_ids || [],
   }
   viewZones.value = allZones.filter(z => z.view_id === view.id)
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function syncProviders(viewId: number, desired: number[], current: number[]) {
@@ -93,7 +93,7 @@ async function handleSubmit() {
         currentView?.provider_ids || [],
       )
       await fetchViews()
-      drawerVisible.value = false
+      dialogVisible.value = false
     }
   } else {
     const ok = await create({
@@ -107,7 +107,7 @@ async function handleSubmit() {
         await fetchViews()
       }
     }
-    if (ok) drawerVisible.value = false
+    if (ok) dialogVisible.value = false
   }
 }
 
@@ -195,13 +195,13 @@ onMounted(async () => {
       </Column>
     </DataTable>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId ? 'Edit View' : 'Add View'"
-      position="right"
-      class="w-25rem"
+      modal
+      class="w-30rem"
     >
-      <form @submit.prevent="handleSubmit" class="drawer-form">
+      <form @submit.prevent="handleSubmit" class="dialog-form">
         <div class="field">
           <label for="view-name">Name</label>
           <InputText id="view-name" v-model="form.name" class="w-full" />
@@ -240,7 +240,7 @@ onMounted(async () => {
         </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 
@@ -272,7 +272,7 @@ onMounted(async () => {
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -293,7 +293,4 @@ onMounted(async () => {
   width: 100%;
 }
 
-.w-25rem {
-  width: 25rem;
-}
 </style>

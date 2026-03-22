@@ -7,7 +7,7 @@ import { ref, computed, onMounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
@@ -32,7 +32,7 @@ const { confirmDelete } = useConfirmAction()
 
 const templates = ref<ZoneTemplate[]>([])
 const loading = ref(false)
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const saving = ref(false)
 
@@ -67,7 +67,7 @@ function openCreate() {
   editingId.value = null
   form.value = { name: '', description: '', soa_preset_id: null, snippet_ids: [] }
   selectedSnippets.value = []
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function openEdit(template: ZoneTemplate) {
@@ -83,7 +83,7 @@ async function openEdit(template: ZoneTemplate) {
     selectedSnippets.value = full.snippet_ids
       .map(id => allSnippets.value.find(s => s.id === id))
       .filter((s): s is Snippet => s !== undefined)
-    drawerVisible.value = true
+    dialogVisible.value = true
   } catch (e: unknown) {
     notify.error(e instanceof Error ? e.message : 'Failed to load template')
   }
@@ -131,7 +131,7 @@ async function save() {
       await templateApi.updateTemplate(editingId.value, form.value)
       notify.success('Template updated')
     }
-    drawerVisible.value = false
+    dialogVisible.value = false
     await fetchTemplates()
   } catch (e: unknown) {
     notify.error(e instanceof Error ? e.message : 'Save failed')
@@ -244,13 +244,13 @@ onMounted(async () => {
       </Column>
     </DataTable>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId !== null ? 'Edit Template' : 'New Template'"
-      position="right"
-      class="template-drawer"
+      modal
+      class="w-40rem"
     >
-      <form @submit.prevent="save" class="drawer-form">
+      <form @submit.prevent="save" class="dialog-form">
         <div class="field">
           <label for="tmpl-name">Name</label>
           <InputText id="tmpl-name" v-model="form.name" class="w-full" required />
@@ -369,7 +369,7 @@ onMounted(async () => {
           class="w-full"
         />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 
@@ -390,7 +390,7 @@ onMounted(async () => {
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -409,10 +409,6 @@ onMounted(async () => {
 
 .w-full {
   width: 100%;
-}
-
-.template-drawer {
-  width: 40rem;
 }
 
 .description-cell {
