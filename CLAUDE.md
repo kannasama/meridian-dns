@@ -37,8 +37,9 @@ Include details documented in `docs/plans/lessons.md` when factoring in planning
 - **Phase 9 complete:** Web UI (Vue 3 + TypeScript + PrimeVue)
 - **Phase 10 complete:** Cloudflare + DigitalOcean providers, conformance tests
 - **v0.9.5 complete:** Bug fixes, UX improvements, user/group/API key management
+- **v1.1.2 complete:** Deployment bug fixes, system logging
 - **Next task:** Phase 11 — TUI Client (separate repository)
-- **Tests:** 293 total (170 pass, 123 skip — DB integration tests need `DNS_DB_URL`)
+- **Tests:** 303 total (176 pass, 127 skip — DB integration tests need `DNS_DB_URL`)
 
 Build and test:
 ```bash
@@ -329,6 +330,40 @@ Sync Check (2)
 
 ---
 
+### v1.1.2 — Deployment Bug Fixes + System Logging ← COMPLETE
+
+**Summary:** Fixed deployment failures when record types change (CNAME→A), fixed missing
+provider record ID on updates, enhanced provider error detail, and added persistent system
+logging.
+
+**Bug fixes (2):**
+1. Deployment execution ordering — deletes and drift-deletes now execute before adds/updates,
+   fixing CNAME→A type changes that failed with PowerDNS 422 (RFC 1034 conflict)
+2. Missing `sProviderRecordId` copy in DeploymentEngine Update case — caused all PowerDNS
+   updates to fail with "Invalid provider_record_id format"
+
+**Enhancements (2):**
+3. `IProvider::deleteRecord` changed from `bool` to `PushResult` — all 5 providers now
+   return error detail on delete failures
+4. PowerDNS response body parsing — error messages now include the API error reason, not
+   just the HTTP status code
+
+**New features (3):**
+5. `system_logs` table — persistent technical logging for deployment operations, provider
+   API calls, and application events
+6. System log maintenance task — configurable retention (`DNS_SYSTEM_LOG_RETENTION_DAYS`,
+   default 30) with periodic purge
+7. System Log admin page — filterable DataTable with severity/category/time filters and
+   detail dialog
+
+**Schema:** `scripts/db/v020/001_system_logs.sql`
+**New endpoints:** `GET /api/v1/system-logs` (admin only)
+**UI change:** Admin section collapsed by default in sidebar
+
+**Tests:** 303 total (176 pass, 127 skip — 10 new tests added in v1.1.2)
+
+---
+
 ### Phase 11 — TUI Client
 
 Separate repository: `meridian-dns-tui`. Consumes REST API. See `docs/TUI_DESIGN.md`.
@@ -405,8 +440,12 @@ only for non-owning references.
 | `ui/src/theme/preset.ts` | PrimeVue Aura preset with indigo primary |
 | `docs/plans/2026-03-05-phase-9-web-ui.md` | Phase 9 design spec |
 | `docs/plans/2026-03-07-v0.9.5-design.md` | v0.9.5 design spec (bug fixes, UX, user mgmt) |
-| `tests/unit/` | Unit tests (MaintenanceScheduler, SamlReplayCache, JWT, Crypto, RouteHelpers, RequestValidator, RateLimiter) |
-| `tests/integration/` | Integration tests (AuthService, AuthMiddleware, repositories, API validation) |
+| `docs/plans/2026-03-22-v1.1.2-bugfixes-system-logging.md` | v1.1.2 implementation plan |
+| `include/dal/SystemLogRepository.hpp` | System log repository (insert, query, purge) |
+| `include/api/routes/SystemLogRoutes.hpp` | System log API routes (admin only) |
+| `scripts/db/v020/001_system_logs.sql` | System logs table migration |
+| `tests/unit/` | Unit tests (MaintenanceScheduler, SamlReplayCache, JWT, Crypto, RouteHelpers, RequestValidator, RateLimiter, DeploymentOrdering) |
+| `tests/integration/` | Integration tests (AuthService, AuthMiddleware, repositories, API validation, SystemLogRepository) |
 
 ---
 
