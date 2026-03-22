@@ -208,7 +208,8 @@ void DeploymentEngine::push(int64_t iZoneId,
         oProvider->sType, oProvider->sApiEndpoint, oProvider->sDecryptedToken,
         oProvider->jConfig);
 
-    for (const auto& diff : ppr.vDiffs) {
+    auto vOrderedDiffs = partitionDiffsForExecution(ppr.vDiffs, mDriftActionMap);
+    for (const auto& diff : vOrderedDiffs) {
       try {
         switch (diff.action) {
           case common::DiffAction::Add: {
@@ -375,6 +376,44 @@ int64_t DeploymentEngine::capture(int64_t iZoneId, int64_t iActorUserId,
               sZoneName, vLiveRecords.size(), iDeploymentId);
 
   return iDeploymentId;
+}
+
+std::vector<common::RecordDiff> DeploymentEngine::partitionDiffsForExecution(
+    const std::vector<common::RecordDiff>& vDiffs,
+    const std::map<std::string, std::string>& mDriftActionMap) {
+  std::vector<common::RecordDiff> vDeletes, vUpdates, vAdds, vDriftOther;
+
+  for (const auto& diff : vDiffs) {
+    switch (diff.action) {
+      case common::DiffAction::Delete:
+        vDeletes.push_back(diff);
+        break;
+      case common::DiffAction::Update:
+        vUpdates.push_back(diff);
+        break;
+      case common::DiffAction::Add:
+        vAdds.push_back(diff);
+        break;
+      case common::DiffAction::Drift: {
+        std::string sKey = diff.sName + "\t" + diff.sType;
+        auto it = mDriftActionMap.find(sKey);
+        if (it != mDriftActionMap.end() && it->second == "delete") {
+          vDeletes.push_back(diff);
+        } else {
+          vDriftOther.push_back(diff);
+        }
+        break;
+      }
+    }
+  }
+
+  std::vector<common::RecordDiff> vResult;
+  vResult.reserve(vDiffs.size());
+  vResult.insert(vResult.end(), vDeletes.begin(), vDeletes.end());
+  vResult.insert(vResult.end(), vUpdates.begin(), vUpdates.end());
+  vResult.insert(vResult.end(), vAdds.begin(), vAdds.end());
+  vResult.insert(vResult.end(), vDriftOther.begin(), vDriftOther.end());
+  return vResult;
 }
 
 }  // namespace dns::core
