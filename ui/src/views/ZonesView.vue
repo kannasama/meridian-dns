@@ -11,6 +11,7 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import AutoComplete from 'primevue/autocomplete'
 import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
@@ -74,11 +75,14 @@ const form = ref({
   soa_preset_id: null as number | null,
   git_repo_id: null as number | null,
   git_branch: '' as string,
+  tags: [] as string[],
 })
 
 // Tag filter
 const allTags = ref<string[]>([])
 const selectedTagFilters = ref<string[]>([])
+const tagSuggestions = ref<string[]>([])
+let originalTags: string[] = []
 
 const filteredZones = computed(() => {
   if (selectedTagFilters.value.length === 0) return zones.value
@@ -93,14 +97,33 @@ const cloneName = ref('')
 const cloneViewId = ref<number | null>(null)
 const cloningSourceId = ref<number | null>(null)
 
+function onTagSearch(event: { query: string }) {
+  tagSuggestions.value = allTags.value.filter(t =>
+    t.toLowerCase().includes(event.query.toLowerCase())
+  )
+}
+
+function onTagKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter') return
+  const input = (event.target as HTMLInputElement).value?.trim()
+  if (!input) return
+  if (!form.value.tags.includes(input)) {
+    form.value.tags.push(input)
+  }
+  ;(event.target as HTMLInputElement).value = ''
+  event.preventDefault()
+}
+
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', view_id: null, deployment_retention: null, manage_soa: false, manage_ns: false, soa_preset_id: null, git_repo_id: null, git_branch: '' }
+  form.value = { name: '', view_id: null, deployment_retention: null, manage_soa: false, manage_ns: false, soa_preset_id: null, git_repo_id: null, git_branch: '', tags: [] }
+  originalTags = []
   dialogVisible.value = true
 }
 
 function openEdit(zone: Zone) {
   editingId.value = zone.id
+  const tags = [...(zone.tags ?? [])]
   form.value = {
     name: zone.name,
     view_id: zone.view_id,
@@ -110,7 +133,9 @@ function openEdit(zone: Zone) {
     soa_preset_id: zone.soa_preset_id ?? null,
     git_repo_id: zone.git_repo_id,
     git_branch: zone.git_branch || '',
+    tags,
   }
+  originalTags = [...tags]
   dialogVisible.value = true
 }
 
@@ -140,7 +165,23 @@ async function handleSubmit() {
       git_branch: gitBranch,
     })
   }
-  if (ok) dialogVisible.value = false
+  if (ok) {
+    const tagsChanged = JSON.stringify(form.value.tags.slice().sort()) !== JSON.stringify(originalTags.slice().sort())
+    if (tagsChanged) {
+      if (editingId.value !== null) {
+        await zoneApi.updateZoneTags(editingId.value, form.value.tags)
+        await fetchZones()
+      } else if (form.value.tags.length > 0) {
+        const created = zones.value.find(z => z.name === form.value.name)
+        if (created) {
+          await zoneApi.updateZoneTags(created.id, form.value.tags)
+          await fetchZones()
+        }
+      }
+      listTags().then((t) => { allTags.value = t.map(tag => tag.name) }).catch(() => {})
+    }
+    dialogVisible.value = false
+  }
 }
 
 function handleDelete(zone: Zone) {
@@ -371,6 +412,18 @@ onMounted(async () => {
             />
             <small class="text-surface-400">Leave blank to use the repository's default branch</small>
           </div>
+        </div>
+        <div class="field">
+          <label>Tags</label>
+          <AutoComplete
+            v-model="form.tags"
+            :suggestions="tagSuggestions"
+            multiple
+            @complete="onTagSearch"
+            @keydown.enter="onTagKeydown"
+            class="w-full"
+            placeholder="Add tags..."
+          />
         </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
