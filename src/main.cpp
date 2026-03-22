@@ -356,13 +356,25 @@ int main(int argc, char* argv[]) {
                             }
                           });
 
+    msScheduler->schedule("system-log-purge",
+        std::chrono::seconds(cfgApp.iSystemLogPurgeIntervalSeconds),
+        [&slrRepo = *slrRepo, iRetention = cfgApp.iSystemLogRetentionDays]() {
+          auto iDeleted = slrRepo.purge(iRetention);
+          if (iDeleted > 0) {
+            auto spLog = dns::common::Logger::get();
+            spLog->info("System log purge: deleted {} old entries", iDeleted);
+          }
+        });
+
     msScheduler->start();
     g_pScheduler = msScheduler.get();
     spLog->info("Step 7a: MaintenanceScheduler started (session flush every {}s, "
-                "API key cleanup every {}s, audit purge every {}s)",
+                "API key cleanup every {}s, audit purge every {}s, "
+                "system log purge every {}s)",
                 cfgApp.iSessionCleanupIntervalSeconds,
                 cfgApp.iApiKeyCleanupIntervalSeconds,
-                cfgApp.iAuditPurgeIntervalSeconds);
+                cfgApp.iAuditPurgeIntervalSeconds,
+                cfgApp.iSystemLogPurgeIntervalSeconds);
 
     // ── Step 7b: Setup mode detection ────────────────────────────────────
     auto setupRoutes = std::make_unique<dns::api::routes::SetupRoutes>(

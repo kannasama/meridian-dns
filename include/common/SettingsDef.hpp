@@ -18,7 +18,7 @@ struct SettingDef {
 };
 
 /// All DB-configurable settings. Source of truth for keys, defaults, and descriptions.
-inline constexpr std::array<SettingDef, 17> kSettings = {{
+inline constexpr std::array<SettingDef, 19> kSettings = {{
   {"app.base_url", "", "Application base URL for generating callback URLs (e.g. https://dns.example.com)", "DNS_BASE_URL", false},
   {"http.threads", "4", "Number of HTTP server threads", "DNS_HTTP_THREADS", true},
   {"session.absolute_ttl_seconds", "86400", "Session absolute TTL in seconds",
@@ -50,6 +50,10 @@ inline constexpr std::array<SettingDef, 17> kSettings = {{
   {"backup.auto_interval_seconds", "0",
    "Auto-backup interval in seconds (0 = disabled)",
    "DNS_BACKUP_AUTO_INTERVAL_SECONDS", false},
+  {"system_log.retention_days", "30", "System log retention in days",
+   "DNS_SYSTEM_LOG_RETENTION_DAYS", false},
+  {"system_log.purge_interval_seconds", "86400", "System log purge interval in seconds",
+   "DNS_SYSTEM_LOG_PURGE_INTERVAL_SECONDS", false},
 }};
 
 }  // namespace dns::common

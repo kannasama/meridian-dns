@@ -167,6 +167,10 @@ Config Config::load() {
   cfg.iAuditRetentionDays = getEnvInt("DNS_AUDIT_RETENTION_DAYS", 365);
   cfg.iAuditPurgeIntervalSeconds = getEnvInt("DNS_AUDIT_PURGE_INTERVAL_SECONDS", 86400);
 
+  // System log
+  cfg.iSystemLogRetentionDays = getEnvInt("DNS_SYSTEM_LOG_RETENTION_DAYS", 30);
+  cfg.iSystemLogPurgeIntervalSeconds = getEnvInt("DNS_SYSTEM_LOG_PURGE_INTERVAL_SECONDS", 86400);
+
   // ── Validation ─────────────────────────────────────────────────────────
 
   // DNS_DEPLOYMENT_RETENTION_COUNT >= 1
@@ -231,6 +235,10 @@ void Config::loadFromDb(dns::dal::SettingsRepository& srRepo) {
   iAuditRetentionDays = srRepo.getInt("audit.retention_days", iAuditRetentionDays);
   iAuditPurgeIntervalSeconds = srRepo.getInt("audit.purge_interval_seconds",
                                               iAuditPurgeIntervalSeconds);
+
+  iSystemLogRetentionDays = srRepo.getInt("system_log.retention_days", iSystemLogRetentionDays);
+  iSystemLogPurgeIntervalSeconds = srRepo.getInt("system_log.purge_interval_seconds",
+                                                  iSystemLogPurgeIntervalSeconds);
 }
 
 }  // namespace dns::common
