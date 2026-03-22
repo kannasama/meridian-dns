@@ -84,8 +84,10 @@ TEST(DeploymentOrderingTest, FullOrderingDeleteUpdateAddDrift) {
   };
   auto vOrdered = DeploymentEngine::partitionDiffsForExecution(vDiffs, mDriftActions);
   ASSERT_EQ(vOrdered.size(), 4u);
-  EXPECT_EQ(vOrdered[0].action, DiffAction::Delete);
-  EXPECT_EQ(vOrdered[1].action, DiffAction::Drift);
+  // Both drift-delete and regular delete land in the delete bucket;
+  // within the bucket, insertion order follows input order (Drift first here)
+  EXPECT_EQ(vOrdered[0].action, DiffAction::Drift);   // drift-delete
+  EXPECT_EQ(vOrdered[1].action, DiffAction::Delete);   // regular delete
   EXPECT_EQ(vOrdered[2].action, DiffAction::Update);
   EXPECT_EQ(vOrdered[3].action, DiffAction::Add);
 }

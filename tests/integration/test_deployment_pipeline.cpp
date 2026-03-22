@@ -26,6 +26,7 @@
 #include "dal/VariableRepository.hpp"
 #include "dal/ViewRepository.hpp"
 #include "dal/SystemConfigRepository.hpp"
+#include "dal/SystemLogRepository.hpp"
 #include "dal/ZoneRepository.hpp"
 #include "security/CryptoService.hpp"
 
@@ -60,6 +61,7 @@ class DeploymentEngineTest : public ::testing::Test {
     _arRepo = std::make_unique<dns::dal::AuditRepository>(*_cpPool);
 
     _scrRepo = std::make_unique<dns::dal::SystemConfigRepository>(*_cpPool);
+    _slrRepo = std::make_unique<dns::dal::SystemLogRepository>(*_cpPool);
     _veEngine = std::make_unique<dns::core::VariableEngine>(*_varRepo);
     _deEngine = std::make_unique<dns::core::DiffEngine>(
         *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo, *_veEngine);
@@ -89,6 +91,7 @@ class DeploymentEngineTest : public ::testing::Test {
   std::unique_ptr<dns::dal::DeploymentRepository> _drRepo;
   std::unique_ptr<dns::dal::AuditRepository> _arRepo;
   std::unique_ptr<dns::dal::SystemConfigRepository> _scrRepo;
+  std::unique_ptr<dns::dal::SystemLogRepository> _slrRepo;
   std::unique_ptr<dns::core::VariableEngine> _veEngine;
   std::unique_ptr<dns::core::DiffEngine> _deEngine;
 };
@@ -101,7 +104,7 @@ TEST_F(DeploymentEngineTest, BuildSnapshotContainsExpandedRecords) {
 
   dns::core::DeploymentEngine depEngine(
       *_deEngine, *_veEngine, *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo,
-      *_drRepo, *_arRepo, *_scrRepo, nullptr, 10);
+      *_drRepo, *_arRepo, *_scrRepo, *_slrRepo, nullptr, 10);
 
   // Access buildSnapshot via push is integration-level; test snapshot format here
   // by checking the DeploymentRepository after a manual snapshot creation.
@@ -117,7 +120,7 @@ TEST_F(DeploymentEngineTest, PushFailsWithNoProviders) {
   // No providers attached to view — DiffEngine::preview() should throw
   dns::core::DeploymentEngine depEngine(
       *_deEngine, *_veEngine, *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo,
-      *_drRepo, *_arRepo, *_scrRepo, nullptr, 10);
+      *_drRepo, *_arRepo, *_scrRepo, *_slrRepo, nullptr, 10);
 
   // Create a fake user for the actor
   auto cg = _cpPool->checkout();
@@ -135,7 +138,7 @@ TEST_F(DeploymentEngineTest, PushFailsWithNoProviders) {
 TEST_F(DeploymentEngineTest, PushFailsForNonexistentZone) {
   dns::core::DeploymentEngine depEngine(
       *_deEngine, *_veEngine, *_zrRepo, *_vrRepo, *_rrRepo, *_prRepo,
-      *_drRepo, *_arRepo, *_scrRepo, nullptr, 10);
+      *_drRepo, *_arRepo, *_scrRepo, *_slrRepo, nullptr, 10);
 
   dns::common::AuditContext acTest{"alice", "local", "127.0.0.1"};
   EXPECT_THROW(depEngine.push(99999, {}, 1, acTest),
