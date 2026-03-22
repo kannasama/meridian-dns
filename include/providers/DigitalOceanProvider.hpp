@@ -31,8 +31,8 @@ class DigitalOceanProvider : public IProvider {
                                   const common::DnsRecord& drRecord) override;
   common::PushResult updateRecord(const std::string& sZoneName,
                                   const common::DnsRecord& drRecord) override;
-  bool deleteRecord(const std::string& sZoneName,
-                    const std::string& sProviderRecordId) override;
+  common::PushResult deleteRecord(const std::string& sZoneName,
+                                  const std::string& sProviderRecordId) override;
 
   /// Parse DNS records from DigitalOcean /domains/{domain}/records response.
   /// Converts relative names to FQDNs using the zone name.

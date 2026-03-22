@@ -359,22 +359,19 @@ common::PushResult GenericRestProvider::updateRecord(const std::string& sZoneNam
   return {true, drRecord.sProviderRecordId, ""};
 }
 
-bool GenericRestProvider::deleteRecord(const std::string& sZoneName,
-                                        const std::string& sProviderRecordId) {
+common::PushResult GenericRestProvider::deleteRecord(const std::string& sZoneName,
+                                                      const std::string& sProviderRecordId) {
   auto spLog = common::Logger::get();
 
   if (!_jDef.contains("endpoints") || !_jDef["endpoints"].contains("delete_record")) {
-    spLog->warn("GenericRestProvider::deleteRecord: definition missing endpoints.delete_record");
-    return false;
+    return {false, "", "Definition missing endpoints.delete_record"};
   }
 
   std::string sZoneId;
   try {
     sZoneId = resolveZoneId(sZoneName);
   } catch (const common::ProviderError& e) {
-    auto spLog = dns::common::Logger::get();
-    spLog->warn("GenericRestProvider::deleteRecord: {}", e.what());
-    return false;
+    return {false, "", e.what()};
   }
 
   std::string sEndpoint = applyTemplate(
@@ -383,17 +380,18 @@ bool GenericRestProvider::deleteRecord(const std::string& sZoneName,
 
   auto res = _upClient->Delete(sEndpoint);
   if (!res) {
-    spLog->warn("GenericRestProvider::deleteRecord: connection failed for zone {}", sZoneName);
-    return false;
+    return {false, "", "Failed to connect to provider at " + _sApiEndpoint};
   }
   if (res->status != 200 && res->status != 204) {
-    spLog->warn("GenericRestProvider::deleteRecord: unexpected status {} for record '{}' in zone {}",
-                res->status, sProviderRecordId, sZoneName);
-    return false;
+    std::string sDetail = "delete_record returned status " + std::to_string(res->status);
+    if (!res->body.empty()) {
+      sDetail += ": " + res->body.substr(0, 500);
+    }
+    return {false, "", sDetail};
   }
 
   spLog->info("GenericRest: deleted record '{}' from zone {}", sProviderRecordId, sZoneName);
-  return true;
+  return {true, sProviderRecordId, ""};
 }
 
 }  // namespace dns::providers

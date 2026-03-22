@@ -244,11 +244,10 @@ void DeploymentEngine::push(int64_t iZoneId,
             break;
           }
           case common::DiffAction::Delete: {
-            bool bDeleted = upProvider->deleteRecord(oZone->sName, diff.sProviderRecordId);
-            if (!bDeleted) {
+            auto delResult = upProvider->deleteRecord(oZone->sName, diff.sProviderRecordId);
+            if (!delResult.bSuccess) {
               throw common::ProviderError("PROVIDER_DELETE_FAILED",
-                                         "Failed to delete record: " + diff.sName + "/" +
-                                         diff.sType);
+                                         "Failed to delete record: " + delResult.sErrorMessage);
             }
             spLog->info("DeploymentEngine: deleted record {}/{} from provider",
                         diff.sName, diff.sType);
@@ -267,11 +266,12 @@ void DeploymentEngine::push(int64_t iZoneId,
                              diff.iPriority);
               spLog->info("DeploymentEngine: adopted drift record {}/{}", diff.sName, diff.sType);
             } else if (itAction->second == "delete") {
-              bool bDeleted = upProvider->deleteRecord(oZone->sName, diff.sProviderRecordId);
-              if (!bDeleted) {
-                spLog->warn("DeploymentEngine: failed to delete drift record {}/{}/{}",
-                            diff.sName, diff.sType, diff.sProviderValue);
+              auto delResult = upProvider->deleteRecord(oZone->sName, diff.sProviderRecordId);
+              if (!delResult.bSuccess) {
+                throw common::ProviderError("PROVIDER_DELETE_FAILED",
+                                           "Failed to delete drift record: " + delResult.sErrorMessage);
               }
+              spLog->info("DeploymentEngine: deleted drift record {}/{}", diff.sName, diff.sType);
             }
             break;
           }

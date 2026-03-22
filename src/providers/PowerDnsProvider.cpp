@@ -270,15 +270,15 @@ common::PushResult PowerDnsProvider::updateRecord(const std::string& sZoneName,
   return {true, sNewId, ""};
 }
 
-bool PowerDnsProvider::deleteRecord(const std::string& sZoneName,
-                                    const std::string& sProviderRecordId) {
+common::PushResult PowerDnsProvider::deleteRecord(const std::string& sZoneName,
+                                                   const std::string& sProviderRecordId) {
   auto spLog = common::Logger::get();
   std::string sCanonical = canonicalZone(sZoneName);
   std::string sPath = "/api/v1/servers/localhost/zones/" + sCanonical;
 
   std::string sTargetName, sTargetType, sTargetValue;
   if (!parseRecordId(sProviderRecordId, sTargetName, sTargetType, sTargetValue)) {
-    return false;
+    return {false, "", "Invalid provider_record_id format"};
   }
 
   // Fetch existing rrset, remove the target record
@@ -300,7 +300,7 @@ bool PowerDnsProvider::deleteRecord(const std::string& sZoneName,
     jRecords.push_back({{"content", sContent}, {"disabled", false}});
   }
 
-  if (!bFound) return false;
+  if (!bFound) return {false, "", "Record not found in provider"};
 
   // If no records remain, delete the entire rrset; otherwise replace
   std::string sChangetype = jRecords.empty() ? "DELETE" : "REPLACE";
@@ -312,11 +312,26 @@ bool PowerDnsProvider::deleteRecord(const std::string& sZoneName,
 
   json jBody = {{"rrsets", {jRrset}}};
   auto res = _upClient->Patch(sPath, jBody.dump(), "application/json");
-  if (!res) return false;
-  if (res->status != 204 && res->status != 200) return false;
+  if (!res) {
+    return {false, "", "Failed to connect to PowerDNS at " + _sApiEndpoint};
+  }
+  if (res->status != 204 && res->status != 200) {
+    std::string sDetail = "PowerDNS returned status " + std::to_string(res->status);
+    if (!res->body.empty()) {
+      try {
+        auto jResp = nlohmann::json::parse(res->body);
+        if (jResp.contains("error")) {
+          sDetail += ": " + jResp["error"].get<std::string>();
+        }
+      } catch (...) {
+        sDetail += ": " + res->body.substr(0, 500);
+      }
+    }
+    return {false, "", sDetail};
+  }
 
   spLog->info("PowerDNS: deleted record {} from zone {}", sProviderRecordId, sCanonical);
-  return true;
+  return {true, sProviderRecordId, ""};
 }
 
 }  // namespace dns::providers

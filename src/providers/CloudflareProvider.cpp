@@ -287,22 +287,32 @@ common::PushResult CloudflareProvider::updateRecord(const std::string& sZoneName
   return {true, sNewId, ""};
 }
 
-bool CloudflareProvider::deleteRecord(const std::string& sZoneName,
-                                      const std::string& sProviderRecordId) {
+common::PushResult CloudflareProvider::deleteRecord(const std::string& sZoneName,
+                                                     const std::string& sProviderRecordId) {
   auto spLog = common::Logger::get();
   auto sZoneId = resolveZoneId(sZoneName);
   std::string sPath = "/client/v4/zones/" + sZoneId + "/dns_records/" + sProviderRecordId;
 
   auto res = _upClient->Delete(sPath);
-  if (!res) return false;
+  if (!res) {
+    return {false, "", "Failed to connect to Cloudflare API"};
+  }
 
-  if (res->status != 200) return false;
+  if (res->status != 200) {
+    return {false, "", "Cloudflare returned status " + std::to_string(res->status)};
+  }
 
   auto jResp = json::parse(res->body);
-  if (!jResp.value("success", false)) return false;
+  if (!jResp.value("success", false)) {
+    std::string sError = "Cloudflare delete failed";
+    if (jResp.contains("errors") && !jResp["errors"].empty()) {
+      sError = jResp["errors"][0].value("message", sError);
+    }
+    return {false, "", sError};
+  }
 
   spLog->info("Cloudflare: deleted record {} from zone {}", sProviderRecordId, sZoneName);
-  return true;
+  return {true, sProviderRecordId, ""};
 }
 
 }  // namespace dns::providers

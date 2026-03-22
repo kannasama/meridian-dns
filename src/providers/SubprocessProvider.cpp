@@ -285,15 +285,13 @@ common::PushResult SubprocessProvider::updateRecord(const std::string& sZoneName
   }
 }
 
-bool SubprocessProvider::deleteRecord(const std::string& sZoneName,
-                                       const std::string& sProviderRecordId) {
+common::PushResult SubprocessProvider::deleteRecord(const std::string& sZoneName,
+                                                     const std::string& sProviderRecordId) {
   try {
     invoke("deleteRecord", {{"zone", sZoneName}, {"id", sProviderRecordId}});
-    return true;
+    return {true, sProviderRecordId, ""};
   } catch (const std::exception& e) {
-    auto spLog = common::Logger::get();
-    spLog->warn("SubprocessProvider::deleteRecord failed: {}", e.what());
-    return false;
+    return {false, "", e.what()};
   }
 }
 

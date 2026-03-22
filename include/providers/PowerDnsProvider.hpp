@@ -32,8 +32,8 @@ class PowerDnsProvider : public IProvider {
                                   const common::DnsRecord& drRecord) override;
   common::PushResult updateRecord(const std::string& sZoneName,
                                   const common::DnsRecord& drRecord) override;
-  bool deleteRecord(const std::string& sZoneName,
-                    const std::string& sProviderRecordId) override;
+  common::PushResult deleteRecord(const std::string& sZoneName,
+                                  const std::string& sProviderRecordId) override;
 
   /// Parse a PowerDNS zone JSON response into DnsRecord entries.
   /// Public for unit testing; called internally by listRecords().
