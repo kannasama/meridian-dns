@@ -71,24 +71,30 @@ docker run --rm --network host \
 
 ## CI/CD Pipeline Design
 
-### Release Workflow (triggered by `v*` tag push)
+### Branch Pipeline (triggered by push with build-relevant file changes)
 
-1. **Build stage:**
-   - `docker buildx build --target builder -t meridian-dns:ci-builder .`
-   - `docker buildx build -t meridian-dns:ci .`
-   - Multi-stage Dockerfile (Fedora 43 builder → runtime image)
-   - Handles cmake, UI build (`npm ci && npm run build`), and compiler
-     flags (`-Wall -Wextra -Wpedantic -Werror`) internally
-2. **Test stage:**
-   - Unit tests: run inside builder image (`--gtest_filter=-*Integration*`)
-   - DB integration tests: run builder image against a PostgreSQL service container
-   - License header check: `scripts/check-license-headers.sh`
-3. **Publish stage:**
-   - Build and push to Docker Hub + GHCR
+1. **Lint stage:** License header check (`scripts/check-license-headers.sh`)
+2. **Build stage:** C++ build (`build:cpp`) and UI build (`build:ui`) in parallel
+3. **Test stage:** Unit tests and DB integration tests in parallel
+
+### Release Pipeline (triggered by `v*` tag push)
+
+The tag pipeline **only** runs `docker:publish` — lint, build, and test stages
+are skipped. This is safe because:
+
+- Tags are created exclusively in the GitLab UI (protected tags: `v*`,
+  Maintainer+ only)
+- A tag is only created after the preceding push pipeline passes successfully
+- The multi-stage Dockerfile performs its own full build internally (cmake +
+  UI), so CI build artifacts are not needed
+- If the Dockerfile build fails, nothing is pushed to registries
+
+**Pipeline flow:**
+
+1. **Docker stage (only):**
+   - Build and push to Docker Hub + GHCR via the multi-stage Dockerfile
    - `docker buildx build --push --tag kannasama/meridian-dns:1.0.0 --tag ghcr.io/kannasama/meridian-dns:1.0.0 .`
    - Tag variants: `latest`, `1`, `1.0`, `1.0.0`
-4. **Release stage:**
-   - Create GitHub release entry
 
 ## Release Checklist
 
