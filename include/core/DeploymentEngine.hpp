@@ -21,6 +21,7 @@ class DeploymentRepository;
 class ProviderRepository;
 class RecordRepository;
 class SystemConfigRepository;
+class SystemLogRepository;
 class ViewRepository;
 class ZoneRepository;
 }  // namespace dns::dal
@@ -47,6 +48,7 @@ class DeploymentEngine {
                    dns::dal::DeploymentRepository& drRepo,
                    dns::dal::AuditRepository& arRepo,
                    dns::dal::SystemConfigRepository& scrRepo,
+                   dns::dal::SystemLogRepository& slrRepo,
                    dns::gitops::GitRepoManager* pGitRepoManager,
                    int iRetentionCount);
   ~DeploymentEngine();
@@ -93,6 +95,7 @@ class DeploymentEngine {
   dns::dal::DeploymentRepository& _drRepo;
   dns::dal::AuditRepository& _arRepo;
   dns::dal::SystemConfigRepository& _scrRepo;
+  dns::dal::SystemLogRepository& _slrRepo;
   dns::gitops::GitRepoManager* _pGitRepoManager;
   int _iRetentionCount;
 

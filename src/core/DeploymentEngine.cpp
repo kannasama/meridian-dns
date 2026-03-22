@@ -22,6 +22,7 @@
 #include "dal/ProviderRepository.hpp"
 #include "dal/RecordRepository.hpp"
 #include "dal/SystemConfigRepository.hpp"
+#include "dal/SystemLogRepository.hpp"
 #include "dal/ViewRepository.hpp"
 #include "dal/ZoneRepository.hpp"
 #include "gitops/GitRepoManager.hpp"
@@ -38,6 +39,7 @@ DeploymentEngine::DeploymentEngine(DiffEngine& deEngine,
                                    dns::dal::DeploymentRepository& drRepo,
                                    dns::dal::AuditRepository& arRepo,
                                    dns::dal::SystemConfigRepository& scrRepo,
+                                   dns::dal::SystemLogRepository& slrRepo,
                                    dns::gitops::GitRepoManager* pGitRepoManager,
                                    int iRetentionCount)
     : _deEngine(deEngine),
@@ -49,6 +51,7 @@ DeploymentEngine::DeploymentEngine(DiffEngine& deEngine,
       _drRepo(drRepo),
       _arRepo(arRepo),
       _scrRepo(scrRepo),
+      _slrRepo(slrRepo),
       _pGitRepoManager(pGitRepoManager),
       _iRetentionCount(iRetentionCount) {}
 
@@ -192,6 +195,9 @@ void DeploymentEngine::push(int64_t iZoneId,
     }
   }
 
+  _slrRepo.insert("deployment", "info",
+                   "Push started for zone " + prResult.sZoneName, iZoneId);
+
   // 3. Get zone and view with providers
   auto oZone = _zrRepo.findById(iZoneId);
 
@@ -222,9 +228,18 @@ void DeploymentEngine::push(int64_t iZoneId,
             dr.jProviderMeta = diff.jProviderMeta;
             auto pushResult = upProvider->createRecord(oZone->sName, dr);
             if (!pushResult.bSuccess) {
+              _slrRepo.insert("deployment", "error",
+                              "Failed to create record: " + pushResult.sErrorMessage,
+                              iZoneId, ppr.iProviderId,
+                              "create_record", diff.sName, diff.sType, false,
+                              std::nullopt, pushResult.sErrorMessage);
               throw common::ProviderError("PROVIDER_CREATE_FAILED",
                                          "Failed to create record: " + pushResult.sErrorMessage);
             }
+            _slrRepo.insert("deployment", "info",
+                            "Created record " + diff.sName + " " + diff.sType,
+                            iZoneId, ppr.iProviderId,
+                            "create_record", diff.sName, diff.sType, true);
             break;
           }
           case common::DiffAction::Update: {
@@ -238,17 +253,35 @@ void DeploymentEngine::push(int64_t iZoneId,
             dr.sProviderRecordId = diff.sProviderRecordId;
             auto pushResult = upProvider->updateRecord(oZone->sName, dr);
             if (!pushResult.bSuccess) {
+              _slrRepo.insert("deployment", "error",
+                              "Failed to update record: " + pushResult.sErrorMessage,
+                              iZoneId, ppr.iProviderId,
+                              "update_record", diff.sName, diff.sType, false,
+                              std::nullopt, pushResult.sErrorMessage);
               throw common::ProviderError("PROVIDER_UPDATE_FAILED",
                                          "Failed to update record: " + pushResult.sErrorMessage);
             }
+            _slrRepo.insert("deployment", "info",
+                            "Updated record " + diff.sName + " " + diff.sType,
+                            iZoneId, ppr.iProviderId,
+                            "update_record", diff.sName, diff.sType, true);
             break;
           }
           case common::DiffAction::Delete: {
             auto delResult = upProvider->deleteRecord(oZone->sName, diff.sProviderRecordId);
             if (!delResult.bSuccess) {
+              _slrRepo.insert("deployment", "error",
+                              "Failed to delete record: " + delResult.sErrorMessage,
+                              iZoneId, ppr.iProviderId,
+                              "delete_record", diff.sName, diff.sType, false,
+                              std::nullopt, delResult.sErrorMessage);
               throw common::ProviderError("PROVIDER_DELETE_FAILED",
                                          "Failed to delete record: " + delResult.sErrorMessage);
             }
+            _slrRepo.insert("deployment", "info",
+                            "Deleted record " + diff.sName + " " + diff.sType,
+                            iZoneId, ppr.iProviderId,
+                            "delete_record", diff.sName, diff.sType, true);
             spLog->info("DeploymentEngine: deleted record {}/{} from provider",
                         diff.sName, diff.sType);
             break;
@@ -264,13 +297,26 @@ void DeploymentEngine::push(int64_t iZoneId,
               _rrRepo.create(iZoneId, diff.sName, diff.sType,
                              static_cast<int>(diff.uTtl), diff.sProviderValue,
                              diff.iPriority);
+              _slrRepo.insert("deployment", "info",
+                              "Adopted drift record " + diff.sName + " " + diff.sType,
+                              iZoneId, ppr.iProviderId,
+                              "adopt_record", diff.sName, diff.sType, true);
               spLog->info("DeploymentEngine: adopted drift record {}/{}", diff.sName, diff.sType);
             } else if (itAction->second == "delete") {
               auto delResult = upProvider->deleteRecord(oZone->sName, diff.sProviderRecordId);
               if (!delResult.bSuccess) {
+                _slrRepo.insert("deployment", "error",
+                                "Failed to delete drift record: " + delResult.sErrorMessage,
+                                iZoneId, ppr.iProviderId,
+                                "delete_drift_record", diff.sName, diff.sType, false,
+                                std::nullopt, delResult.sErrorMessage);
                 throw common::ProviderError("PROVIDER_DELETE_FAILED",
                                            "Failed to delete drift record: " + delResult.sErrorMessage);
               }
+              _slrRepo.insert("deployment", "info",
+                              "Deleted drift record " + diff.sName + " " + diff.sType,
+                              iZoneId, ppr.iProviderId,
+                              "delete_drift_record", diff.sName, diff.sType, true);
               spLog->info("DeploymentEngine: deleted drift record {}/{}", diff.sName, diff.sType);
             }
             break;
@@ -281,6 +327,9 @@ void DeploymentEngine::push(int64_t iZoneId,
       }
     }
   }
+
+  _slrRepo.insert("deployment", "info",
+                   "Push completed for zone " + oZone->sName, iZoneId);
 
   // 5. Write audit log
   nlohmann::json jDiffs = nlohmann::json::array();

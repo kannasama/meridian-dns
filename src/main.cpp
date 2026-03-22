@@ -78,6 +78,7 @@
 #include "dal/SnippetRepository.hpp"
 #include "dal/SoaPresetRepository.hpp"
 #include "dal/SystemConfigRepository.hpp"
+#include "dal/SystemLogRepository.hpp"
 #include "dal/ZoneTemplateRepository.hpp"
 #include "dal/ProviderDefinitionRepository.hpp"
 #include "dal/UserPreferenceRepository.hpp"
@@ -321,6 +322,7 @@ int main(int argc, char* argv[]) {
     auto idpRepo = std::make_unique<dns::dal::IdpRepository>(*cpPool, *csService);
     auto gitRepoRepo = std::make_unique<dns::dal::GitRepoRepository>(*cpPool, *csService);
     auto uprRepo = std::make_unique<dns::dal::UserPreferenceRepository>(*cpPool);
+    auto slrRepo = std::make_unique<dns::dal::SystemLogRepository>(*cpPool);
 
     auto msScheduler = std::make_unique<dns::core::MaintenanceScheduler>();
 
@@ -409,7 +411,8 @@ int main(int argc, char* argv[]) {
 
     auto depEngine = std::make_unique<dns::core::DeploymentEngine>(
         *deEngine, *veEngine, *zrRepo, *vrRepo, *rrRepo, *prRepo,
-        *drRepo, *arRepo, *scrRepo, upGitRepoManager.get(), cfgApp.iDeploymentRetentionCount);
+        *drRepo, *arRepo, *scrRepo, *slrRepo, upGitRepoManager.get(),
+        cfgApp.iDeploymentRetentionCount);
     auto reEngine    = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
     auto beExporter  = std::make_unique<dns::core::BindExporter>(*veEngine);
     auto rvValidator = std::make_unique<dns::core::RecordValidator>(*rrRepo);
