@@ -55,6 +55,30 @@ void TagRoutes::registerRoutes(crow::SimpleApp& app) {
         }
       });
 
+  // POST /api/v1/tags
+  CROW_ROUTE(app, "/api/v1/tags").methods("POST"_method)(
+      [this](const crow::request& req) -> crow::response {
+        try {
+          auto rcCtx = authenticate(_amMiddleware, req);
+          requirePermission(rcCtx, Permissions::kUsersEdit);
+          enforceBodyLimit(req);
+          auto jBody = nlohmann::json::parse(req.body);
+
+          std::string sName = jBody.value("name", "");
+          if (sName.empty() || sName.size() > 64) {
+            throw common::ValidationError("INVALID_TAG",
+                "Tag name must be 1-64 characters");
+          }
+
+          auto trRow = _trRepo.create(sName);
+          return jsonResponse(201, tagRowToJson(trRow));
+        } catch (const common::AppError& e) {
+          return errorResponse(e);
+        } catch (const nlohmann::json::exception&) {
+          return invalidJsonResponse();
+        }
+      });
+
   // PUT /api/v1/tags/<int>
   CROW_ROUTE(app, "/api/v1/tags/<int>").methods("PUT"_method)(
       [this](const crow::request& req, int iTagId) -> crow::response {

@@ -4,7 +4,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { listTags, renameTag, deleteTag } from '../api/tags'
+import { listTags, createTag, renameTag, deleteTag } from '../api/tags'
+import PageHeader from '../components/shared/PageHeader.vue'
 import type { Tag } from '../types'
 import { useNotificationStore } from '../stores/notification'
 import { useConfirmAction } from '../composables/useConfirm'
@@ -17,6 +18,8 @@ const loading = ref(false)
 const editingTag = ref<Tag | null>(null)
 const editName = ref('')
 const showRenameDialog = ref(false)
+const showCreateDialog = ref(false)
+const newTagName = ref('')
 
 async function loadTags() {
   loading.value = true
@@ -26,6 +29,20 @@ async function loadTags() {
     notify.error('Failed to load tags')
   } finally {
     loading.value = false
+  }
+}
+
+async function submitCreate() {
+  const name = newTagName.value.trim()
+  if (!name) return
+  try {
+    await createTag(name)
+    notify.success('Tag created')
+    showCreateDialog.value = false
+    newTagName.value = ''
+    await loadTags()
+  } catch {
+    notify.error('Failed to create tag')
   }
 }
 
@@ -64,9 +81,9 @@ onMounted(loadTags)
 
 <template>
   <div class="p-4">
-    <div class="flex justify-between items-center mb-4">
-      <h1 class="text-xl font-semibold">Tags</h1>
-    </div>
+    <PageHeader title="Tags" subtitle="Tag vocabulary for zone categorization">
+      <Button label="New Tag" icon="pi pi-plus" @click="newTagName = ''; showCreateDialog = true" />
+    </PageHeader>
 
     <DataTable :value="tags" :loading="loading" class="text-sm" size="small" stripedRows>
       <Column field="name" header="Name" sortable />
@@ -92,6 +109,16 @@ onMounted(loadTags)
         <div class="flex justify-end gap-2">
           <Button label="Cancel" severity="secondary" @click="showRenameDialog = false" />
           <Button label="Save" @click="submitRename" />
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog v-model:visible="showCreateDialog" header="New Tag" modal>
+      <div class="dialog-body">
+        <InputText v-model="newTagName" placeholder="Tag name" class="w-full" @keydown.enter="submitCreate" />
+        <div class="flex justify-end gap-2">
+          <Button label="Cancel" severity="secondary" @click="showCreateDialog = false" />
+          <Button label="Create" @click="submitCreate" />
         </div>
       </div>
     </Dialog>
