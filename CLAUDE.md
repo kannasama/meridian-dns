@@ -38,15 +38,21 @@ Include details documented in `docs/plans/lessons.md` when factoring in planning
 - **Phase 10 complete:** Cloudflare + DigitalOcean providers, conformance tests
 - **v0.9.5 complete:** Bug fixes, UX improvements, user/group/API key management
 - **Next task:** Phase 11 — TUI Client (separate repository)
-- **Tests:** 285 total (162 pass, 123 skip — DB integration tests need `DNS_DB_URL`)
+- **Tests:** 293 total (170 pass, 123 skip — DB integration tests need `DNS_DB_URL`)
 
 Build and test:
 ```bash
 # Local cmake builds are NOT available — use docker buildx for all C++ compilation
 docker buildx build --load -t meridian-dns .
 
-# Run tests inside the built image (DB integration tests need DNS_DB_URL)
-docker run --rm meridian-dns /app/dns-tests
+# Run tests from the builder stage (test binary is NOT in the runtime image)
+# The binary lives at /build/build/tests/dns-tests in the builder stage.
+docker run --rm --entrypoint "" $(docker buildx build --target builder -q .) \
+  /build/build/tests/dns-tests
+
+# Filter tests (e.g. only DiffEngine tests):
+# docker run --rm --entrypoint "" $(docker buildx build --target builder -q .) \
+#   /build/build/tests/dns-tests --gtest_filter="DiffEngine*"
 ```
 
 UI development (Node.js may be available locally):

@@ -118,4 +118,27 @@ std::optional<TagRow> TagRepository::findById(int64_t iId) {
   return tr;
 }
 
+TagRow TagRepository::create(const std::string& sName) {
+  auto cg = _cpPool.checkout();
+  pqxx::work txn(*cg);
+
+  try {
+    auto result = txn.exec(
+        "INSERT INTO tags (name, created_at) VALUES ($1, NOW()) "
+        "RETURNING id, name, EXTRACT(EPOCH FROM created_at)::bigint",
+        pqxx::params{sName});
+    txn.commit();
+
+    TagRow tr;
+    tr.iId         = result[0][0].as<int64_t>();
+    tr.sName       = result[0][1].as<std::string>();
+    tr.tpCreatedAt = std::chrono::system_clock::time_point(
+        std::chrono::seconds(result[0][2].as<int64_t>()));
+    tr.iZoneCount  = 0;
+    return tr;
+  } catch (const pqxx::unique_violation&) {
+    throw dns::common::ConflictError("TAG_NAME_EXISTS", "Tag name already exists");
+  }
+}
+
 }  // namespace dns::dal

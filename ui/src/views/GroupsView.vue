@@ -7,7 +7,7 @@ import { onMounted, ref } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
@@ -27,7 +27,7 @@ const { confirmDelete } = useConfirmAction()
 const groups = ref<Group[]>([])
 const loading = ref(true)
 
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const expandedRows = ref({})
 
@@ -59,13 +59,13 @@ async function fetchRoles() {
 function openCreate() {
   editingId.value = null
   form.value = { name: '', description: '', role_id: null }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 function openEdit(group: Group) {
   editingId.value = group.id
   form.value = { name: group.name, description: group.description, role_id: group.role_id }
-  drawerVisible.value = true
+  dialogVisible.value = true
 }
 
 async function handleSubmit() {
@@ -82,7 +82,7 @@ async function handleSubmit() {
       await groupApi.createGroup(payload)
       notify.success('Group created')
     }
-    drawerVisible.value = false
+    dialogVisible.value = false
     await fetchGroups()
   } catch (e: any) {
     notify.error(e.message || 'Failed to save group')
@@ -182,8 +182,8 @@ onMounted(() => {
       </template>
     </DataTable>
 
-    <Drawer v-model:visible="drawerVisible" :header="editingId ? 'Edit Group' : 'Add Group'" position="right" class="w-25rem">
-      <form @submit.prevent="handleSubmit" class="drawer-form">
+    <Dialog v-model:visible="dialogVisible" :header="editingId ? 'Edit Group' : 'Add Group'" modal class="w-30rem">
+      <form @submit.prevent="handleSubmit" class="dialog-form">
         <div class="field">
           <label>Name</label>
           <InputText v-model="form.name" class="w-full" />
@@ -198,7 +198,7 @@ onMounted(() => {
         </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
   </div>
 </template>
 
@@ -209,11 +209,10 @@ onMounted(() => {
 .text-surface-400 { color: var(--p-surface-400); }
 .text-sm { font-size: 0.875rem; }
 .action-buttons { display: flex; justify-content: flex-end; gap: 0.25rem; }
-.drawer-form { display: flex; flex-direction: column; gap: 1rem; }
+.dialog-form { display: flex; flex-direction: column; gap: 1rem; }
 .field { display: flex; flex-direction: column; gap: 0.375rem; }
 .field label { font-size: 0.875rem; font-weight: 500; }
 .w-full { width: 100%; }
-.w-25rem { width: 25rem; }
 .expansion-content { padding: 0.75rem 1rem; }
 .expansion-title { font-size: 0.875rem; font-weight: 600; margin: 0 0 0.5rem; }
 .members-list { display: flex; flex-direction: column; gap: 0.375rem; }

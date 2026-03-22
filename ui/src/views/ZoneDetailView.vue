@@ -16,7 +16,6 @@ import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
-import AutoComplete from 'primevue/autocomplete'
 import PageHeader from '../components/shared/PageHeader.vue'
 import ImportDialog from '../components/records/ImportDialog.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
@@ -32,7 +31,6 @@ import * as viewApi from '../api/views'
 import * as providerApi from '../api/providers'
 import * as snippetApi from '../api/snippets'
 import type { Snippet } from '../api/snippets'
-import { listTags } from '../api/tags'
 import * as templateApi from '../api/templates'
 import type { ComplianceCheckResult } from '../api/templates'
 import { useVariableAutocomplete } from '../composables/useVariableAutocomplete'
@@ -61,11 +59,6 @@ const bulkAutoTtlDialogVisible = ref(false)
 const bulkAutoTtlValue = ref(true)
 const bulkProxyDialogVisible = ref(false)
 const bulkProxyValue = ref(false)
-
-// Tag editing
-const zoneTags = ref<string[]>([])
-const tagSuggestions = ref<string[]>([])
-let allTagNames: string[] = []
 
 // Zone-wide bulk TTL adjustment
 const adjustTtlVisible = ref(false)
@@ -144,8 +137,6 @@ async function fetchData() {
     const [z, r] = await Promise.all([zoneApi.getZone(zoneId.value), recordApi.listRecords(zoneId.value)])
     zone.value = z
     records.value = r
-    zoneTags.value = [...(z.tags ?? [])]
-
     // Fetch view providers to detect Cloudflare
     if (z.view_id) {
       try {
@@ -159,7 +150,6 @@ async function fetchData() {
       }
     }
     loadVariables()
-    listTags().then(t => { allTagNames = t.map(tag => tag.name) }).catch(() => {})
   } catch {
     notify.error('Failed to load zone')
   } finally {
@@ -446,23 +436,6 @@ async function exportBind() {
   }
 }
 
-function onTagSearch(event: { query: string }) {
-  tagSuggestions.value = allTagNames.filter(t =>
-    t.toLowerCase().includes(event.query.toLowerCase())
-  )
-}
-
-async function saveTags() {
-  if (!zone.value) return
-  try {
-    await zoneApi.updateZoneTags(zone.value.id, zoneTags.value)
-    notify.success('Tags updated')
-    await fetchData()
-  } catch {
-    notify.error('Failed to update tags')
-  }
-}
-
 async function submitZoneAdjustTtl() {
   if (!zone.value) return
   try {
@@ -679,22 +652,6 @@ onMounted(fetchData)
           <Button label="Review" size="small" @click="openComplianceDialog" />
           <Button label="Ignore" severity="secondary" size="small" @click="ignoreCompliance" />
           <Button label="Unlink" severity="danger" size="small" @click="doUnlinkTemplate" />
-        </div>
-      </div>
-
-      <div class="tags-section mb-4">
-        <div class="flex items-center gap-2 mb-2">
-          <h3 class="text-sm font-semibold">Tags</h3>
-        </div>
-        <div class="flex items-start gap-2">
-          <AutoComplete
-            v-model="zoneTags"
-            :suggestions="tagSuggestions"
-            multiple
-            @complete="onTagSearch"
-            class="flex-1"
-          />
-          <Button label="Save Tags" size="small" @click="saveTags" />
         </div>
       </div>
 
@@ -1199,18 +1156,6 @@ onMounted(fetchData)
 
 .text-muted {
   color: var(--p-text-muted-color);
-}
-
-.tags-section {
-  padding: 0.75rem 1rem;
-  background: var(--p-surface-800);
-  border: 1px solid var(--p-surface-700);
-  border-radius: 6px;
-}
-
-:root:not(.app-dark) .tags-section {
-  background: var(--p-surface-50);
-  border-color: var(--p-surface-200);
 }
 
 .flex {

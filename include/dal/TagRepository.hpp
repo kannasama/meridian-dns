@@ -45,6 +45,10 @@ class TagRepository {
   /// Find a tag by ID. Returns nullopt if not found.
   std::optional<TagRow> findById(int64_t iId);
 
+  /// Create a single tag in the vocabulary. Returns the new row.
+  /// Throws ConflictError if name already exists.
+  TagRow create(const std::string& sName);
+
  private:
   ConnectionPool& _cpPool;
 };

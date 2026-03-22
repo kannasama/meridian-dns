@@ -8,7 +8,6 @@ import { useRoute, useRouter } from 'vue-router'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
@@ -61,7 +60,7 @@ function onTabChange(e: { index: number }) {
 // ─── Users ───
 const users = ref<UserDetail[]>([])
 const usersLoading = ref(true)
-const userDrawerVisible = ref(false)
+const userDialogVisible = ref(false)
 const editingUserId = ref<number | null>(null)
 
 const userCreateForm = ref({
@@ -96,7 +95,7 @@ async function fetchUsers() {
 function openCreateUser() {
   editingUserId.value = null
   userCreateForm.value = { username: '', email: '', password: '', group_ids: [], force_password_change: true }
-  userDrawerVisible.value = true
+  userDialogVisible.value = true
 }
 
 function openEditUser(user: UserDetail) {
@@ -106,7 +105,7 @@ function openEditUser(user: UserDetail) {
     is_active: user.is_active,
     group_ids: user.groups.map(g => g.id),
   }
-  userDrawerVisible.value = true
+  userDialogVisible.value = true
 }
 
 async function handleUserSubmit() {
@@ -118,7 +117,7 @@ async function handleUserSubmit() {
       await userApi.createUser(userCreateForm.value)
       notify.success('User created')
     }
-    userDrawerVisible.value = false
+    userDialogVisible.value = false
     await fetchUsers()
   } catch (e: any) {
     notify.error(e.message || 'Failed to save user')
@@ -157,7 +156,7 @@ async function handleResetPassword() {
 // ─── Groups ───
 const groups = ref<Group[]>([])
 const groupsLoading = ref(true)
-const groupDrawerVisible = ref(false)
+const groupDialogVisible = ref(false)
 const editingGroupId = ref<number | null>(null)
 const expandedGroupRows = ref({})
 const groupDetails = ref<Map<number, GroupDetail>>(new Map())
@@ -180,13 +179,13 @@ async function fetchGroups() {
 function openCreateGroup() {
   editingGroupId.value = null
   groupForm.value = { name: '', description: '', role_id: null }
-  groupDrawerVisible.value = true
+  groupDialogVisible.value = true
 }
 
 function openEditGroup(group: Group) {
   editingGroupId.value = group.id
   groupForm.value = { name: group.name, description: group.description, role_id: group.role_id }
-  groupDrawerVisible.value = true
+  groupDialogVisible.value = true
 }
 
 async function handleGroupSubmit() {
@@ -203,7 +202,7 @@ async function handleGroupSubmit() {
       await groupApi.createGroup(payload)
       notify.success('Group created')
     }
-    groupDrawerVisible.value = false
+    groupDialogVisible.value = false
     await fetchGroups()
   } catch (e: any) {
     notify.error(e.message || 'Failed to save group')
@@ -236,7 +235,7 @@ async function onGroupRowExpand(event: any) {
 const roles = ref<Role[]>([])
 const rolesLoading = ref(true)
 const categories = ref<PermissionCategory[]>([])
-const roleDrawerVisible = ref(false)
+const roleDialogVisible = ref(false)
 const editingRoleId = ref<number | null>(null)
 const editingRoleIsSystem = ref(false)
 
@@ -266,7 +265,7 @@ function openCreateRole() {
   editingRoleIsSystem.value = false
   roleForm.value = { name: '', description: '' }
   selectedPermissions.value = []
-  roleDrawerVisible.value = true
+  roleDialogVisible.value = true
 }
 
 async function openEditRole(role: Role) {
@@ -279,7 +278,7 @@ async function openEditRole(role: Role) {
   } catch {
     selectedPermissions.value = []
   }
-  roleDrawerVisible.value = true
+  roleDialogVisible.value = true
 }
 
 async function handleRoleSubmit() {
@@ -289,7 +288,9 @@ async function handleRoleSubmit() {
         name: roleForm.value.name,
         description: roleForm.value.description,
       })
-      await roleApi.setRolePermissions(editingRoleId.value, selectedPermissions.value)
+      if (!editingRoleIsSystem.value) {
+        await roleApi.setRolePermissions(editingRoleId.value, selectedPermissions.value)
+      }
       notify.success('Role updated')
     } else {
       await roleApi.createRole({
@@ -299,7 +300,7 @@ async function handleRoleSubmit() {
       })
       notify.success('Role created')
     }
-    roleDrawerVisible.value = false
+    roleDialogVisible.value = false
     await fetchRoles()
   } catch (e: any) {
     notify.error(e.message || 'Failed to save role')
@@ -319,6 +320,7 @@ function handleDeleteRole(role: Role) {
 }
 
 function toggleCategory(cat: PermissionCategory) {
+  if (editingRoleIsSystem.value) return
   const allSelected = cat.permissions.every(p => selectedPermissions.value.includes(p))
   if (allSelected) {
     selectedPermissions.value = selectedPermissions.value.filter(
@@ -564,9 +566,9 @@ onMounted(() => {
       </DataTable>
     </div>
 
-    <!-- ═══ User Drawer ═══ -->
-    <Drawer v-model:visible="userDrawerVisible" :header="editingUserId ? 'Edit User' : 'Add User'" position="right" class="w-25rem">
-      <form @submit.prevent="handleUserSubmit" class="drawer-form">
+    <!-- ═══ User Dialog ═══ -->
+    <Dialog v-model:visible="userDialogVisible" :header="editingUserId ? 'Edit User' : 'Add User'" modal class="w-30rem">
+      <form @submit.prevent="handleUserSubmit" class="dialog-form">
         <template v-if="editingUserId === null">
           <div class="field">
             <label>Username</label>
@@ -605,11 +607,11 @@ onMounted(() => {
         </template>
         <Button type="submit" :label="editingUserId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
 
     <!-- ═══ Reset Password Dialog ═══ -->
     <Dialog v-model:visible="resetDialogVisible" header="Reset Password" :style="{ width: '24rem' }" modal>
-      <form @submit.prevent="handleResetPassword" class="drawer-form">
+      <form @submit.prevent="handleResetPassword" class="dialog-form">
         <div class="field">
           <label>New Password</label>
           <Password v-model="resetPassword" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
@@ -619,9 +621,9 @@ onMounted(() => {
       </form>
     </Dialog>
 
-    <!-- ═══ Group Drawer ═══ -->
-    <Drawer v-model:visible="groupDrawerVisible" :header="editingGroupId ? 'Edit Group' : 'Add Group'" position="right" class="w-25rem">
-      <form @submit.prevent="handleGroupSubmit" class="drawer-form">
+    <!-- ═══ Group Dialog ═══ -->
+    <Dialog v-model:visible="groupDialogVisible" :header="editingGroupId ? 'Edit Group' : 'Add Group'" modal class="w-30rem">
+      <form @submit.prevent="handleGroupSubmit" class="dialog-form">
         <div class="field">
           <label>Name</label>
           <InputText v-model="groupForm.name" class="w-full" />
@@ -636,11 +638,11 @@ onMounted(() => {
         </div>
         <Button type="submit" :label="editingGroupId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
 
     <!-- ═══ Role Dialog ═══ -->
-    <Dialog v-model:visible="roleDrawerVisible" :header="editingRoleId ? 'Edit Role' : 'Add Role'" :style="{ width: '56rem' }" modal>
-      <form @submit.prevent="handleRoleSubmit" class="drawer-form">
+    <Dialog v-model:visible="roleDialogVisible" :header="editingRoleId ? 'Edit Role' : 'Add Role'" :style="{ width: '56rem' }" modal>
+      <form @submit.prevent="handleRoleSubmit" class="dialog-form">
         <div class="field">
           <label>Name</label>
           <InputText v-model="roleForm.name" class="w-full" :disabled="editingRoleIsSystem" />
@@ -657,6 +659,7 @@ onMounted(() => {
               <Checkbox
                 :modelValue="isCategoryAllSelected(cat)"
                 :binary="true"
+                :disabled="editingRoleIsSystem"
                 @click.stop="toggleCategory(cat)"
               />
               <span class="perm-category-name">{{ cat.name }}</span>
@@ -667,6 +670,7 @@ onMounted(() => {
                 <Checkbox
                   v-model="selectedPermissions"
                   :value="perm"
+                  :disabled="editingRoleIsSystem"
                 />
                 <span class="perm-label">{{ permLabel(perm) }}</span>
               </label>
@@ -704,13 +708,11 @@ onMounted(() => {
 .text-sm { font-size: 0.875rem; }
 .font-mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; }
 .action-buttons { display: flex; justify-content: flex-end; gap: 0.25rem; }
-.drawer-form { display: flex; flex-direction: column; gap: 1rem; }
+.dialog-form { display: flex; flex-direction: column; gap: 1rem; }
 .field { display: flex; flex-direction: column; gap: 0.375rem; }
 .field label { font-size: 0.875rem; font-weight: 500; }
 .field.flex-row { flex-direction: row; align-items: center; gap: 0.5rem; }
 .w-full { width: 100%; }
-.w-25rem { width: 25rem; }
-.w-30rem { width: 30rem; }
 
 /* Group expansion */
 .expansion-content { padding: 0.75rem 1rem; }
@@ -718,7 +720,7 @@ onMounted(() => {
 .members-list { display: flex; flex-direction: column; gap: 0.375rem; }
 .member-row { display: flex; align-items: center; gap: 0.25rem; }
 
-/* Permissions drawer */
+/* Permissions dialog */
 .permissions-section { display: flex; flex-direction: column; gap: 0.75rem; }
 .section-label { font-size: 0.875rem; font-weight: 600; }
 .perm-category { border: 1px solid var(--p-surface-200); border-radius: 0.375rem; overflow: hidden; }

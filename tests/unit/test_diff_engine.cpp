@@ -278,3 +278,48 @@ TEST(DiffEngineComputeTest, PerProviderDiffIndependent) {
   ASSERT_EQ(vDiffsB.size(), 1u);    // Add needed for provider B
   EXPECT_EQ(vDiffsB[0].action, DiffAction::Add);
 }
+
+// ── fromFqdn (inverse of toFqdn) ────────────────────────────────────
+
+TEST(DiffEngineFromFqdnTest, ApexWithTrailingDot) {
+  // Zone apex: "test.mjhnosekai.com." in zone "test.mjhnosekai.com" → "@"
+  EXPECT_EQ(DiffEngine::fromFqdn("test.mjhnosekai.com.", "test.mjhnosekai.com"), "@");
+}
+
+TEST(DiffEngineFromFqdnTest, ApexZoneAlsoHasDot) {
+  // Zone name already has trailing dot
+  EXPECT_EQ(DiffEngine::fromFqdn("example.com.", "example.com."), "@");
+}
+
+TEST(DiffEngineFromFqdnTest, SubdomainWithTrailingDot) {
+  // "vip101.test.mjhnosekai.com." in zone "test.mjhnosekai.com" → "vip101"
+  EXPECT_EQ(DiffEngine::fromFqdn("vip101.test.mjhnosekai.com.", "test.mjhnosekai.com"), "vip101");
+}
+
+TEST(DiffEngineFromFqdnTest, MultiLevelSubdomain) {
+  // "a.b.example.com." in zone "example.com" → "a.b"
+  EXPECT_EQ(DiffEngine::fromFqdn("a.b.example.com.", "example.com"), "a.b");
+}
+
+TEST(DiffEngineFromFqdnTest, AlreadyRelative) {
+  // Already a relative name (no trailing dot, doesn't match zone)
+  EXPECT_EQ(DiffEngine::fromFqdn("www", "example.com"), "www");
+}
+
+TEST(DiffEngineFromFqdnTest, ExternalFqdn) {
+  // FQDN that doesn't belong to the zone — returned as-is
+  EXPECT_EQ(DiffEngine::fromFqdn("other.domain.com.", "example.com"), "other.domain.com.");
+}
+
+TEST(DiffEngineFromFqdnTest, RoundTripRelative) {
+  // toFqdn → fromFqdn should produce the original name
+  std::string sZone = "example.com";
+  EXPECT_EQ(DiffEngine::fromFqdn(DiffEngine::toFqdn("www", sZone), sZone), "www");
+  EXPECT_EQ(DiffEngine::fromFqdn(DiffEngine::toFqdn("@", sZone), sZone), "@");
+  EXPECT_EQ(DiffEngine::fromFqdn(DiffEngine::toFqdn("sub.host", sZone), sZone), "sub.host");
+}
+
+TEST(DiffEngineFromFqdnTest, EmptyInputs) {
+  EXPECT_EQ(DiffEngine::fromFqdn("", "example.com"), "");
+  EXPECT_EQ(DiffEngine::fromFqdn("example.com.", ""), "example.com.");
+}

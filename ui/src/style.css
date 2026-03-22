@@ -24,6 +24,14 @@ body {
   font-size: var(--app-grid-font-size, 13px);
 }
 
+.w-30rem {
+  width: 30rem;
+}
+
+.w-40rem {
+  width: 40rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

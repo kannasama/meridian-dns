@@ -667,7 +667,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           nlohmann::json jRecords = nlohmann::json::array();
           for (const auto& dr : vLiveRecords) {
             jRecords.push_back({
-                {"name", dr.sName},
+                {"name", dns::core::DiffEngine::fromFqdn(dr.sName, oZone->sName)},
                 {"type", dr.sType},
                 {"value", dr.sValue},
                 {"ttl", dr.uTtl},

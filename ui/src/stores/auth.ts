@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '../api/auth'
+import { usePreferencesStore } from './preferences'
 import type { User } from '../types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -33,6 +34,10 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = result.token
     localStorage.setItem('jwt', result.token)
     user.value = await authApi.me()
+
+    // Fetch user preferences after login
+    const preferences = usePreferencesStore()
+    await preferences.fetch()
   }
 
   async function logout() {

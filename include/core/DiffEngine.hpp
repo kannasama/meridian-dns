@@ -61,6 +61,10 @@ class DiffEngine {
   /// "@" → "example.com.", "www" → "www.example.com.", already FQDN → unchanged.
   static std::string toFqdn(const std::string& sRecordName, const std::string& sZoneName);
 
+  /// Convert a fully-qualified domain name back to a relative record name.
+  /// "example.com." → "@", "www.example.com." → "www", non-FQDN → unchanged.
+  static std::string fromFqdn(const std::string& sFqdn, const std::string& sZoneName);
+
  private:
   dns::dal::ZoneRepository& _zrRepo;
   dns::dal::ViewRepository& _vrRepo;

@@ -44,6 +44,7 @@
 #include "api/routes/SoaPresetRoutes.hpp"
 #include "api/routes/TagRoutes.hpp"
 #include "api/routes/ZoneTemplateRoutes.hpp"
+#include "api/routes/PreferenceRoutes.hpp"
 #include "api/routes/ProviderDefinitionRoutes.hpp"
 #include "core/BindExporter.hpp"
 #include "core/RecordValidator.hpp"
@@ -79,6 +80,7 @@
 #include "dal/SystemConfigRepository.hpp"
 #include "dal/ZoneTemplateRepository.hpp"
 #include "dal/ProviderDefinitionRepository.hpp"
+#include "dal/UserPreferenceRepository.hpp"
 #include "security/AuthService.hpp"
 #include "security/CryptoService.hpp"
 #include "security/FederatedAuthService.hpp"
@@ -318,6 +320,7 @@ int main(int argc, char* argv[]) {
     auto settingsRepo = std::make_unique<dns::dal::SettingsRepository>(*cpPool);
     auto idpRepo = std::make_unique<dns::dal::IdpRepository>(*cpPool, *csService);
     auto gitRepoRepo = std::make_unique<dns::dal::GitRepoRepository>(*cpPool, *csService);
+    auto uprRepo = std::make_unique<dns::dal::UserPreferenceRepository>(*cpPool);
 
     auto msScheduler = std::make_unique<dns::core::MaintenanceScheduler>();
 
@@ -436,7 +439,13 @@ int main(int argc, char* argv[]) {
               std::string sStatus = "in_sync";
               try {
                 auto preview = deEngine.preview(zone.iId);
-                sStatus = preview.bHasDrift ? "drift" : "in_sync";
+                if (preview.vDiffs.empty()) {
+                  sStatus = "in_sync";
+                } else if (preview.bHasDrift) {
+                  sStatus = "drift";
+                } else {
+                  sStatus = "pending";
+                }
               } catch (...) {
                 sStatus = "error";
               }
@@ -548,6 +557,8 @@ int main(int argc, char* argv[]) {
         *trRepo, *amMiddleware);
     auto pdrRoutes = std::make_unique<dns::api::routes::ProviderDefinitionRoutes>(
         *pdrRepo, *amMiddleware);
+    auto preferenceRoutes = std::make_unique<dns::api::routes::PreferenceRoutes>(
+        *uprRepo, *amMiddleware);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
@@ -568,6 +579,7 @@ int main(int argc, char* argv[]) {
     oidcRoutes->registerRoutes(crowApp);
     samlRoutes->registerRoutes(crowApp);
     backupRoutes->registerRoutes(crowApp);
+    preferenceRoutes->registerRoutes(crowApp);
 
     // Serve static UI files (SPA fallback) — must be registered after API routes
     auto sfhHandler = std::make_unique<dns::api::StaticFileHandler>(cfgApp.sUiDir);

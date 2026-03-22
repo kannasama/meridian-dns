@@ -9,12 +9,13 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import AutoComplete from 'primevue/autocomplete'
 import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
+import SelectButton from 'primevue/selectbutton'
 import PrimeTag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import PageHeader from '../components/shared/PageHeader.vue'
@@ -23,6 +24,7 @@ import { useCrud } from '../composables/useCrud'
 import { useConfirmAction } from '../composables/useConfirm'
 import { useRole } from '../composables/useRole'
 import { useNotificationStore } from '../stores/notification'
+import { usePreferencesStore } from '../stores/preferences'
 import * as zoneApi from '../api/zones'
 import * as viewApi from '../api/views'
 import * as gitRepoApi from '../api/gitRepos'
@@ -64,7 +66,7 @@ const { items: zones, loading, fetch: fetchZones, create, update, remove } = use
 const allViews = ref<View[]>([])
 const allGitRepos = ref<GitRepo[]>([])
 const soaPresets = ref<SoaPreset[]>([])
-const drawerVisible = ref(false)
+const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({
   name: '',
@@ -75,18 +77,67 @@ const form = ref({
   soa_preset_id: null as number | null,
   git_repo_id: null as number | null,
   git_branch: '' as string,
+  tags: [] as string[],
 })
 
 // Tag filter
 const allTags = ref<string[]>([])
 const selectedTagFilters = ref<string[]>([])
+const tagSuggestions = ref<string[]>([])
+let originalTags: string[] = []
+
+const preferences = usePreferencesStore()
+
+const zoneCategoryOptions = [
+  { label: 'Forward', value: 'forward' },
+  { label: 'Reverse', value: 'reverse' },
+  { label: 'All', value: 'all' },
+]
+const zoneCategory = ref(preferences.zoneDefaultView)
+
+const isReverseZone = (name: string) =>
+  name.endsWith('.in-addr.arpa') || name.endsWith('.ip6.arpa')
+
+const categoryFilteredZones = computed(() => {
+  if (zoneCategory.value === 'forward')
+    return zones.value.filter(z => !isReverseZone(z.name))
+  if (zoneCategory.value === 'reverse')
+    return zones.value.filter(z => isReverseZone(z.name))
+  return zones.value
+})
 
 const filteredZones = computed(() => {
-  if (selectedTagFilters.value.length === 0) return zones.value
-  return zones.value.filter(z =>
-    selectedTagFilters.value.every(tag => (z.tags ?? []).includes(tag))
-  )
+  let result = categoryFilteredZones.value
+
+  // Exclude zones with hidden tags (from preferences)
+  const hiddenTags = preferences.zoneHiddenTags
+  if (hiddenTags.length > 0 && selectedTagFilters.value.length === 0) {
+    result = result.filter(z =>
+      !hiddenTags.some(tag => (z.tags ?? []).includes(tag))
+    )
+  }
+
+  // Apply explicit tag filter (if user has selected tags)
+  if (selectedTagFilters.value.length > 0) {
+    result = result.filter(z =>
+      selectedTagFilters.value.every(tag => (z.tags ?? []).includes(tag))
+    )
+  }
+
+  return result
 })
+
+async function saveFilterDefaults() {
+  try {
+    await preferences.saveMany({
+      zone_default_view: zoneCategory.value,
+      zone_hidden_tags: selectedTagFilters.value,
+    })
+    notify.success('Filter defaults saved')
+  } catch {
+    notify.error('Failed to save defaults')
+  }
+}
 
 // Clone
 const showCloneDialog = ref(false)
@@ -94,14 +145,33 @@ const cloneName = ref('')
 const cloneViewId = ref<number | null>(null)
 const cloningSourceId = ref<number | null>(null)
 
+function onTagSearch(event: { query: string }) {
+  tagSuggestions.value = allTags.value.filter(t =>
+    t.toLowerCase().includes(event.query.toLowerCase())
+  )
+}
+
+function onTagKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter') return
+  const input = (event.target as HTMLInputElement).value?.trim()
+  if (!input) return
+  if (!form.value.tags.includes(input)) {
+    form.value.tags.push(input)
+  }
+  ;(event.target as HTMLInputElement).value = ''
+  event.preventDefault()
+}
+
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', view_id: null, deployment_retention: null, manage_soa: false, manage_ns: false, soa_preset_id: null, git_repo_id: null, git_branch: '' }
-  drawerVisible.value = true
+  form.value = { name: '', view_id: null, deployment_retention: null, manage_soa: false, manage_ns: false, soa_preset_id: null, git_repo_id: null, git_branch: '', tags: [] }
+  originalTags = []
+  dialogVisible.value = true
 }
 
 function openEdit(zone: Zone) {
   editingId.value = zone.id
+  const tags = [...(zone.tags ?? [])]
   form.value = {
     name: zone.name,
     view_id: zone.view_id,
@@ -111,8 +181,10 @@ function openEdit(zone: Zone) {
     soa_preset_id: zone.soa_preset_id ?? null,
     git_repo_id: zone.git_repo_id,
     git_branch: zone.git_branch || '',
+    tags,
   }
-  drawerVisible.value = true
+  originalTags = [...tags]
+  dialogVisible.value = true
 }
 
 async function handleSubmit() {
@@ -141,7 +213,23 @@ async function handleSubmit() {
       git_branch: gitBranch,
     })
   }
-  if (ok) drawerVisible.value = false
+  if (ok) {
+    const tagsChanged = JSON.stringify(form.value.tags.slice().sort()) !== JSON.stringify(originalTags.slice().sort())
+    if (tagsChanged) {
+      if (editingId.value !== null) {
+        await zoneApi.updateZoneTags(editingId.value, form.value.tags)
+        await fetchZones()
+      } else if (form.value.tags.length > 0) {
+        const created = zones.value.find(z => z.name === form.value.name)
+        if (created) {
+          await zoneApi.updateZoneTags(created.id, form.value.tags)
+          await fetchZones()
+        }
+      }
+      listTags().then((t) => { allTags.value = t.map(tag => tag.name) }).catch(() => {})
+    }
+    dialogVisible.value = false
+  }
 }
 
 function handleDelete(zone: Zone) {
@@ -186,6 +274,11 @@ onMounted(async () => {
     soaPresetApi.listSoaPresets().then((r) => { soaPresets.value = r }).catch(() => {}),
     listTags().then((t) => { allTags.value = t.map(tag => tag.name) }).catch(() => {}),
   ])
+
+  // Apply saved preferences
+  if (preferences.loaded) {
+    zoneCategory.value = preferences.zoneDefaultView
+  }
 })
 </script>
 
@@ -209,12 +302,26 @@ onMounted(async () => {
 
     <template v-else>
       <div class="filter-bar">
+        <SelectButton
+          v-model="zoneCategory"
+          :options="zoneCategoryOptions"
+          optionLabel="label"
+          optionValue="value"
+          :allowEmpty="false"
+        />
         <MultiSelect
           v-model="selectedTagFilters"
           :options="allTags"
           placeholder="Filter by tag"
           class="tag-filter"
           :showClear="true"
+        />
+        <Button
+          v-if="zoneCategory !== preferences.zoneDefaultView"
+          label="Save as default"
+          text
+          size="small"
+          @click="saveFilterDefaults"
         />
       </div>
 
@@ -292,13 +399,13 @@ onMounted(async () => {
       </DataTable>
     </template>
 
-    <Drawer
-      v-model:visible="drawerVisible"
+    <Dialog
+      v-model:visible="dialogVisible"
       :header="editingId ? 'Edit Zone' : 'Add Zone'"
-      position="right"
-      class="w-25rem"
+      modal
+      class="w-30rem"
     >
-      <form @submit.prevent="handleSubmit" class="drawer-form">
+      <form @submit.prevent="handleSubmit" class="dialog-form">
         <div class="field">
           <label for="zone-name">Name</label>
           <InputText id="zone-name" v-model="form.name" class="w-full" placeholder="example.com" />
@@ -373,9 +480,21 @@ onMounted(async () => {
             <small class="text-surface-400">Leave blank to use the repository's default branch</small>
           </div>
         </div>
+        <div class="field">
+          <label>Tags</label>
+          <AutoComplete
+            v-model="form.tags"
+            :suggestions="tagSuggestions"
+            multiple
+            @complete="onTagSearch"
+            @keydown.enter="onTagKeydown"
+            class="w-full"
+            placeholder="Add tags..."
+          />
+        </div>
         <Button type="submit" :label="editingId ? 'Save' : 'Create'" class="w-full" />
       </form>
-    </Drawer>
+    </Dialog>
 
     <Dialog v-model:visible="showCloneDialog" header="Clone Zone" modal>
       <div class="clone-dialog-body">
@@ -416,7 +535,7 @@ onMounted(async () => {
   gap: 0.25rem;
 }
 
-.drawer-form {
+.dialog-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -435,10 +554,6 @@ onMounted(async () => {
 
 .w-full {
   width: 100%;
-}
-
-.w-25rem {
-  width: 25rem;
 }
 
 .cursor-pointer :deep(tr) {
