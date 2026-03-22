@@ -199,7 +199,18 @@ common::PushResult PowerDnsProvider::createRecord(const std::string& sZoneName,
     return {false, "", "Failed to connect to PowerDNS"};
   }
   if (res->status != 204 && res->status != 200) {
-    return {false, "", "PowerDNS returned status " + std::to_string(res->status)};
+    std::string sDetail = "PowerDNS returned status " + std::to_string(res->status);
+    if (!res->body.empty()) {
+      try {
+        auto jResp = nlohmann::json::parse(res->body);
+        if (jResp.contains("error")) {
+          sDetail += ": " + jResp["error"].get<std::string>();
+        }
+      } catch (...) {
+        sDetail += ": " + res->body.substr(0, 500);
+      }
+    }
+    return {false, "", sDetail};
   }
 
   std::string sNewId = makeRecordId(drRecord.sName, drRecord.sType, sContent);
@@ -257,7 +268,18 @@ common::PushResult PowerDnsProvider::updateRecord(const std::string& sZoneName,
     return {false, "", "Failed to connect to PowerDNS"};
   }
   if (res->status != 204 && res->status != 200) {
-    return {false, "", "PowerDNS returned status " + std::to_string(res->status)};
+    std::string sDetail = "PowerDNS returned status " + std::to_string(res->status);
+    if (!res->body.empty()) {
+      try {
+        auto jResp = nlohmann::json::parse(res->body);
+        if (jResp.contains("error")) {
+          sDetail += ": " + jResp["error"].get<std::string>();
+        }
+      } catch (...) {
+        sDetail += ": " + res->body.substr(0, 500);
+      }
+    }
+    return {false, "", sDetail};
   }
 
   std::string sNewContent = drRecord.sValue;
