@@ -4,6 +4,7 @@
 // This file is part of Meridian DNS. See LICENSE for details.
 
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -20,6 +21,7 @@ class DeploymentRepository;
 class ProviderRepository;
 class RecordRepository;
 class SystemConfigRepository;
+class SystemLogRepository;
 class ViewRepository;
 class ZoneRepository;
 }  // namespace dns::dal
@@ -46,6 +48,7 @@ class DeploymentEngine {
                    dns::dal::DeploymentRepository& drRepo,
                    dns::dal::AuditRepository& arRepo,
                    dns::dal::SystemConfigRepository& scrRepo,
+                   dns::dal::SystemLogRepository& slrRepo,
                    dns::gitops::GitRepoManager* pGitRepoManager,
                    int iRetentionCount);
   ~DeploymentEngine();
@@ -62,6 +65,12 @@ class DeploymentEngine {
   /// Returns the new deployment ID.
   int64_t capture(int64_t iZoneId, int64_t iActorUserId,
                   const common::AuditContext& acCtx, const std::string& sGeneratedBy);
+
+  /// Reorder diffs for safe execution: deletes first, then updates, adds, drifts.
+  /// Drift records with action="delete" are moved into the delete phase.
+  static std::vector<common::RecordDiff> partitionDiffsForExecution(
+      const std::vector<common::RecordDiff>& vDiffs,
+      const std::map<std::string, std::string>& mDriftActionMap);
 
  private:
   /// Build the deployment snapshot JSON from current records.
@@ -86,6 +95,7 @@ class DeploymentEngine {
   dns::dal::DeploymentRepository& _drRepo;
   dns::dal::AuditRepository& _arRepo;
   dns::dal::SystemConfigRepository& _scrRepo;
+  dns::dal::SystemLogRepository& _slrRepo;
   dns::gitops::GitRepoManager* _pGitRepoManager;
   int _iRetentionCount;
 

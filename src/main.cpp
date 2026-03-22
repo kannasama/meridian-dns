@@ -46,6 +46,7 @@
 #include "api/routes/ZoneTemplateRoutes.hpp"
 #include "api/routes/PreferenceRoutes.hpp"
 #include "api/routes/ProviderDefinitionRoutes.hpp"
+#include "api/routes/SystemLogRoutes.hpp"
 #include "core/BindExporter.hpp"
 #include "core/RecordValidator.hpp"
 #include "dal/TagRepository.hpp"
@@ -78,6 +79,7 @@
 #include "dal/SnippetRepository.hpp"
 #include "dal/SoaPresetRepository.hpp"
 #include "dal/SystemConfigRepository.hpp"
+#include "dal/SystemLogRepository.hpp"
 #include "dal/ZoneTemplateRepository.hpp"
 #include "dal/ProviderDefinitionRepository.hpp"
 #include "dal/UserPreferenceRepository.hpp"
@@ -321,6 +323,7 @@ int main(int argc, char* argv[]) {
     auto idpRepo = std::make_unique<dns::dal::IdpRepository>(*cpPool, *csService);
     auto gitRepoRepo = std::make_unique<dns::dal::GitRepoRepository>(*cpPool, *csService);
     auto uprRepo = std::make_unique<dns::dal::UserPreferenceRepository>(*cpPool);
+    auto slrRepo = std::make_unique<dns::dal::SystemLogRepository>(*cpPool);
 
     auto msScheduler = std::make_unique<dns::core::MaintenanceScheduler>();
 
@@ -354,13 +357,25 @@ int main(int argc, char* argv[]) {
                             }
                           });
 
+    msScheduler->schedule("system-log-purge",
+        std::chrono::seconds(cfgApp.iSystemLogPurgeIntervalSeconds),
+        [&slrRepo = *slrRepo, iRetention = cfgApp.iSystemLogRetentionDays]() {
+          auto iDeleted = slrRepo.purge(iRetention);
+          if (iDeleted > 0) {
+            auto spLog = dns::common::Logger::get();
+            spLog->info("System log purge: deleted {} old entries", iDeleted);
+          }
+        });
+
     msScheduler->start();
     g_pScheduler = msScheduler.get();
     spLog->info("Step 7a: MaintenanceScheduler started (session flush every {}s, "
-                "API key cleanup every {}s, audit purge every {}s)",
+                "API key cleanup every {}s, audit purge every {}s, "
+                "system log purge every {}s)",
                 cfgApp.iSessionCleanupIntervalSeconds,
                 cfgApp.iApiKeyCleanupIntervalSeconds,
-                cfgApp.iAuditPurgeIntervalSeconds);
+                cfgApp.iAuditPurgeIntervalSeconds,
+                cfgApp.iSystemLogPurgeIntervalSeconds);
 
     // ── Step 7b: Setup mode detection ────────────────────────────────────
     auto setupRoutes = std::make_unique<dns::api::routes::SetupRoutes>(
@@ -409,7 +424,8 @@ int main(int argc, char* argv[]) {
 
     auto depEngine = std::make_unique<dns::core::DeploymentEngine>(
         *deEngine, *veEngine, *zrRepo, *vrRepo, *rrRepo, *prRepo,
-        *drRepo, *arRepo, *scrRepo, upGitRepoManager.get(), cfgApp.iDeploymentRetentionCount);
+        *drRepo, *arRepo, *scrRepo, *slrRepo, upGitRepoManager.get(),
+        cfgApp.iDeploymentRetentionCount);
     auto reEngine    = std::make_unique<dns::core::RollbackEngine>(*drRepo, *rrRepo, *arRepo);
     auto beExporter  = std::make_unique<dns::core::BindExporter>(*veEngine);
     auto rvValidator = std::make_unique<dns::core::RecordValidator>(*rrRepo);
@@ -559,13 +575,15 @@ int main(int argc, char* argv[]) {
         *pdrRepo, *amMiddleware);
     auto preferenceRoutes = std::make_unique<dns::api::routes::PreferenceRoutes>(
         *uprRepo, *amMiddleware);
+    auto systemLogRoutes = std::make_unique<dns::api::routes::SystemLogRoutes>(
+        *slrRepo, *amMiddleware);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
         crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
         *providerRoutes, *setupRoutes, *viewRoutes, *zoneRoutes, *recordRoutes,
         *variableRoutes, *snippetRoutes, *soaPresetRoutes, *zoneTemplateRoutes,
-        *searchRoutes, *tagRoutes, *pdrRoutes);
+        *searchRoutes, *tagRoutes, *pdrRoutes, *systemLogRoutes);
 
     apiServer->registerRoutes();
     userRoutes->registerRoutes(crowApp);

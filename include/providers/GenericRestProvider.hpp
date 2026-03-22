@@ -33,8 +33,8 @@ class GenericRestProvider : public IProvider {
                                   const common::DnsRecord& drRecord) override;
   common::PushResult updateRecord(const std::string& sZoneName,
                                   const common::DnsRecord& drRecord) override;
-  bool deleteRecord(const std::string& sZoneName,
-                    const std::string& sProviderRecordId) override;
+  common::PushResult deleteRecord(const std::string& sZoneName,
+                                  const std::string& sProviderRecordId) override;
 
  private:
   std::string resolveZoneId(const std::string& sZoneName);

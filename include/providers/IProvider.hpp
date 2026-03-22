@@ -22,8 +22,8 @@ class IProvider {
                                           const common::DnsRecord& drRecord) = 0;
   virtual common::PushResult updateRecord(const std::string& sZoneName,
                                           const common::DnsRecord& drRecord) = 0;
-  virtual bool deleteRecord(const std::string& sZoneName,
-                            const std::string& sProviderRecordId) = 0;
+  virtual common::PushResult deleteRecord(const std::string& sZoneName,
+                                          const std::string& sProviderRecordId) = 0;
 };
 
 }  // namespace dns::providers

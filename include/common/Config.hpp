@@ -70,6 +70,10 @@ struct Config {
   int iAuditRetentionDays = 365;
   int iAuditPurgeIntervalSeconds = 86400;
 
+  // ── System log ─────────────────────────────────────────────────────
+  int iSystemLogRetentionDays = 30;
+  int iSystemLogPurgeIntervalSeconds = 86400;
+
   /// Load and validate all config from environment variables.
   /// Implements _FILE fallback for DNS_MASTER_KEY and DNS_JWT_SECRET.
   /// Calls OPENSSL_cleanse() on raw secret strings after loading.

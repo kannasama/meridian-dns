@@ -226,17 +226,30 @@ common::PushResult DigitalOceanProvider::updateRecord(const std::string& sZoneNa
   return {true, sNewId, ""};
 }
 
-bool DigitalOceanProvider::deleteRecord(const std::string& sZoneName,
-                                        const std::string& sProviderRecordId) {
+common::PushResult DigitalOceanProvider::deleteRecord(const std::string& sZoneName,
+                                                       const std::string& sProviderRecordId) {
   auto spLog = common::Logger::get();
   std::string sPath = "/v2/domains/" + sZoneName + "/records/" + sProviderRecordId;
 
   auto res = _upClient->Delete(sPath);
-  if (!res) return false;
-  if (res->status != 204) return false;
+  if (!res) {
+    return {false, "", "Failed to connect to DigitalOcean API"};
+  }
+  if (res->status != 204) {
+    std::string sError = "DigitalOcean returned status " + std::to_string(res->status);
+    if (!res->body.empty()) {
+      try {
+        auto jResp = json::parse(res->body);
+        if (jResp.contains("message")) {
+          sError += ": " + jResp["message"].get<std::string>();
+        }
+      } catch (...) {}
+    }
+    return {false, "", sError};
+  }
 
   spLog->info("DigitalOcean: deleted record {} from zone {}", sProviderRecordId, sZoneName);
-  return true;
+  return {true, sProviderRecordId, ""};
 }
 
 }  // namespace dns::providers

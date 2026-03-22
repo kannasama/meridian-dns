@@ -32,9 +32,10 @@ const adminNavItems = [
   { label: 'Provider Definitions', icon: 'pi pi-plug', to: '/admin/provider-definitions' },
   { label: 'Settings', icon: 'pi pi-cog', to: '/admin/settings' },
   { label: 'Backup & Restore', icon: 'pi pi-download', to: '/admin/backup' },
+  { label: 'System Log', icon: 'pi pi-list', to: '/admin/system-log' },
 ]
 
-const adminExpanded = ref(true)
+const adminExpanded = ref(false)
 
 function isActive(to: string) {
   if (to === '/') return route.path === '/'
