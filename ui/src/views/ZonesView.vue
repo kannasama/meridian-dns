@@ -15,6 +15,7 @@ import AutoComplete from 'primevue/autocomplete'
 import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
+import SelectButton from 'primevue/selectbutton'
 import PrimeTag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import PageHeader from '../components/shared/PageHeader.vue'
@@ -23,6 +24,7 @@ import { useCrud } from '../composables/useCrud'
 import { useConfirmAction } from '../composables/useConfirm'
 import { useRole } from '../composables/useRole'
 import { useNotificationStore } from '../stores/notification'
+import { usePreferencesStore } from '../stores/preferences'
 import * as zoneApi from '../api/zones'
 import * as viewApi from '../api/views'
 import * as gitRepoApi from '../api/gitRepos'
@@ -84,9 +86,29 @@ const selectedTagFilters = ref<string[]>([])
 const tagSuggestions = ref<string[]>([])
 let originalTags: string[] = []
 
+const preferences = usePreferencesStore()
+
+const zoneCategoryOptions = [
+  { label: 'Forward', value: 'forward' },
+  { label: 'Reverse', value: 'reverse' },
+  { label: 'All', value: 'all' },
+]
+const zoneCategory = ref(preferences.zoneDefaultView)
+
+const isReverseZone = (name: string) =>
+  name.endsWith('.in-addr.arpa') || name.endsWith('.ip6.arpa')
+
+const categoryFilteredZones = computed(() => {
+  if (zoneCategory.value === 'forward')
+    return zones.value.filter(z => !isReverseZone(z.name))
+  if (zoneCategory.value === 'reverse')
+    return zones.value.filter(z => isReverseZone(z.name))
+  return zones.value
+})
+
 const filteredZones = computed(() => {
-  if (selectedTagFilters.value.length === 0) return zones.value
-  return zones.value.filter(z =>
+  if (selectedTagFilters.value.length === 0) return categoryFilteredZones.value
+  return categoryFilteredZones.value.filter(z =>
     selectedTagFilters.value.every(tag => (z.tags ?? []).includes(tag))
   )
 })
@@ -249,6 +271,13 @@ onMounted(async () => {
 
     <template v-else>
       <div class="filter-bar">
+        <SelectButton
+          v-model="zoneCategory"
+          :options="zoneCategoryOptions"
+          optionLabel="label"
+          optionValue="value"
+          :allowEmpty="false"
+        />
         <MultiSelect
           v-model="selectedTagFilters"
           :options="allTags"
