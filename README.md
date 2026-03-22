@@ -21,8 +21,67 @@ I'd hope that the above would at least give some insight as to how I've taken ca
 
 ## Screenshots
 
-> Screenshots will be captured from a running themed instance before release.
-> See `docs/screenshots/` once available.
+> Captured from a running instance using the Catppuccin Mocha theme.
+> See [`docs/screenshots/`](docs/screenshots/) for the full set (41 screenshots).
+
+### Dashboard
+
+System overview with provider health monitoring and per-zone drift detection.
+
+![Dashboard with drift detection](docs/screenshots/02-dashboard-drift.png)
+
+### Zone Records & Variable Templates
+
+Manage DNS records with `{{variable}}` placeholders — update a variable once
+and propagate to all referencing records. The autocomplete dropdown shows
+available variables with their current values.
+
+![Record editing with variable autocomplete](docs/screenshots/17-record-edit-variable.png)
+
+### Deployment Preview
+
+Diff staged changes against live provider state before pushing. Colored
+indicators show additions, modifications, and deletions.
+
+![Deployment preview with diff](docs/screenshots/23-deploy-preview.png)
+
+### Batch Import
+
+Import records from CSV, JSON, DNSControl, or directly from a provider with
+an editable preview before committing.
+
+![Provider import with preview](docs/screenshots/22-import-provider-preview.png)
+
+### Audit Trail
+
+Every mutation logged with before/after state, filterable by entity type,
+user, and date range.
+
+![Audit log with expanded entries](docs/screenshots/31-audit-log.png)
+
+### User Profile & Theming
+
+23 theme presets (14 dark, 9 light) with independent accent color
+customization, font controls, and API key management.
+
+![User profile with appearance settings](docs/screenshots/39-user-profile.png)
+
+<details>
+<summary>More screenshots</summary>
+
+| Area | Screenshot |
+|------|-----------|
+| Setup wizard | ![](docs/screenshots/01-setup-wizard.png) |
+| Providers list | ![](docs/screenshots/05-providers-list.png) |
+| Zones with tags | ![](docs/screenshots/12-zones-list.png) |
+| Records list | ![](docs/screenshots/15-records-list.png) |
+| Variables list | ![](docs/screenshots/25-variables-list.png) |
+| Git repository setup | ![](docs/screenshots/27-gitrepo-add.png) |
+| RBAC roles | ![](docs/screenshots/33-admin-roles.png) |
+| System settings | ![](docs/screenshots/37-admin-settings.png) |
+| Backup & restore | ![](docs/screenshots/38-admin-backup-restore.png) |
+
+</details>
 
 ## Features
 
