@@ -425,3 +425,30 @@ export interface RecordUpdateResponse {
   message: string
   warnings?: ValidationWarning[]
 }
+
+// System Logs
+export interface SystemLog {
+  id: number
+  category: string
+  severity: string
+  zone_id: number | null
+  provider_id: number | null
+  operation: string | null
+  record_name: string | null
+  record_type: string | null
+  success: boolean | null
+  status_code: number | null
+  message: string
+  detail: string | null
+  created_at: number
+}
+
+export interface SystemLogQuery {
+  category?: string
+  severity?: string
+  zone_id?: number
+  provider_id?: number
+  from?: number
+  to?: number
+  limit?: number
+}

@@ -147,6 +147,11 @@ const router = createRouter({
           name: 'admin-provider-definitions',
           component: () => import('../views/ProviderDefinitionsView.vue'),
         },
+        {
+          path: 'admin/system-log',
+          name: 'system-log',
+          component: () => import('../views/SystemLogView.vue'),
+        },
 
         // ─── Backward-compatible redirects ───
         {
