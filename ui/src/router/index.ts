@@ -4,6 +4,7 @@
 
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { usePreferencesStore } from '../stores/preferences'
 import { getSetupStatus } from '../api/setup'
 
 let setupChecked = false
@@ -203,6 +204,12 @@ router.beforeEach(async (to) => {
     if (!valid) {
       return { name: 'login' }
     }
+  }
+
+  // Load user preferences once after authentication
+  const preferences = usePreferencesStore()
+  if (!preferences.loaded) {
+    await preferences.fetch()
   }
 
   if (auth.user?.force_password_change && to.name !== 'change-password' && to.name !== 'login') {
