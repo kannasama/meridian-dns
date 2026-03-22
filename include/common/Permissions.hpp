@@ -102,6 +102,9 @@ inline constexpr std::string_view kRolesDelete     = "roles.delete";
 inline constexpr std::string_view kSettingsView    = "settings.view";
 inline constexpr std::string_view kSettingsEdit    = "settings.edit";
 
+// System Logs
+inline constexpr std::string_view kSystemLogsView  = "system_logs.view";
+
 // Backup
 inline constexpr std::string_view kBackupCreate    = "backup.create";
 inline constexpr std::string_view kBackupRestore   = "backup.restore";
@@ -124,6 +127,7 @@ inline constexpr std::array kAllPermissions = {
     kGroupsView, kGroupsCreate, kGroupsEdit, kGroupsDelete,
     kRolesView, kRolesCreate, kRolesEdit, kRolesDelete,
     kSettingsView, kSettingsEdit,
+    kSystemLogsView,
     kBackupCreate, kBackupRestore,
 };
 

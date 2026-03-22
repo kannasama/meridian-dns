@@ -46,6 +46,7 @@
 #include "api/routes/ZoneTemplateRoutes.hpp"
 #include "api/routes/PreferenceRoutes.hpp"
 #include "api/routes/ProviderDefinitionRoutes.hpp"
+#include "api/routes/SystemLogRoutes.hpp"
 #include "core/BindExporter.hpp"
 #include "core/RecordValidator.hpp"
 #include "dal/TagRepository.hpp"
@@ -574,13 +575,15 @@ int main(int argc, char* argv[]) {
         *pdrRepo, *amMiddleware);
     auto preferenceRoutes = std::make_unique<dns::api::routes::PreferenceRoutes>(
         *uprRepo, *amMiddleware);
+    auto systemLogRoutes = std::make_unique<dns::api::routes::SystemLogRoutes>(
+        *slrRepo, *amMiddleware);
 
     crow::SimpleApp crowApp;
     auto apiServer = std::make_unique<dns::api::ApiServer>(
         crowApp, *authRoutes, *auditRoutes, *deploymentRoutes, *healthRoutes,
         *providerRoutes, *setupRoutes, *viewRoutes, *zoneRoutes, *recordRoutes,
         *variableRoutes, *snippetRoutes, *soaPresetRoutes, *zoneTemplateRoutes,
-        *searchRoutes, *tagRoutes, *pdrRoutes);
+        *searchRoutes, *tagRoutes, *pdrRoutes, *systemLogRoutes);
 
     apiServer->registerRoutes();
     userRoutes->registerRoutes(crowApp);
