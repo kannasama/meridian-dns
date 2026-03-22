@@ -107,11 +107,37 @@ const categoryFilteredZones = computed(() => {
 })
 
 const filteredZones = computed(() => {
-  if (selectedTagFilters.value.length === 0) return categoryFilteredZones.value
-  return categoryFilteredZones.value.filter(z =>
-    selectedTagFilters.value.every(tag => (z.tags ?? []).includes(tag))
-  )
+  let result = categoryFilteredZones.value
+
+  // Exclude zones with hidden tags (from preferences)
+  const hiddenTags = preferences.zoneHiddenTags
+  if (hiddenTags.length > 0 && selectedTagFilters.value.length === 0) {
+    result = result.filter(z =>
+      !hiddenTags.some(tag => (z.tags ?? []).includes(tag))
+    )
+  }
+
+  // Apply explicit tag filter (if user has selected tags)
+  if (selectedTagFilters.value.length > 0) {
+    result = result.filter(z =>
+      selectedTagFilters.value.every(tag => (z.tags ?? []).includes(tag))
+    )
+  }
+
+  return result
 })
+
+async function saveFilterDefaults() {
+  try {
+    await preferences.saveMany({
+      zone_default_view: zoneCategory.value,
+      zone_hidden_tags: selectedTagFilters.value,
+    })
+    notify.success('Filter defaults saved')
+  } catch {
+    notify.error('Failed to save defaults')
+  }
+}
 
 // Clone
 const showCloneDialog = ref(false)
@@ -248,6 +274,11 @@ onMounted(async () => {
     soaPresetApi.listSoaPresets().then((r) => { soaPresets.value = r }).catch(() => {}),
     listTags().then((t) => { allTags.value = t.map(tag => tag.name) }).catch(() => {}),
   ])
+
+  // Apply saved preferences
+  if (preferences.loaded) {
+    zoneCategory.value = preferences.zoneDefaultView
+  }
 })
 </script>
 
@@ -284,6 +315,13 @@ onMounted(async () => {
           placeholder="Filter by tag"
           class="tag-filter"
           :showClear="true"
+        />
+        <Button
+          v-if="zoneCategory !== preferences.zoneDefaultView"
+          label="Save as default"
+          text
+          size="small"
+          @click="saveFilterDefaults"
         />
       </div>
 
