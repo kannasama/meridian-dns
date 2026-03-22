@@ -148,8 +148,8 @@ onMounted(fetchDefinitions)
     <PageHeader title="Provider Definitions">
       <Button
         v-if="isAdmin"
-        label="Upload Definition"
-        icon="pi pi-upload"
+        label="Add Definition"
+        icon="pi pi-plus"
         @click="openCreate"
       />
     </PageHeader>
@@ -226,7 +226,7 @@ onMounted(fetchDefinitions)
     </DataTable>
 
     <!-- Create / Edit Dialog -->
-    <Dialog v-model:visible="dialogVisible" :header="editingId ? 'Edit Definition' : 'Upload Definition'" modal class="w-40rem">
+    <Dialog v-model:visible="dialogVisible" :header="editingId ? 'Edit Definition' : 'Add Definition'" modal class="w-40rem">
       <div class="dialog-form">
         <div class="field">
           <label>Name</label>
@@ -259,7 +259,7 @@ onMounted(fetchDefinitions)
       <template #footer>
         <Button label="Cancel" text @click="dialogVisible = false" />
         <Button
-          :label="editingId ? 'Save' : 'Upload'"
+          :label="editingId ? 'Save' : 'Create'"
           icon="pi pi-check"
           :loading="saving"
           @click="saveDefinition"
@@ -275,8 +275,10 @@ onMounted(fetchDefinitions)
 .type-slug { font-family: monospace; font-size: 0.85em; }
 .hint { font-size: 0.8em; opacity: 0.7; }
 .muted { opacity: 0.5; }
+.dialog-form { display: flex; flex-direction: column; gap: 0rem; width: 100%; }
 .definition-editor { font-family: monospace; font-size: 0.85em; }
 .error-text { color: var(--p-red-500); }
-.field { margin-bottom: 1rem; }
-.field label { display: block; margin-bottom: 0.25rem; font-size: 0.9em; }
+.field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 1rem; }
+.field label { font-size: 0.9em; }
+.w-full { width: 100%; }
 </style>

@@ -418,4 +418,38 @@ std::string DiffEngine::toFqdn(const std::string& sRecordName, const std::string
   return sRecordName + "." + sZoneFqdn;
 }
 
+std::string DiffEngine::fromFqdn(const std::string& sFqdn, const std::string& sZoneName) {
+  // Ensure zone name has trailing dot
+  std::string sZoneFqdn = sZoneName;
+  if (!sZoneFqdn.empty() && sZoneFqdn.back() != '.') {
+    sZoneFqdn += '.';
+  }
+
+  // Strip trailing dot from input for comparison
+  std::string sName = sFqdn;
+  if (!sName.empty() && sName.back() == '.') {
+    sName.pop_back();
+  }
+
+  std::string sZoneNoDot = sZoneFqdn;
+  if (!sZoneNoDot.empty() && sZoneNoDot.back() == '.') {
+    sZoneNoDot.pop_back();
+  }
+
+  // Exact match with zone → apex record "@"
+  if (sName == sZoneNoDot) {
+    return "@";
+  }
+
+  // Ends with ".zone" → strip the suffix to get relative name
+  std::string sSuffix = "." + sZoneNoDot;
+  if (sName.size() > sSuffix.size() &&
+      sName.compare(sName.size() - sSuffix.size(), sSuffix.size(), sSuffix) == 0) {
+    return sName.substr(0, sName.size() - sSuffix.size());
+  }
+
+  // Not a subdomain of the zone — return as-is (already relative or external)
+  return sFqdn;
+}
+
 }  // namespace dns::core

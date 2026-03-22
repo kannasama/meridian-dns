@@ -439,7 +439,13 @@ int main(int argc, char* argv[]) {
               std::string sStatus = "in_sync";
               try {
                 auto preview = deEngine.preview(zone.iId);
-                sStatus = preview.bHasDrift ? "drift" : "in_sync";
+                if (preview.vDiffs.empty()) {
+                  sStatus = "in_sync";
+                } else if (preview.bHasDrift) {
+                  sStatus = "drift";
+                } else {
+                  sStatus = "pending";
+                }
               } catch (...) {
                 sStatus = "error";
               }

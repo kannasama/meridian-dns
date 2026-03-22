@@ -83,7 +83,13 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
             std::string sStatus = "in_sync";
             try {
               auto preview = _deEngine.preview(zone.iId);
-              sStatus = preview.bHasDrift ? "drift" : "in_sync";
+              if (preview.vDiffs.empty()) {
+                sStatus = "in_sync";
+              } else if (preview.bHasDrift) {
+                sStatus = "drift";
+              } else {
+                sStatus = "pending";
+              }
             } catch (const std::exception& ex) {
               spdlog::warn("Sync check failed for zone {}: {}", zone.iId, ex.what());
               sStatus = "error";
@@ -121,7 +127,13 @@ void ZoneRoutes::registerRoutes(crow::SimpleApp& app) {
           std::string sStatus = "in_sync";
           try {
             auto preview = _deEngine.preview(iZoneId);
-            sStatus = preview.bHasDrift ? "drift" : "in_sync";
+            if (preview.vDiffs.empty()) {
+              sStatus = "in_sync";
+            } else if (preview.bHasDrift) {
+              sStatus = "drift";
+            } else {
+              sStatus = "pending";
+            }
           } catch (const std::exception& ex) {
             spdlog::warn("Sync check failed for zone {}: {}", iZoneId, ex.what());
             sStatus = "error";

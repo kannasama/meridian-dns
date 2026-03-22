@@ -4,6 +4,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
 import { listTags, createTag, renameTag, deleteTag } from '../api/tags'
 import PageHeader from '../components/shared/PageHeader.vue'
 import type { Tag } from '../types'

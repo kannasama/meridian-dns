@@ -288,7 +288,9 @@ async function handleRoleSubmit() {
         name: roleForm.value.name,
         description: roleForm.value.description,
       })
-      await roleApi.setRolePermissions(editingRoleId.value, selectedPermissions.value)
+      if (!editingRoleIsSystem.value) {
+        await roleApi.setRolePermissions(editingRoleId.value, selectedPermissions.value)
+      }
       notify.success('Role updated')
     } else {
       await roleApi.createRole({
@@ -318,6 +320,7 @@ function handleDeleteRole(role: Role) {
 }
 
 function toggleCategory(cat: PermissionCategory) {
+  if (editingRoleIsSystem.value) return
   const allSelected = cat.permissions.every(p => selectedPermissions.value.includes(p))
   if (allSelected) {
     selectedPermissions.value = selectedPermissions.value.filter(
@@ -656,6 +659,7 @@ onMounted(() => {
               <Checkbox
                 :modelValue="isCategoryAllSelected(cat)"
                 :binary="true"
+                :disabled="editingRoleIsSystem"
                 @click.stop="toggleCategory(cat)"
               />
               <span class="perm-category-name">{{ cat.name }}</span>
@@ -666,6 +670,7 @@ onMounted(() => {
                 <Checkbox
                   v-model="selectedPermissions"
                   :value="perm"
+                  :disabled="editingRoleIsSystem"
                 />
                 <span class="perm-label">{{ permLabel(perm) }}</span>
               </label>

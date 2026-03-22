@@ -83,6 +83,7 @@ function syncStatusSeverity(status?: string) {
   switch (status) {
     case 'in_sync': return 'success'
     case 'drift': return 'warn'
+    case 'pending': return 'info'
     case 'error': return 'danger'
     default: return 'secondary'
   }

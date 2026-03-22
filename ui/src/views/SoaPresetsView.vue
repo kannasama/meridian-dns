@@ -215,7 +215,7 @@ onMounted(fetchPresets)
       v-model:visible="dialogVisible"
       :header="editingId !== null ? 'Edit SOA Preset' : 'New SOA Preset'"
       modal
-      class="w-30rem"
+      class="w-40rem"
     >
       <form @submit.prevent="save" class="dialog-form">
         <div class="field">
