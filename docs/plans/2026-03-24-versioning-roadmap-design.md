@@ -109,7 +109,7 @@ may ship as one or several releases; a minor band may shift position as prioriti
 | Deployment webhook notifications (general-purpose push success/failure signal) | Full-stack |
 | Git repo configuration: auto-import known-hosts | Full-stack |
 | Native TLS support (SEC-08) — `DNS_TLS_CERT_FILE` / `DNS_TLS_KEY_FILE` via Crow SSL | Backend |
-| Document CLI password reset procedure | Docs |
+| Document CLI password reset procedure — emergency recovery tool for loss of admin GUI access | Docs |
 | Health endpoint enhancements: per-component status, latency, version, uptime in JSON response | Full-stack |
 | `docker-compose.yml` HEALTHCHECK directive wired to `/api/v1/health` | Infra |
 | `DNS_TRUSTED_PROXIES` — investigate Traefik/containerized proxy IP discoverability; implement if reliable approach exists, otherwise document constraint and recommended workaround | Investigate |
@@ -166,14 +166,15 @@ This release introduces DNSSEC as a first-class capability. All three current pr
 This release introduces LDAP/AD as an additional authentication backend and expands the
 user identity model to support directory-sourced attributes with controlled local overrides.
 
-Note: JIT (just-in-time) user provisioning from SSO is already implemented. Note also that
-`v1.2.0` uses SSO for authentication only; this release adds identity attribute propagation
-from SSO claims to user profile fields.
+Note: JIT (just-in-time) user provisioning from SSO is already implemented. Minimal SSO
+claim mapping to profile fields is also already in place. This release extends that to a full
+attribute model with additional fields, controlled local overrides, and LDAP/AD-sourced
+attributes.
 
 | Item | Type |
 |------|------|
 | Extended user fields: display name, email, department, title (AD/LDAP-style attributes) | Full-stack |
-| Field inheritance from SSO provider (populate from OIDC claims or SAML assertions on login) | Backend |
+| Extend SSO claim mapping: expand beyond current minimal mapping to cover the full attribute set above | Backend |
 | Local overrides of non-critical SSO-sourced fields — users may override preference-level fields (e.g., display name) while authoritative fields (e.g., email used for SSO matching) remain SSO-managed | Full-stack |
 | LDAP/AD authentication as an additional auth backend | Backend |
 | Group sync from LDAP/AD: auto-assign Meridian groups/roles based on directory group membership | Backend |
@@ -195,4 +196,4 @@ decisions are made.
 | Multi-instance OIDC state (Redis) | Requires Redis infrastructure decision |
 | RS256/ES256 JWT signing | Low urgency for single-instance deployments |
 | TUI client (Phase 11) | Separate repository with independent versioning |
-| Self-service password reset | Requires SMTP/email infrastructure; deprioritised in favour of documented CLI reset procedure |
+

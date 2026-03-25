@@ -326,7 +326,7 @@ Sync Check (2)
 
 **Tests:** 285 total (162 pass, 123 skip — 17 new tests added in v0.9.5)
 
-**Deferred:** Self-service password reset (requires SMTP/email infrastructure)
+**Deferred:** Self-service password reset — removed from roadmap; admins reset local accounts via the UI; CLI reset exists as an emergency recovery tool for loss of admin GUI access
 
 ---
 
@@ -372,7 +372,7 @@ Separate repository: `meridian-dns-tui`. Consumes REST API. See `docs/TUI_DESIGN
 
 ### Future Backlog
 
-- **Self-service password reset:** Requires SMTP/email infrastructure (deferred from v0.9.5).
+- **Self-service password reset:** Removed from roadmap. Admins reset local accounts via the UI; CLI reset exists as an emergency recovery tool for loss of admin GUI access only.
 
 ---
 
