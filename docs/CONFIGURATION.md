@@ -82,6 +82,13 @@ value takes precedence — changes are made via Settings UI or API.
 | `audit.retention_days` | `DNS_AUDIT_RETENTION_DAYS` | `365` | No | Audit log retention |
 | `audit.purge_interval_seconds` | `DNS_AUDIT_PURGE_INTERVAL_SECONDS` | `86400` | No | Audit purge interval |
 
+### System Logs
+
+| Setting Key | Env Seed | Default | Restart | Description |
+|-------------|----------|---------|---------|-------------|
+| `system_log.retention_days` | — | `30` | No | System log retention in days |
+| `system_log.purge_interval_seconds` | — | `86400` | No | System log purge interval |
+
 ### GitOps
 
 | Setting Key | Env Seed | Default | Restart | Description |

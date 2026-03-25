@@ -58,6 +58,11 @@ const rightSections = [
       'audit.stdout',
     ],
   },
+  {
+    title: 'System Logs',
+    icon: 'pi pi-list',
+    keys: ['system_log.retention_days'],
+  },
 ]
 
 const fullWidthSections = [

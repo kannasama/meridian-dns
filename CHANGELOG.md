@@ -2,10 +2,63 @@
 
 All notable changes to Meridian DNS will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+See [docs/VERSIONING.md](docs/VERSIONING.md) for the project versioning policy.
 
 ## [Unreleased]
+
+## [1.1.2] - 2026-03-24
+
+### Fixed
+
+- **Deployment execution ordering** — Deletes and drift-deletes now execute before adds and
+  updates, fixing CNAME→A type changes that previously failed with a PowerDNS 422 error
+  (RFC 1034 prohibits a CNAME and another record with the same name)
+- **Provider record ID on updates** — Missing `sProviderRecordId` copy in the DeploymentEngine
+  Update case caused all PowerDNS record updates to fail with "Invalid provider_record_id format"
+
+### Changed
+
+- `IProvider::deleteRecord` return type changed from `bool` to `PushResult`; all providers
+  (PowerDNS, Cloudflare, DigitalOcean, Generic REST, Subprocess) now return structured error
+  detail on delete failures
+- PowerDNS error responses now include the API error reason from the response body, not just
+  the HTTP status code
+
+### Added
+
+- **System log table** — Persistent technical logging for deployment operations, provider API
+  calls, and application events; stored in the `system_logs` table
+- **System log maintenance** — Configurable retention via `system_log.retention_days` setting
+  (default 30 days) with periodic background purge
+- **System Log admin page** — Filterable DataTable with severity, category, and time-range
+  filters and a detail dialog; restricted to Admin role (`system_logs.view` permission)
+
+## [1.1.1] - 2026-03-22
+
+### Fixed
+
+- **Provider import** — FQDN to relative name conversion now strips the zone apex correctly
+- **Sync status** — Zone sync status now uses a tri-state model (synced / drifted / unknown)
+  rather than boolean; UI badge updated accordingly
+- **Tags** — Free-form tag entry corrected; tags moved from zone list inline to zone edit dialog
+- Various UI fixes across provider, zone, and record views
+
+### Added
+
+- **User preferences** — Per-user persistent preferences stored in the `user_preferences` table
+  and managed via `GET/PUT /api/v1/users/me/preferences`
+- **Zone category filter** — Filter zone list by Forward, Reverse (in-addr.arpa / ip6.arpa), or All
+- **Zone filter persistence** — Active zone filter and column preferences saved to user preferences
+  and restored on next visit
+- **Theme persistence** — Dark/light mode and accent color migrated from `localStorage` to user
+  preferences for cross-device consistency
+- **Tag admin** — Tag creation and management endpoint; admin UI for the global tag vocabulary
+
+### Changed
+
+- All 12 CRUD views migrated from PrimeVue `Drawer` to `Dialog` for consistency and better
+  keyboard/accessibility behavior
 
 ## [1.1.0] - 2026-03-21
 

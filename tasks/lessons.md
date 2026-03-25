@@ -124,6 +124,17 @@ a new commit for fixes. A clean `git push` is worth more than a pretty `git log`
 
 **Applied:** All post-push fixes. Use a new commit (`fix: ...`) instead of amending.
 
+## 2026-03-24 — New configuration options are UI-managed by default; no env var seed
+
+**Rule:** When adding a new setting, add it to `kSettings` in `include/common/SettingsDef.hpp`
+with `sEnvVar = ""`. Do not create an environment variable seed source unless the value is
+required before the DB is available (e.g. `DNS_DB_URL`) or it is a deploy-time infrastructure
+concern. Also add it to `Config::loadFromDb()` and expose it in the appropriate card in
+`ui/src/views/SettingsView.vue`.
+
+**Context:** `DNS_SYSTEM_LOG_RETENTION_DAYS` was added as an env var in v1.1.2 when
+`system_log.retention_days` should have been UI-only from the start.
+
 ## 2026-03-14 — Use `txn.exec()` with `pqxx::params{}`, not `txn.exec_params()`
 
 **Mistake:** Wrote `GitRepoRepository` using `txn.exec_params("query", arg1, arg2, ...)` which

@@ -112,7 +112,7 @@ customization, font controls, and API key management.
 
 ### Security
 
-- **Granular RBAC** — 44 discrete permissions in customizable roles (global
+- **Granular RBAC** — 63 discrete permissions in customizable roles (global
   scope in v1.0; view-level and zone-level scoping planned)
 - **OIDC and SAML 2.0** — Federated login with auto-provisioning and IdP group mapping
 - **API key authentication** — Programmatic access with one-time key display

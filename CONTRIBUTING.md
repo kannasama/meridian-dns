@@ -18,6 +18,12 @@ process for contributing.
 - `#pragma once` for header guards
 - SPDX license headers on all source files
 
+## Versioning
+
+This project uses a `MAJOR.MINOR.PATCH[-N]` scheme with project-specific semantics.
+See [docs/VERSIONING.md](docs/VERSIONING.md) for the full policy, including the MINOR/PATCH
+decision test and the `-N` errata convention.
+
 ## Commit Messages
 
 Use [Conventional Commits](https://www.conventionalcommits.org/):

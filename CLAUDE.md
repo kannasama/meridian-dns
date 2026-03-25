@@ -23,7 +23,7 @@ Planning, debugging, verification, and code review are delegated to superpowers 
 
 
 ## Long Term Lesson Context
-Include details documented in `docs/plans/lessons.md` when factoring in planning and requests for user interaction.
+Include details documented in `tasks/lessons.md` when factoring in planning and requests for user interaction.
 
 ## Project Status
 
@@ -326,7 +326,7 @@ Sync Check (2)
 
 **Tests:** 285 total (162 pass, 123 skip — 17 new tests added in v0.9.5)
 
-**Deferred:** Self-service password reset (requires SMTP/email infrastructure)
+**Deferred:** Self-service password reset — removed from roadmap; admins reset local accounts via the UI; CLI reset exists as an emergency recovery tool for loss of admin GUI access
 
 ---
 
@@ -372,13 +372,7 @@ Separate repository: `meridian-dns-tui`. Consumes REST API. See `docs/TUI_DESIGN
 
 ### Future Backlog
 
-- **Git configuration via UI:** Move GitOps settings (remote URL, SSH key, known_hosts) from
-  environment variables into the web UI with encrypted storage in the database. This would
-  allow runtime reconfiguration without restarting the service.
-- **Git personal access token auth:** Add support for HTTPS remote URLs with personal access
-  tokens as an alternative to SSH key authentication. Requires `git_credential_userpass_plaintext_new`
-  in the credentials callback.
-- **Self-service password reset:** Requires SMTP/email infrastructure (deferred from v0.9.5).
+- **Self-service password reset:** Removed from roadmap. Admins reset local accounts via the UI; CLI reset exists as an emergency recovery tool for loss of admin GUI access only.
 
 ---
 
@@ -409,6 +403,12 @@ status. Business errors thrown as typed exceptions, caught at API boundary.
 
 **Ownership:** `unique_ptr` by default; `shared_ptr` only when genuinely shared; raw pointers
 only for non-owning references.
+
+**Configuration options:** New settings must be DB-configurable (added to `kSettings` in
+`include/common/SettingsDef.hpp` with `sEnvVar = ""`). Do NOT create an environment variable
+seed source unless there is an explicit reason (e.g. the value is required before the DB is
+available, or it is a deploy-time infrastructure concern). The setting becomes UI-manageable
+automatically once it is in `kSettings` and exposed in `ui/src/views/SettingsView.vue`.
 
 ---
 

@@ -59,6 +59,42 @@ Meridian DNS uses a granular permission model:
 | `variables.edit` | Edit variable values |
 | `variables.delete` | Delete variables |
 
+### Templates
+
+| Permission | Description |
+|------------|-------------|
+| `templates.view` | View zone template list and details |
+| `templates.create` | Create new zone templates |
+| `templates.edit` | Edit zone templates |
+| `templates.delete` | Delete zone templates |
+
+### Snippets
+
+| Permission | Description |
+|------------|-------------|
+| `snippets.view` | View snippet list and details |
+| `snippets.create` | Create new snippets |
+| `snippets.edit` | Edit snippets |
+| `snippets.delete` | Delete snippets |
+
+### SOA Presets
+
+| Permission | Description |
+|------------|-------------|
+| `soa_presets.view` | View SOA preset list and details |
+| `soa_presets.create` | Create new SOA presets |
+| `soa_presets.edit` | Edit SOA presets |
+| `soa_presets.delete` | Delete SOA presets |
+
+### Provider Definitions
+
+| Permission | Description |
+|------------|-------------|
+| `provider_definitions.view` | View provider type definitions |
+| `provider_definitions.create` | Create new provider type definitions |
+| `provider_definitions.edit` | Edit provider type definitions |
+| `provider_definitions.delete` | Delete provider type definitions |
+
 ### Git Repos
 
 | Permission | Description |
@@ -110,6 +146,12 @@ Meridian DNS uses a granular permission model:
 | `settings.view` | View system settings |
 | `settings.edit` | Modify system settings |
 
+### System Logs
+
+| Permission | Description |
+|------------|-------------|
+| `system_logs.view` | View system log entries (Admin only) |
+
 ### Backup
 
 | Permission | Description |
@@ -121,18 +163,29 @@ Meridian DNS uses a granular permission model:
 
 ### Admin
 
-All 44 permissions. Full system access.
+All 63 permissions. Full system access.
 
 ### Operator
 
-All permissions except administrative functions:
-- Excludes: `users.*`, `groups.*`, `roles.*`, `settings.edit`, `backup.restore`
+43 permissions. Full operational access without administrative functions:
+
+- All `zones.*`, `records.*`, `providers.*`, `views.*`, `variables.*`, `repos.*` permissions
+- `snippets.view/create/edit`, `soa_presets.view/create/edit`, `templates.view/create/edit`
+- `provider_definitions.view/create/edit`
+- `audit.view`, `audit.export`
+- `groups.view`, `roles.view`
+- Excludes: `users.*`, `groups.create/edit/delete`, `roles.create/edit/delete`, `settings.*`,
+  `backup.*`, `audit.purge`, `snippets/soa_presets/templates/provider_definitions.delete`,
+  `system_logs.view`
 
 ### Viewer
 
-Read-only access:
-- `*.view` permissions for all resource types
-- `audit.export` for compliance reporting
+14 permissions. Read-only access:
+
+- `zones.view`, `records.view`, `providers.view`, `views.view`, `variables.view`, `repos.view`
+- `snippets.view`, `soa_presets.view`, `templates.view`, `provider_definitions.view`
+- `audit.view`, `audit.export`
+- `groups.view`, `roles.view`
 
 ## Custom Roles
 
