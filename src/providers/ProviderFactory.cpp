@@ -8,6 +8,7 @@
 #include <string>
 
 #include "common/Errors.hpp"
+#include "providers/AdGuardHomeProvider.hpp"
 #include "providers/CloudflareProvider.hpp"
 #include "providers/DigitalOceanProvider.hpp"
 #include "providers/GenericRestProvider.hpp"
@@ -20,6 +21,9 @@ std::unique_ptr<IProvider> ProviderFactory::create(const std::string& sType,
                                                    const std::string& sApiEndpoint,
                                                    const std::string& sDecryptedToken,
                                                    const nlohmann::json& jConfig) {
+  if (sType == "adguardhome") {
+    return std::make_unique<AdGuardHomeProvider>(sApiEndpoint, sDecryptedToken, jConfig);
+  }
   if (sType == "powerdns") {
     return std::make_unique<PowerDnsProvider>(sApiEndpoint, sDecryptedToken, jConfig);
   }

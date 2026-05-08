@@ -53,12 +53,15 @@ const form = ref({
   token: '',
   server_id: '',
   account_id: '',
+  username: '',
+  password: '',
 })
 
 const providerTypes = [
   { label: 'PowerDNS', value: 'powerdns' },
   { label: 'Cloudflare', value: 'cloudflare' },
   { label: 'DigitalOcean', value: 'digitalocean' },
+  { label: 'AdGuard Home', value: 'adguardhome' },
 ]
 
 const hasDefaultEndpoint = computed(() => form.value.type in defaultEndpoints)
@@ -71,7 +74,7 @@ watch(() => form.value.type, (newType) => {
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', type: 'powerdns', api_endpoint: '', token: '', server_id: '', account_id: '' }
+  form.value = { name: '', type: 'powerdns', api_endpoint: '', token: '', server_id: '', account_id: '', username: '', password: '' }
   dialogVisible.value = true
 }
 
@@ -85,6 +88,8 @@ async function openEdit(provider: Provider) {
     token: '',
     server_id: full.config?.server_id ?? '',
     account_id: full.config?.account_id ?? '',
+    username: '',
+    password: '',
   }
   dialogVisible.value = true
 }
@@ -102,22 +107,27 @@ function buildConfig(): Record<string, string> {
 
 async function handleSubmit() {
   let ok: boolean
+  const buildToken = (): string => {
+    if (form.value.type === 'adguardhome') {
+      return JSON.stringify({ username: form.value.username, password: form.value.password })
+    }
+    return form.value.token
+  }
   if (editingId.value !== null) {
     const data: ProviderUpdate = {
       name: form.value.name,
       api_endpoint: form.value.api_endpoint,
       config: buildConfig(),
     }
-    if (form.value.token) {
-      data.token = form.value.token
-    }
+    const sToken = buildToken()
+    if (sToken) data.token = sToken
     ok = await update(editingId.value, data)
   } else {
     ok = await create({
       name: form.value.name,
       type: form.value.type,
       api_endpoint: form.value.api_endpoint,
-      token: form.value.token,
+      token: buildToken(),
       config: buildConfig(),
     })
   }
@@ -244,7 +254,7 @@ onMounted(fetchProviders)
             <small class="text-surface-400">Default: {{ defaultEndpoints[form.type] }}</small>
           </div>
         </Fieldset>
-        <div class="field">
+        <div class="field" v-if="form.type !== 'adguardhome'">
           <label for="prov-token">
             {{ editingId ? 'Token (leave blank to keep current)' : 'Token' }}
           </label>
@@ -257,6 +267,23 @@ onMounted(fetchProviders)
             inputClass="w-full"
           />
         </div>
+        <template v-if="form.type === 'adguardhome'">
+          <div class="field">
+            <label for="prov-username">{{ editingId ? 'Username (leave blank to keep current)' : 'Username' }}</label>
+            <InputText id="prov-username" v-model="form.username" class="w-full" placeholder="admin" />
+          </div>
+          <div class="field">
+            <label for="prov-password">{{ editingId ? 'Password (leave blank to keep current)' : 'Password' }}</label>
+            <Password
+              id="prov-password"
+              v-model="form.password"
+              :feedback="false"
+              toggleMask
+              class="w-full"
+              inputClass="w-full"
+            />
+          </div>
+        </template>
         <div class="field" v-if="form.type === 'powerdns'">
           <label for="prov-server-id">Server ID</label>
           <InputText id="prov-server-id" v-model="form.server_id" class="w-full"

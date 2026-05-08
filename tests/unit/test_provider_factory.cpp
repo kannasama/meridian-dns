@@ -44,6 +44,13 @@ TEST(ProviderFactoryTest, CreatesDigitalOceanProvider) {
   EXPECT_EQ(upProvider->name(), "digitalocean");
 }
 
+TEST(ProviderFactoryTest, CreatesAdGuardHomeProvider) {
+  auto upProvider = ProviderFactory::create("adguardhome", "http://192.168.1.1:3000",
+                                            R"({"username":"admin","password":"secret"})");
+  ASSERT_NE(upProvider, nullptr);
+  EXPECT_EQ(upProvider->name(), "adguardhome");
+}
+
 TEST(ProviderFactoryTest, UnknownTypeThrows) {
   EXPECT_THROW(ProviderFactory::create("unknown", "http://localhost", "key"),
                dns::common::ValidationError);

@@ -322,6 +322,14 @@ common::PreviewResult DiffEngine::preview(int64_t iZoneId) {
       }
     }
 
+    // Allow each provider to filter/transform desired records before diffing
+    if (oProvider) {
+      auto upProviderInst = dns::providers::ProviderFactory::create(
+          oProvider->sType, oProvider->sApiEndpoint, oProvider->sDecryptedToken,
+          oProvider->jConfig);
+      vProviderDesired = upProviderInst->prepareDesiredRecords(vProviderDesired);
+    }
+
     // Pre-match pending-delete records against live records and remove matched
     // live records so they don't appear as drift in computeDiff().
     // Match by name+type first; use value as tiebreaker when multiple records

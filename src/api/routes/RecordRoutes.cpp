@@ -110,6 +110,10 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           nlohmann::json jProviderMeta;
           if (jBody.contains("provider_meta") && jBody["provider_meta"].is_object()) {
             jProviderMeta = jBody["provider_meta"];
+            if (jProviderMeta.contains("aghdns_answer")) {
+              RequestValidator::validateAdGuardAnswer(
+                  jProviderMeta.value("aghdns_answer", ""));
+            }
           }
 
           // Validate DNS rules
@@ -200,6 +204,10 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           nlohmann::json jProviderMeta;
           if (jBody.contains("provider_meta") && jBody["provider_meta"].is_object()) {
             jProviderMeta = jBody["provider_meta"];
+            if (jProviderMeta.contains("aghdns_answer")) {
+              RequestValidator::validateAdGuardAnswer(
+                  jProviderMeta.value("aghdns_answer", ""));
+            }
           }
 
           // Validate DNS rules (exclude self from coexistence checks)
