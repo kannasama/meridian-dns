@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "common/Types.hpp"
+#include "providers/AdGuardHomeProvider.hpp"
 #include "providers/CloudflareProvider.hpp"
 #include "providers/DigitalOceanProvider.hpp"
 #include "providers/PowerDnsProvider.hpp"
@@ -116,4 +117,20 @@ TEST_F(ProviderConformanceTest, AllProvidersMxPriority) {
     EXPECT_EQ(v[0].iPriority, 10);
     EXPECT_EQ(v[0].sValue, "mail.example.com.");
   }
+}
+
+// AdGuard Home: TTL is always 0 (rewrites carry no TTL), so we verify the
+// other IProvider contract fields and skip the TTL check.
+TEST_F(ProviderConformanceTest, AdGuardHomeARecord) {
+  std::string sJson = R"([{"domain": "www.example.com", "answer": "1.2.3.4"}])";
+  auto vRecords = dns::providers::AdGuardHomeProvider::parseRewritesResponse(sJson);
+  ASSERT_EQ(vRecords.size(), 1u);
+  const auto& dr = vRecords[0];
+  SCOPED_TRACE("Provider: adguardhome");
+  EXPECT_FALSE(dr.sProviderRecordId.empty()) << "Record ID must not be empty";
+  EXPECT_FALSE(dr.sName.empty()) << "Record name must not be empty";
+  EXPECT_EQ(dr.sType, "A");
+  EXPECT_EQ(dr.sValue, "1.2.3.4");
+  // TTL is intentionally 0 for AdGuard Home rewrites
+  EXPECT_EQ(dr.uTtl, 0u);
 }

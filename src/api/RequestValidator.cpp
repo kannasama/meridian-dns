@@ -83,10 +83,31 @@ void RequestValidator::validateVariableName(const std::string& sName) {
 }
 
 void RequestValidator::validateProviderType(const std::string& sType) {
-  static const std::unordered_set<std::string> st = {"powerdns","cloudflare","digitalocean","generic_rest","subprocess"};
+  static const std::unordered_set<std::string> st = {
+      "powerdns", "cloudflare", "digitalocean", "generic_rest", "subprocess", "adguardhome"};
   if (st.find(sType) == st.end())
     throw common::ValidationError("INVALID_PROVIDER_TYPE",
-        "Provider type must be one of: powerdns, cloudflare, digitalocean, generic_rest, subprocess");
+        "Provider type must be one of: powerdns, cloudflare, digitalocean, generic_rest, "
+        "subprocess, adguardhome");
+}
+
+void RequestValidator::validateAdGuardAnswer(const std::string& sAnswer) {
+  if (sAnswer.empty())
+    throw common::ValidationError("FIELD_REQUIRED", "aghdns_answer is required");
+  if (sAnswer.size() > 253)
+    throw common::ValidationError("FIELD_TOO_LONG",
+                                  "aghdns_answer exceeds maximum length of 253");
+  // IPv4
+  static const std::regex rxIpv4(R"(^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)");
+  if (std::regex_match(sAnswer, rxIpv4)) return;
+  // IPv6
+  if (sAnswer.find(':') != std::string::npos) return;
+  // RFC 1123 hostname (with optional trailing dot)
+  static const std::regex rxHost(
+      R"(^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*\.?$)");
+  if (std::regex_match(sAnswer, rxHost)) return;
+  throw common::ValidationError("INVALID_AGH_ANSWER",
+      "aghdns_answer must be a valid IPv4 address, IPv6 address, or hostname");
 }
 
 void RequestValidator::validateApiKeyDescription(const std::string& s) {

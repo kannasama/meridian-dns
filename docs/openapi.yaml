@@ -358,7 +358,9 @@ components:
         provider_meta:
           type: object
           nullable: true
-          description: "Provider-specific metadata (e.g., {\"proxied\": true} for Cloudflare)"
+          description: >-
+            Provider-specific metadata. Cloudflare: {"proxied": bool, "auto_ttl": bool}.
+            AdGuard Home: {"aghdns_enabled": bool, "aghdns_answer": "IPv4 | IPv6 | hostname"}.
 
     DeploymentSnapshot:
       type: object

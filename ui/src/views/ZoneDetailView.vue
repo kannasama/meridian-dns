@@ -51,6 +51,9 @@ const loading = ref(true)
 const viewProviders = ref<Provider[]>([])
 const proxied = ref(false)
 const autoTtl = ref(true)
+const aghdnsEnabled = ref(false)
+const aghdnsAnswer = ref('')
+const aghdnsAnswerError = ref('')
 const capturing = ref(false)
 const selectedRecords = ref<DnsRecord[]>([])
 const bulkTtlDialogVisible = ref(false)
@@ -123,6 +126,14 @@ const hasCloudflareProvider = computed(() =>
   viewProviders.value.some((p) => p.type === 'cloudflare'),
 )
 
+const hasAdGuardHomeProvider = computed(() =>
+  viewProviders.value.some((p) => p.type === 'adguardhome'),
+)
+
+const showAdGuardSection = computed(
+  () => hasAdGuardHomeProvider.value && ['A', 'AAAA', 'CNAME'].includes(form.value.type),
+)
+
 const showProxyToggle = computed(
   () =>
     hasCloudflareProvider.value &&
@@ -178,6 +189,9 @@ function openCreateRecord() {
   form.value = { name: '', type: 'A', ttl: 300, value_template: '', priority: 0 }
   proxied.value = false
   autoTtl.value = hasCloudflareProvider.value
+  aghdnsEnabled.value = false
+  aghdnsAnswer.value = ''
+  aghdnsAnswerError.value = ''
   dialogVisible.value = true
 }
 
@@ -192,19 +206,44 @@ function openEditRecord(rec: DnsRecord) {
   }
   proxied.value = (rec.provider_meta as Record<string, unknown>)?.proxied === true
   autoTtl.value = (rec.provider_meta as Record<string, unknown>)?.auto_ttl === true
+  aghdnsEnabled.value = (rec.provider_meta as Record<string, unknown>)?.aghdns_enabled === true
+  aghdnsAnswer.value = ((rec.provider_meta as Record<string, unknown>)?.aghdns_answer as string) ?? ''
+  aghdnsAnswerError.value = ''
   dialogVisible.value = true
 }
 
+function validateAghdnsAnswer(): boolean {
+  if (!aghdnsEnabled.value) return true
+  const val = aghdnsAnswer.value.trim()
+  if (!val) {
+    aghdnsAnswerError.value = 'Rewrite answer is required when AdGuard Rewrite is enabled'
+    return false
+  }
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(val) || val.includes(':') ||
+      /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\.?$/.test(val)) {
+    aghdnsAnswerError.value = ''
+    return true
+  }
+  aghdnsAnswerError.value = 'Must be a valid IPv4, IPv6, or hostname'
+  return false
+}
+
 async function handleSubmitRecord() {
+  if (!validateAghdnsAnswer()) return
   try {
     const payload: RecordCreate = { ...form.value }
+    const meta: Record<string, unknown> = {}
     if (hasCloudflareProvider.value) {
-      const meta: Record<string, unknown> = { auto_ttl: autoTtl.value }
+      meta.auto_ttl = autoTtl.value
       if (['A', 'AAAA', 'CNAME'].includes(payload.type)) {
         meta.proxied = proxied.value
       }
-      payload.provider_meta = meta
     }
+    if (hasAdGuardHomeProvider.value && ['A', 'AAAA', 'CNAME'].includes(payload.type)) {
+      meta.aghdns_enabled = aghdnsEnabled.value
+      if (aghdnsEnabled.value) meta.aghdns_answer = aghdnsAnswer.value.trim()
+    }
+    if (Object.keys(meta).length > 0) payload.provider_meta = meta
     if (editingRecordId.value !== null) {
       await recordApi.updateRecord(zoneId.value, editingRecordId.value, payload)
       const idx = records.value.findIndex((r) => r.id === editingRecordId.value)
@@ -753,6 +792,11 @@ onMounted(fetchData)
             <Tag v-if="data.provider_meta?.proxied" value="Proxied" severity="info" />
           </template>
         </Column>
+        <Column v-if="hasAdGuardHomeProvider" header="AdGuard" style="width: 5rem">
+          <template #body="{ data }">
+            <Tag v-if="data.provider_meta?.aghdns_enabled" value="AdGuard" severity="warn" />
+          </template>
+        </Column>
         <Column v-if="isOperator" header="Actions" style="width: 6rem; text-align: right">
           <template #body="{ data }">
             <div class="action-buttons">
@@ -898,6 +942,24 @@ onMounted(fetchData)
           <small class="text-muted">
             {{ proxied ? 'Auto TTL is required for proxied records' : 'Cloudflare will use Auto TTL (other providers use the TTL value above)' }}
           </small>
+        </div>
+        <div v-if="showAdGuardSection" class="field">
+          <div class="proxy-row">
+            <label for="rec-aghdns-enabled">AdGuard Rewrite</label>
+            <ToggleSwitch id="rec-aghdns-enabled" v-model="aghdnsEnabled" />
+          </div>
+          <small class="text-muted">Push a DNS Rewrite to AdGuard Home for local resolution</small>
+          <div v-if="aghdnsEnabled" class="field" style="margin-top: 0.5rem">
+            <label for="rec-aghdns-answer">Rewrite Answer</label>
+            <InputText
+              id="rec-aghdns-answer"
+              v-model="aghdnsAnswer"
+              placeholder="192.168.1.1 / ::1 / host.local"
+              class="w-full"
+              @blur="validateAghdnsAnswer"
+            />
+            <small v-if="aghdnsAnswerError" class="text-red-500">{{ aghdnsAnswerError }}</small>
+          </div>
         </div>
         <Button type="submit" :label="editingRecordId ? 'Save' : 'Create'" class="w-full" />
       </form>

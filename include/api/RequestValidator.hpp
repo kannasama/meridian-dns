@@ -34,6 +34,7 @@ class RequestValidator {
   static void validateGitRemoteUrl(const std::string& sUrl);
   static void validateGitAuthType(const std::string& sAuthType);
   static void validateGitBranch(const std::string& sBranch);
+  static void validateAdGuardAnswer(const std::string& sAnswer);
 };
 
 }  // namespace dns::api
