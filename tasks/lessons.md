@@ -149,3 +149,40 @@ across all other repositories (ProviderRepository, ZoneRepository, etc.).
 repository code.
 
 **Applied:** All new DAL repository implementations.
+
+## 2026-05-08 — Branch names use version numbers only
+
+**Rule:** Use version numbers only for branch names (e.g. `v1.1.3`), not descriptive names
+(e.g. `v1.1.3-adguardhome-provider`).
+
+**Why:** User explicitly corrected this when a descriptor was added.
+
+**Applied:** All feature branches for versioned work.
+
+## 2026-05-08 — Always add SPDX headers to new files
+
+**Rule:** Every new file must include the SPDX header block as the very first lines:
+- C/C++: `// SPDX-License-Identifier: AGPL-3.0-or-later` etc.
+- SQL: `-- SPDX-License-Identifier: AGPL-3.0-or-later` etc.
+- Shell/Python: `# SPDX-License-Identifier: AGPL-3.0-or-later` etc.
+
+**Why:** The project has a lint/CI check that enforces SPDX headers. Missing headers cause
+lint failures.
+
+**Applied:** All new files of any type.
+
+## 2026-05-08 — Never implement without express, unambiguous approval
+
+**Mistake:** Repeatedly jumped into implementation after the user confirmed a version number or
+branch name, treating confirmation of context as approval to proceed. The user had to intervene
+multiple times to stop mid-implementation work.
+
+**Pattern:** Confirmation of a plan detail (version number, branch name, scope) is NOT approval
+to implement. Only an explicit instruction like "go ahead", "implement it", "do it", or similar
+constitutes unambiguous approval.
+
+**Rule:** After presenting a plan, stop. Wait for an explicit "yes, proceed" before writing any
+code or making any file changes. Clarifying questions and context confirmations from the user
+do not count as approval.
+
+**Applied:** All implementation tasks. Present the plan → wait → only proceed on explicit approval.

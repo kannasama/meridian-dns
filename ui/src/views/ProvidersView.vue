@@ -11,6 +11,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Password from 'primevue/password'
+import ToggleSwitch from 'primevue/toggleswitch'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import PageHeader from '../components/shared/PageHeader.vue'
@@ -55,6 +56,7 @@ const form = ref({
   account_id: '',
   username: '',
   password: '',
+  verify_ssl: true,
 })
 
 const providerTypes = [
@@ -74,7 +76,7 @@ watch(() => form.value.type, (newType) => {
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', type: 'powerdns', api_endpoint: '', token: '', server_id: '', account_id: '', username: '', password: '' }
+  form.value = { name: '', type: 'powerdns', api_endpoint: '', token: '', server_id: '', account_id: '', username: '', password: '', verify_ssl: true }
   dialogVisible.value = true
 }
 
@@ -90,17 +92,21 @@ async function openEdit(provider: Provider) {
     account_id: full.config?.account_id ?? '',
     username: '',
     password: '',
+    verify_ssl: full.config?.verify_ssl !== false,
   }
   dialogVisible.value = true
 }
 
-function buildConfig(): Record<string, string> {
-  const config: Record<string, string> = {}
+function buildConfig(): Record<string, unknown> {
+  const config: Record<string, unknown> = {}
   if (form.value.type === 'powerdns' && form.value.server_id) {
     config.server_id = form.value.server_id
   }
   if (form.value.type === 'cloudflare' && form.value.account_id) {
     config.account_id = form.value.account_id
+  }
+  if (form.value.type === 'adguardhome') {
+    config.verify_ssl = form.value.verify_ssl
   }
   return config
 }
@@ -282,6 +288,15 @@ onMounted(fetchProviders)
               class="w-full"
               inputClass="w-full"
             />
+          </div>
+          <div class="field">
+            <div class="flex align-items-center gap-2">
+              <ToggleSwitch id="prov-verify-ssl" v-model="form.verify_ssl" />
+              <label for="prov-verify-ssl">Verify SSL certificate</label>
+            </div>
+            <small v-if="!form.verify_ssl" class="text-orange-400">
+              SSL verification disabled — only use for internal CAs or self-signed certificates
+            </small>
           </div>
         </template>
         <div class="field" v-if="form.type === 'powerdns'">

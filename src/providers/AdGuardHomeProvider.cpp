@@ -39,6 +39,9 @@ AdGuardHomeProvider::AdGuardHomeProvider(std::string sApiEndpoint, std::string s
   }
 
   _upClient = std::make_unique<httplib::Client>(_sApiEndpoint);
+  if (!_jConfig.value("verify_ssl", true)) {
+    _upClient->enable_server_certificate_verification(false);
+  }
   _upClient->set_basic_auth(_sUsername, _sPassword);
   _upClient->set_connection_timeout(10);
   _upClient->set_read_timeout(30);
