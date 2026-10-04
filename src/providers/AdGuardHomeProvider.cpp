@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/DnsNameUtils.hpp"
 #include "common/Errors.hpp"
 #include "common/Logger.hpp"
 
@@ -235,7 +236,15 @@ std::vector<common::DnsRecord> AdGuardHomeProvider::prepareDesiredRecords(
 
     common::DnsRecord transformed = dr;
     transformed.sType = inferType(sAnswer);
-    transformed.sValue = sAnswer;
+
+    // Match the FQDN normalisation parseRewritesResponse applies to the live
+    // side. Without this, a hostname rewrite reports permanent false drift
+    // ("nas.home.arpa" desired vs "nas.home.arpa." live). The wire format and
+    // encodeRecordId keep using the dotless form, so IDs are unaffected.
+    transformed.sName = common::ensureTrailingDot(dr.sName);
+    transformed.sValue = (transformed.sType == "CNAME")
+                             ? common::ensureTrailingDot(sAnswer)
+                             : sAnswer;
 
     vResult.push_back(std::move(transformed));
   }

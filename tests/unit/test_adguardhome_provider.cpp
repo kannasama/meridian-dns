@@ -187,7 +187,8 @@ TEST_F(AdGuardPrepareTest, TransformsHostnameAnswer) {
   auto vResult = provider.prepareDesiredRecords({dr});
   ASSERT_EQ(vResult.size(), 1u);
   EXPECT_EQ(vResult[0].sType, "CNAME");
-  EXPECT_EQ(vResult[0].sValue, "nas.home");
+  // FQDN-normalised to match the live side — see HostnameAnswerGetsTrailingDot.
+  EXPECT_EQ(vResult[0].sValue, "nas.home.");
 }
 
 TEST_F(AdGuardPrepareTest, PreservesNameAndProviderMeta) {
@@ -207,4 +208,68 @@ TEST_F(AdGuardPrepareTest, SkipsRecordWithMissingAnswer) {
   dr.jProviderMeta = {{"aghdns_enabled", true}};  // no aghdns_answer key
   auto vResult = provider.prepareDesiredRecords({dr});
   EXPECT_TRUE(vResult.empty());
+}
+
+// ---------------------------------------------------------------------------
+// prepareDesiredRecords — FQDN normalisation (v1.1.4 drift regression)
+//
+// parseRewritesResponse FQDN-normalises the live side, so the desired side must
+// match or every hostname rewrite reports permanent false drift.
+// ---------------------------------------------------------------------------
+
+TEST_F(AdGuardPrepareTest, HostnameAnswerGetsTrailingDot) {
+  auto dr = makeRecord("www.example.com.", "A", true, "nas.home.arpa");
+  auto vResult = provider.prepareDesiredRecords({dr});
+  ASSERT_EQ(vResult.size(), 1u);
+  EXPECT_EQ(vResult[0].sType, "CNAME");
+  EXPECT_EQ(vResult[0].sValue, "nas.home.arpa.");
+}
+
+TEST_F(AdGuardPrepareTest, HostnameAnswerAlreadyDottedIsUnchanged) {
+  auto dr = makeRecord("www.example.com.", "A", true, "nas.home.arpa.");
+  auto vResult = provider.prepareDesiredRecords({dr});
+  ASSERT_EQ(vResult.size(), 1u);
+  EXPECT_EQ(vResult[0].sValue, "nas.home.arpa.");
+}
+
+TEST_F(AdGuardPrepareTest, AddressAnswersNeverGetTrailingDot) {
+  auto v4 = makeRecord("a.example.com.", "A", true, "192.168.1.1");
+  auto v6 = makeRecord("b.example.com.", "A", true, "2001:db8::1");
+  auto vResult = provider.prepareDesiredRecords({v4, v6});
+  ASSERT_EQ(vResult.size(), 2u);
+  EXPECT_EQ(vResult[0].sValue, "192.168.1.1");
+  EXPECT_EQ(vResult[1].sValue, "2001:db8::1");
+}
+
+TEST_F(AdGuardPrepareTest, NameIsFqdnNormalised) {
+  auto dr = makeRecord("www.example.com", "A", true, "192.168.1.1");
+  auto vResult = provider.prepareDesiredRecords({dr});
+  ASSERT_EQ(vResult.size(), 1u);
+  EXPECT_EQ(vResult[0].sName, "www.example.com.");
+}
+
+// The desired record produced here must compare equal to what the live side
+// yields for the same rewrite — this is the exact false-positive being fixed.
+TEST_F(AdGuardPrepareTest, DesiredHostnameMatchesParsedLiveRecord) {
+  auto dr = makeRecord("www.example.com", "A", true, "nas.home.arpa");
+  auto vDesired = provider.prepareDesiredRecords({dr});
+  auto vLive = AdGuardHomeProvider::parseRewritesResponse(
+      R"([{"domain": "www.example.com", "answer": "nas.home.arpa"}])");
+
+  ASSERT_EQ(vDesired.size(), 1u);
+  ASSERT_EQ(vLive.size(), 1u);
+  EXPECT_EQ(vDesired[0].sName, vLive[0].sName);
+  EXPECT_EQ(vDesired[0].sType, vLive[0].sType);
+  EXPECT_EQ(vDesired[0].sValue, vLive[0].sValue);
+}
+
+// Record IDs encode the dotless wire pair and the delete path decodes them,
+// so normalisation must not leak into the ID.
+TEST_F(AdGuardPrepareTest, RecordIdEncodingStaysDotless) {
+  EXPECT_EQ(AdGuardHomeProvider::encodeRecordId("www.example.com", "nas.home.arpa"),
+            "www.example.com|nas.home.arpa");
+  auto [sDomain, sAnswer] =
+      AdGuardHomeProvider::decodeRecordId("www.example.com|nas.home.arpa");
+  EXPECT_EQ(sDomain, "www.example.com");
+  EXPECT_EQ(sAnswer, "nas.home.arpa");
 }
