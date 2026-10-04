@@ -145,12 +145,22 @@ export interface ProviderPreview {
   diffs: RecordDiff[]
 }
 
+export interface GitStatus {
+  configured: boolean
+  repo_id?: number
+  repo_name?: string
+  reachable?: boolean
+  error?: string
+  checked_at?: string
+}
+
 export interface PreviewResult {
   zone_id: number
   zone_name: string
   has_drift: boolean
   diffs: RecordDiff[]
   providers?: ProviderPreview[]
+  git_status?: GitStatus
 }
 
 export interface DeploymentSnapshot {

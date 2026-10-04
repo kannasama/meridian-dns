@@ -38,8 +38,9 @@ Include details documented in `tasks/lessons.md` when factoring in planning and 
 - **Phase 10 complete:** Cloudflare + DigitalOcean providers, conformance tests
 - **v0.9.5 complete:** Bug fixes, UX improvements, user/group/API key management
 - **v1.1.2 complete:** Deployment bug fixes, system logging
+- **v1.1.4 complete:** Git availability gate, AdGuard trailing-dot drift fix
 - **Next task:** Phase 11 — TUI Client (separate repository)
-- **Tests:** 303 total (176 pass, 127 skip — DB integration tests need `DNS_DB_URL`)
+- **Tests:** 602 total (577 pass with `DNS_DB_URL`, 25 skip; 338 pass / 264 skip without a DB)
 
 Build and test:
 ```bash
@@ -364,6 +365,42 @@ logging.
 
 ---
 
+### v1.1.4 — Git Availability Gate + AdGuard Drift Fix ← COMPLETE
+
+**Summary:** An unreachable GitOps repo silently broke deployments after blocking the deploy
+thread until the OS TCP timeout; AdGuard hostname rewrites reported permanent false drift.
+Full design in `docs/plans/2026-10-04-git-availability-adguard-drift-design.md`.
+
+**Issue 1 — git repo availability (3 deliverables):**
+1. `src/gitops/GitRepoProbe.cpp` — TCP reachability probe with a per-repo TTL cache. Parses
+   `ssh://`, scp-style, `https://`, `http://`, `file://` and bare paths. Its cache mutex is
+   separate from `GitRepoManager::_mtx` so a probe never blocks behind a clone or push.
+   `GitRepoManager` also sets `GIT_OPT_SET_SERVER_CONNECT_TIMEOUT`/`SERVER_TIMEOUT`, which
+   cover HTTPS only — SSH runs through libssh2 and ignores them, hence the TCP pre-probe.
+2. Preview reports `git_status`; the UI shows an amber warning banner per zone card.
+3. Push is gated on `acknowledge_git_unavailable` — without it an unreachable repo yields
+   409 `GIT_REPO_UNAVAILABLE` **before any provider call**. With it, the commit is skipped
+   (never attempted) and recorded on the deployment snapshot's `git_commit` object, the audit
+   log, and `system_logs`; deployment history badges it "No snapshot". No migration needed.
+
+**Issue 2 — AdGuard trailing-dot false drift (2 deliverables):**
+4. `AdGuardHomeProvider::prepareDesiredRecords` now applies the same FQDN normalisation as
+   `parseRewritesResponse`. `encodeRecordId` keeps the dotless wire pair, so the delete path
+   is unaffected.
+5. `include/common/DnsNameUtils.hpp` + `DiffEngine::computeDiff` — matching is trailing-dot
+   insensitive for all providers. Names always; values only for hostname-valued types
+   (CNAME/NS/MX/SRV/PTR/DNAME), so a TXT trailing dot stays content. Canonicalisation governs
+   equality only; emitted diffs keep the original strings.
+
+**New settings:** `gitops.probe_timeout_ms` (3000), `gitops.probe_cache_ttl_seconds` (30),
+`gitops.server_timeout_ms` (20000) — all DB-only, no env var.
+**Changed endpoints:** `POST /zones/{id}/preview` (+`git_status`),
+`POST /zones/{id}/push` (+`acknowledge_git_unavailable`, +409 `GIT_REPO_UNAVAILABLE`)
+**Tests:** 602 total, 577 pass with a DB (25 skip), 338 pass without one (264 skip), 0 fail.
+54 new tests: 14 DnsNameUtils, 6 AdGuard, 7 DiffEngine, 22 GitRepoProbe, 5 GitRepoManager.
+
+---
+
 ### Phase 11 — TUI Client
 
 Separate repository: `meridian-dns-tui`. Consumes REST API. See `docs/TUI_DESIGN.md`.
@@ -441,6 +478,9 @@ automatically once it is in `kSettings` and exposed in `ui/src/views/SettingsVie
 | `docs/plans/2026-03-05-phase-9-web-ui.md` | Phase 9 design spec |
 | `docs/plans/2026-03-07-v0.9.5-design.md` | v0.9.5 design spec (bug fixes, UX, user mgmt) |
 | `docs/plans/2026-03-22-v1.1.2-bugfixes-system-logging.md` | v1.1.2 implementation plan |
+| `include/common/DnsNameUtils.hpp` | Trailing-dot/FQDN helpers for record comparison |
+| `include/gitops/GitRepoProbe.hpp` | Git remote reachability probe with TTL cache |
+| `docs/plans/2026-10-04-git-availability-adguard-drift-design.md` | v1.1.4 design spec |
 | `include/dal/SystemLogRepository.hpp` | System log repository (insert, query, purge) |
 | `include/api/routes/SystemLogRoutes.hpp` | System log API routes (admin only) |
 | `scripts/db/v020/001_system_logs.sql` | System logs table migration |

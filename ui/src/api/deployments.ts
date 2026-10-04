@@ -12,9 +12,11 @@ export function previewZone(zoneId: number): Promise<PreviewResult> {
 export function pushZone(
   zoneId: number,
   driftActions: DriftAction[] = [],
+  acknowledgeGitUnavailable = false,
 ): Promise<{ message: string }> {
   return post(`/zones/${zoneId}/push`, {
     drift_actions: driftActions,
+    acknowledge_git_unavailable: acknowledgeGitUnavailable,
   })
 }
 

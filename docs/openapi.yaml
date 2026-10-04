@@ -320,6 +320,31 @@ components:
           description: Per-provider diff breakdown (present for multi-provider zones)
           items:
             $ref: "#/components/schemas/ProviderPreview"
+        git_status:
+          $ref: "#/components/schemas/GitStatus"
+
+    GitStatus:
+      type: object
+      description: >
+        Reachability of the GitOps repo assigned to the zone. When configured is
+        false the zone has no repo assigned and no other fields are present.
+        When reachable is false, a push will deploy to providers but skip the
+        GitOps snapshot, and requires acknowledge_git_unavailable.
+      properties:
+        configured:
+          type: boolean
+        repo_id:
+          type: integer
+        repo_name:
+          type: string
+        reachable:
+          type: boolean
+        error:
+          type: string
+          description: Probe failure reason; empty when reachable
+        checked_at:
+          type: string
+          format: date-time
 
     ProviderPreview:
       type: object
@@ -1362,6 +1387,16 @@ paths:
                       action:
                         type: string
                         enum: [adopt, delete, ignore]
+                acknowledge_git_unavailable:
+                  type: boolean
+                  default: false
+                  description: >
+                    Set true to deploy even though the zone's GitOps repo is
+                    unreachable. The deployment proceeds to the providers, the
+                    snapshot commit is skipped, and the skip is recorded on the
+                    deployment snapshot, the audit log and the system log.
+                    Without this flag such a push is rejected with 409
+                    GIT_REPO_UNAVAILABLE before any provider is contacted.
       responses:
         "200":
           description: Push completed
@@ -1370,7 +1405,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
         "409":
-          description: Zone is currently being deployed
+          description: >
+            Zone is currently being deployed (ZONE_LOCKED), or the zone's GitOps
+            repo is unreachable and acknowledge_git_unavailable was not set
+            (GIT_REPO_UNAVAILABLE)
           content:
             application/json:
               schema:

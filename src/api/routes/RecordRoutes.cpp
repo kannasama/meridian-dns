@@ -382,12 +382,25 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
             });
           }
 
+          // GitOps mirror availability — the operator decides here, before
+          // committing to a push, whether to deploy without a snapshot.
+          auto gsGit = _depEngine.gitStatusForZone(iZoneId);
+          nlohmann::json jGitStatus = {{"configured", gsGit.bConfigured}};
+          if (gsGit.bConfigured) {
+            jGitStatus["repo_id"] = gsGit.iRepoId;
+            jGitStatus["repo_name"] = gsGit.sRepoName;
+            jGitStatus["reachable"] = gsGit.bReachable;
+            jGitStatus["error"] = gsGit.sError;
+            jGitStatus["checked_at"] = gsGit.sCheckedAt;
+          }
+
           nlohmann::json jResult = {
               {"zone_id", prResult.iZoneId},
               {"zone_name", prResult.sZoneName},
               {"has_drift", prResult.bHasDrift},
               {"diffs", jDiffs},
               {"providers", jProviders},
+              {"git_status", jGitStatus},
           };
           return jsonResponse(200, jResult);
         } catch (const common::AppError& e) {
@@ -404,9 +417,11 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           enforceBodyLimit(req);
 
           std::vector<common::DriftAction> vDriftActions;
+          bool bAckGitUnavailable = false;
           if (!req.body.empty()) {
             try {
               auto jBody = nlohmann::json::parse(req.body);
+              bAckGitUnavailable = jBody.value("acknowledge_git_unavailable", false);
               if (jBody.contains("drift_actions") && jBody["drift_actions"].is_array()) {
                 for (const auto& jAction : jBody["drift_actions"]) {
                   common::DriftAction da;
@@ -427,7 +442,7 @@ void RecordRoutes::registerRoutes(crow::SimpleApp& app) {
           }
 
           auto acCtx = buildAuditContext(rcCtx);
-          _depEngine.push(iZoneId, vDriftActions, rcCtx.iUserId, acCtx);
+          _depEngine.push(iZoneId, vDriftActions, rcCtx.iUserId, acCtx, bAckGitUnavailable);
           return jsonResponse(200, {{"message", "Push completed successfully"}});
         } catch (const common::AppError& e) {
           return errorResponse(e);

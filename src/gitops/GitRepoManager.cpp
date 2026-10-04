@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <sstream>
 
+#include <git2.h>
 #include <nlohmann/json.hpp>
 
 #include "common/Errors.hpp"
@@ -29,9 +30,24 @@ GitRepoManager::GitRepoManager(dns::dal::GitRepoRepository& grRepo,
                                dns::dal::ViewRepository& vrRepo,
                                dns::dal::RecordRepository& rrRepo,
                                dns::core::VariableEngine& veEngine,
-                               const std::string& sBasePath)
+                               const std::string& sBasePath,
+                               int iProbeTimeoutMs,
+                               int iProbeCacheTtlSeconds,
+                               int iServerTimeoutMs)
     : _grRepo(grRepo), _zrRepo(zrRepo), _vrRepo(vrRepo),
-      _rrRepo(rrRepo), _veEngine(veEngine), _sBasePath(sBasePath) {}
+      _rrRepo(rrRepo), _veEngine(veEngine), _sBasePath(sBasePath),
+      _grpProbe(iProbeTimeoutMs, iProbeCacheTtlSeconds) {
+  // Bound libgit2's own network waits so a stalled remote can no longer hang a
+  // deployment thread until the OS TCP timeout. These options are process-wide
+  // and govern the HTTP(S) transport only — SSH runs through libssh2 and
+  // ignores them, which is why GitRepoProbe does a TCP pre-probe as well.
+  if (iServerTimeoutMs > 0) {
+    git_libgit2_init();
+    git_libgit2_opts(GIT_OPT_SET_SERVER_CONNECT_TIMEOUT, iServerTimeoutMs);
+    git_libgit2_opts(GIT_OPT_SET_SERVER_TIMEOUT, iServerTimeoutMs);
+    git_libgit2_shutdown();
+  }
+}
 
 GitRepoManager::~GitRepoManager() = default;
 
@@ -104,6 +120,7 @@ void GitRepoManager::reloadRepo(int64_t iRepoId) {
 
   // Remove existing mirror if present
   _mMirrors.erase(iRepoId);
+  _grpProbe.invalidate(iRepoId);
 
   auto oRepo = _grRepo.findById(iRepoId);
   if (!oRepo || !oRepo->bIsEnabled) {
@@ -131,6 +148,7 @@ void GitRepoManager::reloadRepo(int64_t iRepoId) {
 void GitRepoManager::removeRepo(int64_t iRepoId) {
   std::lock_guard lock(_mtx);
   _mMirrors.erase(iRepoId);
+  _grpProbe.invalidate(iRepoId);
 }
 
 GitRepoMirror* GitRepoManager::findMirror(int64_t iRepoId) {
@@ -180,16 +198,58 @@ std::string GitRepoManager::buildSnapshotJson(int64_t iZoneId,
   return j.dump(2);
 }
 
-void GitRepoManager::commitZoneSnapshot(int64_t iZoneId, const std::string& sActor) {
-  auto spLog = common::Logger::get();
+GitProbeResult GitRepoManager::probeRepo(int64_t iRepoId) {
+  auto oRepo = _grRepo.findById(iRepoId);
+  if (!oRepo) {
+    GitProbeResult result;
+    result.bReachable = false;
+    result.sError = "Git repo " + std::to_string(iRepoId) + " not found";
+    result.tpCheckedAt = std::chrono::system_clock::now();
+    return result;
+  }
+  return _grpProbe.probe(iRepoId, oRepo->sRemoteUrl);
+}
+
+common::GitStatus GitRepoManager::gitStatusForZone(int64_t iZoneId) {
+  common::GitStatus gs;
 
   auto oZone = _zrRepo.findById(iZoneId);
-  if (!oZone || !oZone->oGitRepoId.has_value()) {
+  if (!oZone || !oZone->oGitRepoId.has_value() || *oZone->oGitRepoId == 0) {
+    return gs;  // bConfigured stays false — nothing to probe
+  }
+
+  gs.bConfigured = true;
+  gs.iRepoId = *oZone->oGitRepoId;
+
+  auto oRepo = _grRepo.findById(gs.iRepoId);
+  gs.sRepoName = oRepo ? oRepo->sName : ("repo " + std::to_string(gs.iRepoId));
+
+  auto result = probeRepo(gs.iRepoId);
+  gs.bReachable = result.bReachable;
+  gs.sError = result.sError;
+  gs.sCheckedAt = dns::common::toIso8601(
+      std::chrono::system_clock::to_time_t(result.tpCheckedAt));
+  return gs;
+}
+
+GitCommitOutcome GitRepoManager::commitZoneSnapshot(int64_t iZoneId,
+                                                   const std::string& sActor) {
+  auto spLog = common::Logger::get();
+  GitCommitOutcome outcome;
+
+  auto oZone = _zrRepo.findById(iZoneId);
+  if (!oZone || !oZone->oGitRepoId.has_value() || *oZone->oGitRepoId == 0) {
     // Zone has no git repo assigned — no-op
-    return;
+    return outcome;
   }
 
   int64_t iRepoId = *oZone->oGitRepoId;
+  outcome.bConfigured = true;
+  outcome.iRepoId = iRepoId;
+
+  auto oRepo = _grRepo.findById(iRepoId);
+  outcome.sRepoName = oRepo ? oRepo->sName : ("repo " + std::to_string(iRepoId));
+
   GitRepoMirror* pMirror = nullptr;
   {
     std::lock_guard lock(_mtx);
@@ -197,9 +257,20 @@ void GitRepoManager::commitZoneSnapshot(int64_t iZoneId, const std::string& sAct
   }
 
   if (!pMirror) {
+    outcome.sReason = "git repo mirror is not loaded";
     spLog->warn("GitRepoManager: repo {} not loaded — skipping commit for zone {}",
                 iRepoId, iZoneId);
-    return;
+    return outcome;
+  }
+
+  // Check reachability before touching the mirror. Without this an unreachable
+  // remote blocks here until the OS TCP timeout and then fails anyway.
+  auto probeResult = _grpProbe.probe(iRepoId, oRepo ? oRepo->sRemoteUrl : std::string());
+  if (!probeResult.bReachable) {
+    outcome.sReason = "git remote unreachable: " + probeResult.sError;
+    spLog->warn("GitRepoManager: skipping commit for zone {} — {}", iZoneId, outcome.sReason);
+    _grRepo.updateSyncStatus(iRepoId, "failed", probeResult.sError);
+    return outcome;
   }
 
   try {
@@ -212,12 +283,19 @@ void GitRepoManager::commitZoneSnapshot(int64_t iZoneId, const std::string& sAct
     std::string sMsg = "Update " + oZone->sName + " by " + sActor + " via API";
 
     pMirror->commitSnapshot(sRelPath, sJson, sMsg, sBranch);
+    outcome.bCommitted = true;
     spLog->info("GitRepoManager: committed zone '{}' to repo {} branch '{}'",
                 oZone->sName, iRepoId,
                 sBranch.empty() ? "(default)" : sBranch);
   } catch (const std::exception& ex) {
+    outcome.sReason = std::string("git commit failed: ") + ex.what();
     spLog->error("GitRepoManager: commit failed for zone {}: {}", iZoneId, ex.what());
+    // The remote answered a TCP probe but the operation still failed, so the
+    // cached "reachable" verdict is stale — force a fresh probe next time.
+    _grpProbe.invalidate(iRepoId);
   }
+
+  return outcome;
 }
 
 void GitRepoManager::pullAll() {
@@ -259,6 +337,7 @@ std::string GitRepoManager::testConnection(int64_t iRepoId) {
     testMirror.initialize(oRepo->sRemoteUrl, sTmpDir.string(),
                          oRepo->sDefaultBranch, auth);
     std::filesystem::remove_all(sTmpDir);
+    _grpProbe.probeNow(iRepoId, oRepo->sRemoteUrl);
     return "";  // Success
   } catch (const std::exception& ex) {
     std::filesystem::remove_all(sTmpDir);

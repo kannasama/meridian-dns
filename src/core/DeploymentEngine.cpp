@@ -67,6 +67,25 @@ std::mutex& DeploymentEngine::zoneMutex(int64_t iZoneId) {
   return *it->second;
 }
 
+namespace {
+
+/// Serialises a GitOps commit outcome for the deployment snapshot, so a missing
+/// snapshot is reconcilable later instead of invisible.
+nlohmann::json buildGitCommitJson(const dns::gitops::GitCommitOutcome& outcome) {
+  if (!outcome.bConfigured) return {{"status", "not_configured"}};
+  if (outcome.bCommitted) {
+    return {{"status", "committed"},
+            {"repo_id", outcome.iRepoId},
+            {"repo_name", outcome.sRepoName}};
+  }
+  return {{"status", "skipped"},
+          {"repo_id", outcome.iRepoId},
+          {"repo_name", outcome.sRepoName},
+          {"reason", outcome.sReason}};
+}
+
+}  // namespace
+
 nlohmann::json DeploymentEngine::buildSnapshot(int64_t iZoneId,
                                                const std::string& sIdentity,
                                                const SysContext& sysCtx) const {
@@ -140,9 +159,15 @@ nlohmann::json DeploymentEngine::buildCaptureSnapshot(
   };
 }
 
+common::GitStatus DeploymentEngine::gitStatusForZone(int64_t iZoneId) {
+  if (!_pGitRepoManager) return {};
+  return _pGitRepoManager->gitStatusForZone(iZoneId);
+}
+
 void DeploymentEngine::push(int64_t iZoneId,
                             const std::vector<common::DriftAction>& vDriftActions,
-                            int64_t iActorUserId, const common::AuditContext& acCtx) {
+                            int64_t iActorUserId, const common::AuditContext& acCtx,
+                            bool bAckGitUnavailable) {
   auto spLog = common::Logger::get();
 
   // 1. Acquire per-zone mutex (non-blocking try_lock)
@@ -161,6 +186,21 @@ void DeploymentEngine::push(int64_t iZoneId,
   if (prResult.vDiffs.empty()) {
     spLog->info("DeploymentEngine: zone '{}' — nothing to push", prResult.sZoneName);
     return;
+  }
+
+  // 2a. GitOps availability gate. Probed here, before any provider call, so a
+  // refusal leaves nothing changed. The operator sees this on preview and must
+  // explicitly accept deploying without a snapshot.
+  auto gsGit = gitStatusForZone(iZoneId);
+  if (gsGit.bConfigured && !gsGit.bReachable && !bAckGitUnavailable) {
+    _slrRepo.insert("deployment", "warning",
+                    "Push blocked for zone " + prResult.sZoneName +
+                        " — git repo '" + gsGit.sRepoName + "' unreachable: " + gsGit.sError,
+                    iZoneId);
+    throw common::ConflictError(
+        "GIT_REPO_UNAVAILABLE",
+        "Git repo '" + gsGit.sRepoName + "' is unreachable: " + gsGit.sError +
+            ". Retry with acknowledge_git_unavailable to deploy without a GitOps snapshot.");
   }
 
   // 2b. Collect drift records and validate drift actions
@@ -350,21 +390,40 @@ void DeploymentEngine::push(int64_t iZoneId,
   _arRepo.insert("zone", iZoneId, "push", std::nullopt, jDiffs, acCtx.sIdentity,
                  acCtx.sAuthMethod, acCtx.sIpAddress);
 
-  // 6. Create deployment snapshot
+  // 6. GitOps mirror commit (non-fatal). Done before the snapshot is written so
+  // the snapshot can record what actually happened, making a missing GitOps
+  // commit visible in deployment history rather than only in the logs.
+  dns::gitops::GitCommitOutcome gitOutcome;
+  if (_pGitRepoManager) {
+    gitOutcome = _pGitRepoManager->commitZoneSnapshot(iZoneId, acCtx.sIdentity);
+  }
+
+  if (gitOutcome.skipped()) {
+    _slrRepo.insert("deployment", "warning",
+                    "Deployed zone " + prResult.sZoneName +
+                        " without a GitOps snapshot — " + gitOutcome.sReason,
+                    iZoneId);
+    _arRepo.insert("zone", iZoneId, "push.git_snapshot_skipped", std::nullopt,
+                   nlohmann::json{{"repo_id", gitOutcome.iRepoId},
+                                  {"repo_name", gitOutcome.sRepoName},
+                                  {"reason", gitOutcome.sReason},
+                                  {"acknowledged", bAckGitUnavailable}},
+                   acCtx.sIdentity, acCtx.sAuthMethod, acCtx.sIpAddress);
+    spLog->warn("DeploymentEngine: zone '{}' deployed without GitOps snapshot — {}",
+                prResult.sZoneName, gitOutcome.sReason);
+  }
+
+  // 7. Create deployment snapshot
   auto jSnapshot = buildSnapshot(iZoneId, acCtx.sIdentity, pushCtx);
+  jSnapshot["git_commit"] = buildGitCommitJson(gitOutcome);
   _drRepo.create(iZoneId, iActorUserId, jSnapshot);
 
-  // 7. Prune old snapshots
+  // 8. Prune old snapshots
   int iRetention = _iRetentionCount;
   if (oZone->oDeploymentRetention.has_value() && *oZone->oDeploymentRetention >= 1) {
     iRetention = *oZone->oDeploymentRetention;
   }
   _drRepo.pruneByRetention(iZoneId, iRetention);
-
-  // 8. GitOps mirror commit (non-fatal)
-  if (_pGitRepoManager) {
-    _pGitRepoManager->commitZoneSnapshot(iZoneId, acCtx.sIdentity);
-  }
 
   // 9. Hard-delete pending-delete records after successful push
   int iHardDeleted = _rrRepo.hardDeletePending(iZoneId);
@@ -402,16 +461,22 @@ int64_t DeploymentEngine::capture(int64_t iZoneId, int64_t iActorUserId,
   spLog->info("DeploymentEngine: capturing {} live records for zone '{}'",
               vLiveRecords.size(), sZoneName);
 
-  // 3. Build capture snapshot
-  auto jSnapshot = buildCaptureSnapshot(iZoneId, vLiveRecords, acCtx.sIdentity, sGeneratedBy);
-
-  // 4. Create deployment record
-  int64_t iDeploymentId = _drRepo.create(iZoneId, iActorUserId, jSnapshot);
-
-  // 5. GitOps commit (non-fatal)
+  // 3. GitOps commit (non-fatal) — before the snapshot so its outcome is recorded
+  dns::gitops::GitCommitOutcome gitOutcome;
   if (_pGitRepoManager) {
-    _pGitRepoManager->commitZoneSnapshot(iZoneId, acCtx.sIdentity);
+    gitOutcome = _pGitRepoManager->commitZoneSnapshot(iZoneId, acCtx.sIdentity);
   }
+  if (gitOutcome.skipped()) {
+    spLog->warn("DeploymentEngine: zone '{}' captured without GitOps snapshot — {}",
+                sZoneName, gitOutcome.sReason);
+  }
+
+  // 4. Build capture snapshot
+  auto jSnapshot = buildCaptureSnapshot(iZoneId, vLiveRecords, acCtx.sIdentity, sGeneratedBy);
+  jSnapshot["git_commit"] = buildGitCommitJson(gitOutcome);
+
+  // 5. Create deployment record
+  int64_t iDeploymentId = _drRepo.create(iZoneId, iActorUserId, jSnapshot);
 
   // 6. Audit log
   nlohmann::json jAuditDetail = {

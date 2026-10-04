@@ -18,7 +18,7 @@ struct SettingDef {
 };
 
 /// All DB-configurable settings. Source of truth for keys, defaults, and descriptions.
-inline constexpr std::array<SettingDef, 19> kSettings = {{
+inline constexpr std::array<SettingDef, 22> kSettings = {{
   {"app.base_url", "", "Application base URL for generating callback URLs (e.g. https://dns.example.com)", "DNS_BASE_URL", false},
   {"http.threads", "4", "Number of HTTP server threads", "DNS_HTTP_THREADS", true},
   {"session.absolute_ttl_seconds", "86400", "Session absolute TTL in seconds",
@@ -45,6 +45,13 @@ inline constexpr std::array<SettingDef, 19> kSettings = {{
    "DNS_AUDIT_PURGE_INTERVAL_SECONDS", false},
   {"gitops.base_path", "/var/meridian-dns/repos",
    "Base directory for git repository local clones", "DNS_GITOPS_BASE_PATH", true},
+  {"gitops.probe_timeout_ms", "3000",
+   "Timeout in milliseconds for the git remote reachability probe", "", false},
+  {"gitops.probe_cache_ttl_seconds", "30",
+   "How long a git remote reachability result stays warm, in seconds (0 = always re-probe)",
+   "", false},
+  {"gitops.server_timeout_ms", "20000",
+   "libgit2 server connect/read timeout in milliseconds for HTTPS git remotes", "", true},
   {"backup.git_repo_id", "0", "Git repository ID for backup commits (0 = disabled)",
    "DNS_BACKUP_GIT_REPO_ID", false},
   {"backup.auto_interval_seconds", "0",

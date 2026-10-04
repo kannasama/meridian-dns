@@ -56,9 +56,16 @@ class DeploymentEngine {
   /// Execute the full push pipeline for a zone.
   /// Throws DeploymentLockedError if the zone is already being deployed.
   /// Throws ProviderError on provider failure.
+  /// Throws ConflictError (GIT_REPO_UNAVAILABLE) before touching any provider
+  /// when the zone's GitOps repo is unreachable and bAckGitUnavailable is
+  /// false — the operator must explicitly accept deploying without a snapshot.
   void push(int64_t iZoneId,
             const std::vector<common::DriftAction>& vDriftActions,
-            int64_t iActorUserId, const common::AuditContext& acCtx);
+            int64_t iActorUserId, const common::AuditContext& acCtx,
+            bool bAckGitUnavailable = false);
+
+  /// Reachability of the GitOps repo assigned to a zone, for preview reporting.
+  common::GitStatus gitStatusForZone(int64_t iZoneId);
 
   /// Capture current provider state as a baseline snapshot.
   /// No diff/push — records captured as-is from the provider.

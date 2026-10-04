@@ -417,8 +417,24 @@ int main(int argc, char* argv[]) {
     // ── Step 6b: Initialize GitRepoManager ─────────────────────────────────
     std::string sGitBasePath = settingsRepo->getValue("gitops.base_path",
                                                       "/var/meridian-dns/repos");
+
+    // Reachability probe + libgit2 network timeouts, so an unavailable GitOps
+    // remote is detected quickly instead of stalling a deployment thread.
+    auto readIntSetting = [&](const char* pKey, int iFallback) {
+      try {
+        return std::stoi(settingsRepo->getValue(pKey, std::to_string(iFallback)));
+      } catch (const std::exception&) {
+        spLog->warn("Invalid value for setting '{}' — using default {}", pKey, iFallback);
+        return iFallback;
+      }
+    };
+    int iProbeTimeoutMs = readIntSetting("gitops.probe_timeout_ms", 3000);
+    int iProbeCacheTtl = readIntSetting("gitops.probe_cache_ttl_seconds", 30);
+    int iGitServerTimeoutMs = readIntSetting("gitops.server_timeout_ms", 20000);
+
     auto upGitRepoManager = std::make_unique<dns::gitops::GitRepoManager>(
-        *gitRepoRepo, *zrRepo, *vrRepo, *rrRepo, *veEngine, sGitBasePath);
+        *gitRepoRepo, *zrRepo, *vrRepo, *rrRepo, *veEngine, sGitBasePath,
+        iProbeTimeoutMs, iProbeCacheTtl, iGitServerTimeoutMs);
     upGitRepoManager->initialize();
     spLog->info("Step 6: GitRepoManager initialized");
 

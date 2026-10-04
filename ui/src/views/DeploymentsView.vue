@@ -13,6 +13,7 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
 import Divider from 'primevue/divider'
+import Message from 'primevue/message'
 import SelectButton from 'primevue/selectbutton'
 import PageHeader from '../components/shared/PageHeader.vue'
 import { useConfirmAction } from '../composables/useConfirm'
@@ -56,6 +57,35 @@ const totalChanges = computed(() => {
 const zonesWithChanges = computed(() =>
   previews.value.filter((p) => p.diffs.length > 0),
 )
+
+// A zone whose assigned GitOps repo is configured but unreachable: the push
+// will still reach the providers, but no snapshot will be committed.
+function gitUnavailable(preview: PreviewResult): boolean {
+  return preview.git_status?.configured === true && preview.git_status.reachable === false
+}
+
+function gitWarning(preview: PreviewResult): string {
+  const gs = preview.git_status
+  if (!gs) return ''
+  const name = gs.repo_name ?? `repo ${gs.repo_id}`
+  const reason = gs.error ? ` — ${gs.error}` : ''
+  return `Git repo "${name}" is unreachable${reason}. Pushing will deploy to providers but skip the GitOps snapshot.`
+}
+
+const zonesWithGitUnavailable = computed(() =>
+  zonesWithChanges.value.filter((p) => gitUnavailable(p)),
+)
+
+// Deployment history: a snapshot that records a skipped GitOps commit.
+function gitSkipped(snapshot: Record<string, unknown> | undefined): boolean {
+  const gc = snapshot?.git_commit as { status?: string } | undefined
+  return gc?.status === 'skipped'
+}
+
+function gitSkipReason(snapshot: Record<string, unknown> | undefined): string {
+  const gc = snapshot?.git_commit as { reason?: string } | undefined
+  return gc?.reason ?? ''
+}
 
 // Drift action tracking
 const driftActions = ref<Map<number, Map<string, 'adopt' | 'delete' | 'ignore'>>>(new Map())
@@ -134,13 +164,25 @@ async function pushZone(zoneId: number) {
         actions.push({ name, type, action })
       }
     }
-    await deployApi.pushZone(zoneId, actions)
+    const preview = previews.value.find((p) => p.zone_id === zoneId)
+    const ackGit = preview ? gitUnavailable(preview) : false
+    await deployApi.pushZone(zoneId, actions, ackGit)
     pushedZones.value.add(zoneId)
-    notify.success('Deployed', `Zone ${previews.value.find((p) => p.zone_id === zoneId)?.zone_name}`)
+    if (ackGit) {
+      notify.warn('Deployed without snapshot', `Zone ${preview?.zone_name} — GitOps commit skipped`)
+    } else {
+      notify.success('Deployed', `Zone ${preview?.zone_name}`)
+    }
   } catch (err) {
     failedZones.value.add(zoneId)
     const msg = err instanceof ApiRequestError ? err.body.message : 'Push failed'
     notify.error('Deploy failed', msg)
+    // The repo went down between preview and push. Refresh so the warning
+    // banner appears and the operator can decide again.
+    if (err instanceof ApiRequestError && err.body.error === 'GIT_REPO_UNAVAILABLE') {
+      failedZones.value.delete(zoneId)
+      await repreviewZone(zoneId)
+    }
   } finally {
     pushingZones.value.delete(zoneId)
   }
@@ -162,8 +204,16 @@ async function repreviewZone(zoneId: number) {
 function handlePushAll() {
   const zones = zonesWithChanges.value
   const { adds, mods, dels } = totalChanges.value
+  // One confirmation for the whole batch, naming the zones that will deploy
+  // without a GitOps snapshot, rather than a dialog per zone.
+  const gitless = zonesWithGitUnavailable.value
+  const gitNote = gitless.length > 0
+    ? ` Warning: ${gitless.length} zone(s) will deploy WITHOUT a GitOps snapshot (${gitless
+        .map((p) => p.zone_name)
+        .join(', ')}).`
+    : ''
   confirmAction(
-    `Deploy changes to ${zones.length} zone(s)? ${adds} adds, ${mods} modifies, ${dels} deletes.`,
+    `Deploy changes to ${zones.length} zone(s)? ${adds} adds, ${mods} modifies, ${dels} deletes.${gitNote}`,
     'Confirm Deployment',
     async () => {
       for (const p of zones) {
@@ -179,9 +229,13 @@ function handlePushAll() {
 
 function handlePushSingle(zoneId: number) {
   const preview = previews.value.find((p) => p.zone_id === zoneId)
+  const gitless = preview ? gitUnavailable(preview) : false
+  const message = gitless
+    ? `Deploy zone "${preview?.zone_name}" WITHOUT a GitOps snapshot? The git repo is unreachable, so this deployment will not be mirrored.`
+    : `Deploy changes to zone "${preview?.zone_name}"?`
   confirmAction(
-    `Deploy changes to zone "${preview?.zone_name}"?`,
-    'Confirm Deployment',
+    message,
+    gitless ? 'Deploy without snapshot?' : 'Confirm Deployment',
     async () => {
       await pushZone(zoneId)
       await loadHistory()
@@ -365,6 +419,15 @@ onMounted(async () => {
           />
         </template>
 
+        <Message
+          v-if="gitUnavailable(preview)"
+          severity="warn"
+          :closable="false"
+          class="git-warning"
+        >
+          {{ gitWarning(preview) }}
+        </Message>
+
         <div v-if="preview.diffs.length > 0" class="diff-list">
           <!-- Per-provider grouping when multiple providers -->
           <template v-if="preview.providers && preview.providers.length > 1">
@@ -527,6 +590,14 @@ onMounted(async () => {
               value="Deployed"
               severity="success"
               icon="pi pi-play"
+            />
+            <Tag
+              v-if="gitSkipped(data.snapshot)"
+              value="No snapshot"
+              severity="warn"
+              icon="pi pi-exclamation-triangle"
+              class="ml-2"
+              v-tooltip.top="gitSkipReason(data.snapshot)"
             />
           </template>
         </Column>
@@ -692,6 +763,10 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.git-warning {
+  margin-bottom: 0.75rem;
 }
 
 .history-section {
