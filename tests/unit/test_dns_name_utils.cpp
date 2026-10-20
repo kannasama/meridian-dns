@@ -11,6 +11,7 @@ using dns::common::canonicalName;
 using dns::common::canonicalValue;
 using dns::common::ensureTrailingDot;
 using dns::common::isHostnameValuedType;
+using dns::common::isWithinZone;
 using dns::common::stripTrailingDot;
 
 // ---------------------------------------------------------------------------
@@ -112,4 +113,70 @@ TEST(DnsNameUtilsTest, CanonicalValueLeavesAddressValuesUntouched) {
 TEST(DnsNameUtilsTest, CanonicalValuePreservesTxtTrailingDot) {
   EXPECT_EQ(canonicalValue("TXT", "v=spf1 -all."), "v=spf1 -all.");
   EXPECT_NE(canonicalValue("TXT", "some text."), canonicalValue("TXT", "some text"));
+}
+
+// ---------------------------------------------------------------------------
+// isWithinZone (v1.1.5)
+//
+// AdGuard Home's rewrite list is a flat global list with no zone concept, so
+// the provider has to decide zone membership itself. Getting this wrong leaks
+// every other zone's records in as drift.
+// ---------------------------------------------------------------------------
+
+TEST(DnsNameUtilsZoneTest, ApexIsWithinZone) {
+  EXPECT_TRUE(isWithinZone("example.com", "example.com"));
+  EXPECT_TRUE(isWithinZone("example.com.", "example.com"));
+  EXPECT_TRUE(isWithinZone("example.com", "example.com."));
+}
+
+TEST(DnsNameUtilsZoneTest, SubdomainIsWithinZone) {
+  EXPECT_TRUE(isWithinZone("www.example.com.", "example.com."));
+  EXPECT_TRUE(isWithinZone("deep.nested.example.com.", "example.com."));
+}
+
+// The reported bug: a rewrite for one domain showed up as drift under an
+// entirely unrelated zone.
+TEST(DnsNameUtilsZoneTest, UnrelatedDomainIsNotWithinZone) {
+  EXPECT_FALSE(isWithinZone("vw.mjhnosekai.com.", "fubumio.com."));
+  EXPECT_FALSE(isWithinZone("mjhnosekai.com.", "fubumio.com."));
+}
+
+// "notexample.com" must not be treated as inside "example.com" — the suffix
+// check has to be label-aligned, not a raw string suffix.
+TEST(DnsNameUtilsZoneTest, SuffixWithoutLabelBoundaryIsNotWithinZone) {
+  EXPECT_FALSE(isWithinZone("notexample.com.", "example.com."));
+  EXPECT_FALSE(isWithinZone("myexample.com.", "example.com."));
+}
+
+TEST(DnsNameUtilsZoneTest, ParentZoneIsNotWithinChildZone) {
+  EXPECT_FALSE(isWithinZone("example.com.", "sub.example.com."));
+}
+
+// DNS names are case-insensitive, and zone membership is a containment test
+// rather than a value comparison, so it folds case (unlike canonicalName).
+TEST(DnsNameUtilsZoneTest, ZoneMembershipIsCaseInsensitive) {
+  EXPECT_TRUE(isWithinZone("WWW.Example.COM.", "example.com."));
+  EXPECT_TRUE(isWithinZone("www.example.com.", "EXAMPLE.COM."));
+}
+
+// AdGuard Home supports wildcard rewrites; one scoped to the zone belongs to it.
+TEST(DnsNameUtilsZoneTest, WildcardScopedToZoneIsWithinZone) {
+  EXPECT_TRUE(isWithinZone("*.example.com.", "example.com."));
+  EXPECT_TRUE(isWithinZone("*.sub.example.com.", "example.com."));
+}
+
+TEST(DnsNameUtilsZoneTest, WildcardForAnotherZoneIsNotWithinZone) {
+  EXPECT_FALSE(isWithinZone("*.mjhnosekai.com.", "fubumio.com."));
+}
+
+// A bare catch-all rewrite belongs to no particular zone and must not be
+// claimed by whichever zone happens to be previewed.
+TEST(DnsNameUtilsZoneTest, BareCatchAllBelongsToNoZone) {
+  EXPECT_FALSE(isWithinZone("*", "example.com."));
+  EXPECT_FALSE(isWithinZone("*.", "example.com."));
+}
+
+TEST(DnsNameUtilsZoneTest, EmptyInputsAreNotWithinZone) {
+  EXPECT_FALSE(isWithinZone("", "example.com."));
+  EXPECT_FALSE(isWithinZone("www.example.com.", ""));
 }

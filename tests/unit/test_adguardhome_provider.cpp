@@ -273,3 +273,71 @@ TEST_F(AdGuardPrepareTest, RecordIdEncodingStaysDotless) {
   EXPECT_EQ(sDomain, "www.example.com");
   EXPECT_EQ(sAnswer, "nas.home.arpa");
 }
+
+// ---------------------------------------------------------------------------
+// parseRewritesResponse — zone scoping (v1.1.5)
+//
+// AdGuard Home's /control/rewrite/list is a flat global list with no zone
+// concept. listRecords() used to discard the zone name it was given, so every
+// zone attached to the provider saw every other zone's rewrites as live
+// records with no desired counterpart — reported as drift.
+// ---------------------------------------------------------------------------
+
+TEST(AdGuardZoneScopeTest, ExcludesRewritesFromOtherZones) {
+  std::string sJson = R"([
+    {"domain": "vw.mjhnosekai.com", "answer": "192.168.1.10"},
+    {"domain": "www.fubumio.com", "answer": "192.168.1.20"}
+  ])";
+
+  auto vRecords = AdGuardHomeProvider::parseRewritesResponse(sJson, "fubumio.com.");
+  ASSERT_EQ(vRecords.size(), 1u);
+  EXPECT_EQ(vRecords[0].sName, "www.fubumio.com.");
+}
+
+TEST(AdGuardZoneScopeTest, IncludesApexAndSubdomains) {
+  std::string sJson = R"([
+    {"domain": "fubumio.com", "answer": "192.168.1.1"},
+    {"domain": "www.fubumio.com", "answer": "192.168.1.2"},
+    {"domain": "deep.nested.fubumio.com", "answer": "192.168.1.3"}
+  ])";
+
+  auto vRecords = AdGuardHomeProvider::parseRewritesResponse(sJson, "fubumio.com.");
+  EXPECT_EQ(vRecords.size(), 3u);
+}
+
+TEST(AdGuardZoneScopeTest, IncludesWildcardScopedToZone) {
+  std::string sJson = R"([
+    {"domain": "*.fubumio.com", "answer": "192.168.1.1"},
+    {"domain": "*.mjhnosekai.com", "answer": "192.168.1.2"}
+  ])";
+
+  auto vRecords = AdGuardHomeProvider::parseRewritesResponse(sJson, "fubumio.com.");
+  ASSERT_EQ(vRecords.size(), 1u);
+  EXPECT_EQ(vRecords[0].sName, "*.fubumio.com.");
+}
+
+// A near-miss domain must not be pulled in by a raw string suffix match.
+TEST(AdGuardZoneScopeTest, ExcludesLookalikeDomain) {
+  std::string sJson = R"([{"domain": "notfubumio.com", "answer": "192.168.1.1"}])";
+  auto vRecords = AdGuardHomeProvider::parseRewritesResponse(sJson, "fubumio.com.");
+  EXPECT_TRUE(vRecords.empty());
+}
+
+// An empty zone name means "do not scope" — preserves the existing behaviour
+// for callers that genuinely want the whole rewrite list.
+TEST(AdGuardZoneScopeTest, EmptyZoneReturnsEverything) {
+  std::string sJson = R"([
+    {"domain": "vw.mjhnosekai.com", "answer": "192.168.1.10"},
+    {"domain": "www.fubumio.com", "answer": "192.168.1.20"}
+  ])";
+
+  auto vRecords = AdGuardHomeProvider::parseRewritesResponse(sJson, "");
+  EXPECT_EQ(vRecords.size(), 2u);
+}
+
+// The single-argument form is still used by existing callers and tests.
+TEST(AdGuardZoneScopeTest, SingleArgumentFormIsUnscoped) {
+  std::string sJson = R"([{"domain": "vw.mjhnosekai.com", "answer": "192.168.1.10"}])";
+  auto vRecords = AdGuardHomeProvider::parseRewritesResponse(sJson);
+  EXPECT_EQ(vRecords.size(), 1u);
+}

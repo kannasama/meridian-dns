@@ -80,7 +80,7 @@ std::pair<std::string, std::string> AdGuardHomeProvider::decodeRecordId(
 }
 
 std::vector<common::DnsRecord> AdGuardHomeProvider::parseRewritesResponse(
-    const std::string& sJson) {
+    const std::string& sJson, const std::string& sZoneName) {
   std::vector<common::DnsRecord> vRecords;
   auto jArr = json::parse(sJson);
 
@@ -88,6 +88,11 @@ std::vector<common::DnsRecord> AdGuardHomeProvider::parseRewritesResponse(
     std::string sDomain = jRec.value("domain", "");
     std::string sAnswer = jRec.value("answer", "");
     if (sDomain.empty() || sAnswer.empty()) continue;
+
+    // AdGuard's rewrite list is a single flat namespace with no zone concept,
+    // so scope it here. Otherwise every rewrite outside this zone arrives as a
+    // live record with no desired counterpart and is reported as drift.
+    if (!sZoneName.empty() && !common::isWithinZone(sDomain, sZoneName)) continue;
 
     common::DnsRecord dr;
     dr.sProviderRecordId = encodeRecordId(sDomain, sAnswer);
@@ -138,7 +143,7 @@ common::HealthStatus AdGuardHomeProvider::testConnectivity() {
 // ---------------------------------------------------------------------------
 
 std::vector<common::DnsRecord> AdGuardHomeProvider::listRecords(
-    const std::string& /*sZoneName*/) {
+    const std::string& sZoneName) {
   auto spLog = common::Logger::get();
   auto res = _upClient->Get("/control/rewrite/list");
   if (!res) {
@@ -150,8 +155,9 @@ std::vector<common::DnsRecord> AdGuardHomeProvider::listRecords(
                                 "AdGuard Home returned status " + std::to_string(res->status));
   }
 
-  auto vRecords = parseRewritesResponse(res->body);
-  spLog->debug("AdGuard Home: listed {} rewrites from {}", vRecords.size(), _sApiEndpoint);
+  auto vRecords = parseRewritesResponse(res->body, sZoneName);
+  spLog->debug("AdGuard Home: listed {} rewrites for zone '{}' from {}", vRecords.size(),
+               sZoneName, _sApiEndpoint);
   return vRecords;
 }
 

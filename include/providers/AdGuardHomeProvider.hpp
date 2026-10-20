@@ -41,7 +41,12 @@ class AdGuardHomeProvider : public IProvider {
       const std::vector<common::DnsRecord>& vDesired) const override;
 
   /// Parse GET /control/rewrite/list response. Public for unit testing.
-  static std::vector<common::DnsRecord> parseRewritesResponse(const std::string& sJson);
+  /// Parse AdGuard's flat rewrite list into records.
+  /// sZoneName scopes the result to that zone's apex and subdomains; the
+  /// rewrite list is global, so without this every zone sees every other
+  /// zone's rewrites. An empty zone name returns the list unscoped.
+  static std::vector<common::DnsRecord> parseRewritesResponse(
+      const std::string& sJson, const std::string& sZoneName = "");
 
   /// Encode provider record ID from domain + answer. Public for unit testing.
   static std::string encodeRecordId(const std::string& sDomain, const std::string& sAnswer);
