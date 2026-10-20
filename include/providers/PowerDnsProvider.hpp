@@ -48,6 +48,17 @@ class PowerDnsProvider : public IProvider {
   static bool parseRecordId(const std::string& sId, std::string& sName,
                             std::string& sType, std::string& sValue);
 
+  /// Render a TXT value as PowerDNS presentation format: quoted, escaped, and
+  /// split into 255-byte character-strings. Tolerates a value that was already
+  /// stored in presentation format rather than double-quoting it.
+  static std::string buildTxtContent(const std::string& sValue);
+
+  /// Normalise desired records before diffing. TXT values are coerced to the
+  /// canonical unquoted form so they compare equal to what parseZoneResponse
+  /// yields, and so the pushed value (taken from the diff) is clean.
+  std::vector<common::DnsRecord> prepareDesiredRecords(
+      const std::vector<common::DnsRecord>& vDesired) const override;
+
  private:
   std::string _sApiEndpoint;
   std::string _sToken;
@@ -57,6 +68,7 @@ class PowerDnsProvider : public IProvider {
 
   /// Ensure zone name ends with a dot (PowerDNS requirement).
   static std::string canonicalZone(const std::string& sZoneName);
+
 };
 
 }  // namespace dns::providers

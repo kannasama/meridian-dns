@@ -149,3 +149,55 @@ TEST_F(RecordValidatorTest, MultipleSoaWarningWhenSoaExists) {
   }
   EXPECT_TRUE(bFound);
 }
+
+// ---------------------------------------------------------------------------
+// TXT quoting advisory (v1.1.5)
+//
+// The provider now quotes, escapes and chunks TXT values itself, so storing a
+// pre-quoted value is redundant. It is accepted and normalised rather than
+// rejected, since operators routinely paste values from provider docs.
+// ---------------------------------------------------------------------------
+
+TEST_F(RecordValidatorTest, TxtQuotedValue_WarnsThatQuotesAreAddedAutomatically) {
+  EXPECT_CALL(_mockRepo, listByZoneId(1)).WillOnce(Return(std::vector<RecordRow>{}));
+
+  dns::core::RecordValidator rv(_mockRepo);
+  auto vW = rv.validate(1, "@", "TXT", "\"v=spf1 -all\"");
+  bool bFound = false;
+  for (const auto& w : vW) {
+    if (w.sCode == "TXT_QUOTED_VALUE" && w.sSeverity == "warning") bFound = true;
+  }
+  EXPECT_TRUE(bFound);
+}
+
+TEST_F(RecordValidatorTest, TxtUnquotedValue_NoWarning) {
+  EXPECT_CALL(_mockRepo, listByZoneId(1)).WillOnce(Return(std::vector<RecordRow>{}));
+
+  dns::core::RecordValidator rv(_mockRepo);
+  auto vW = rv.validate(1, "@", "TXT", "v=spf1 -all");
+  for (const auto& w : vW) {
+    EXPECT_NE(w.sCode, "TXT_QUOTED_VALUE");
+  }
+}
+
+// A quote in the middle is content, not presentation syntax.
+TEST_F(RecordValidatorTest, TxtValueWithInternalQuote_NoWarning) {
+  EXPECT_CALL(_mockRepo, listByZoneId(1)).WillOnce(Return(std::vector<RecordRow>{}));
+
+  dns::core::RecordValidator rv(_mockRepo);
+  auto vW = rv.validate(1, "@", "TXT", "say \"hi\" now");
+  for (const auto& w : vW) {
+    EXPECT_NE(w.sCode, "TXT_QUOTED_VALUE");
+  }
+}
+
+// The advisory must not fire for other record types.
+TEST_F(RecordValidatorTest, NonTxtQuotedValue_NoTxtWarning) {
+  EXPECT_CALL(_mockRepo, listByZoneId(1)).WillOnce(Return(std::vector<RecordRow>{}));
+
+  dns::core::RecordValidator rv(_mockRepo);
+  auto vW = rv.validate(1, "www", "A", "\"192.168.1.1\"");
+  for (const auto& w : vW) {
+    EXPECT_NE(w.sCode, "TXT_QUOTED_VALUE");
+  }
+}

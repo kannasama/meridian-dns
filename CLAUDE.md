@@ -39,8 +39,9 @@ Include details documented in `tasks/lessons.md` when factoring in planning and 
 - **v0.9.5 complete:** Bug fixes, UX improvements, user/group/API key management
 - **v1.1.2 complete:** Deployment bug fixes, system logging
 - **v1.1.4 complete:** Git availability gate, AdGuard trailing-dot drift fix
+- **v1.1.5 complete:** AdGuard cross-zone drift fix, PowerDNS TXT quoting
 - **Next task:** Phase 11 — TUI Client (separate repository)
-- **Tests:** 602 total (577 pass with `DNS_DB_URL`, 25 skip; 338 pass / 264 skip without a DB)
+- **Tests:** 650 total (625 pass with `DNS_DB_URL`, 25 skip; 386 pass / 264 skip without a DB)
 
 Build and test:
 ```bash
@@ -401,6 +402,54 @@ Full design in `docs/plans/2026-10-04-git-availability-adguard-drift-design.md`.
 
 ---
 
+### v1.1.5 — AdGuard Cross-Zone Drift + PowerDNS TXT Quoting ← COMPLETE
+
+**Summary:** Two drift false-positives reported from production use.
+
+**Issue 1 — AdGuard rewrites leaked across zones:**
+`AdGuardHomeProvider::listRecords()` accepted `sZoneName` and discarded it. AdGuard's
+`/control/rewrite/list` is a flat global namespace with no zone concept, so every zone
+attached to the provider saw every other zone's rewrites as live records with no desired
+counterpart — reported as drift (e.g. `vw.mjhnosekai.com` under zone `fubumio.com`).
+
+- `common::isWithinZone()` in `DnsNameUtils.hpp` — label-aligned suffix test, so
+  `notexample.com` is not inside `example.com`. Folds case (unlike `canonicalName`, since
+  this is containment rather than value comparison). `*.zone` wildcards belong to the zone;
+  a bare `*` catch-all belongs to none.
+- `parseRewritesResponse(sJson, sZoneName = "")` scopes the list; empty zone = unscoped.
+
+**Issue 2 — PowerDNS TXT quoting asymmetry:**
+The read path stripped surrounding quotes (making unquoted the canonical internal form) but
+the write path sent values verbatim and never added them. Unquoted TXT was rejected by
+PowerDNS; storing the quotes to work around that then collided with read-side stripping and
+produced permanent drift.
+
+- `include/common/TxtRdata.hpp` — `parseTxtPresentation()` (joins multi-chunk
+  `"a" "b"` → `ab`, unescapes `\\`, `\"`, `\DDD`), `toTxtPresentation()` (escapes, quotes,
+  chunks at 255 **unescaped** bytes), `normalizeTxtValue()` (tolerant coercion).
+- `PowerDnsProvider` — read path parses presentation format; new `prepareDesiredRecords()`
+  normalises TXT (the single hook that fixes both comparison and the pushed value, since
+  push builds records from `diff.sSourceValue`); all four write sites route through one
+  `buildContent()` helper. `makeRecordId` still uses the original wire content, so record
+  IDs are stable.
+- `scripts/db/v022/001_normalize_txt_quotes.sql` — strips quotes from stored single-chunk
+  TXT values; multi-chunk values are left to the provider's escape-aware parser.
+- `RecordValidator` — `TXT_QUOTED_VALUE` advisory (warning, not error: quoted values are
+  accepted and normalised, since operators paste them from provider docs).
+
+**Deliberately not done:** `DiffEngine` was *not* made quote-insensitive. A trailing dot is
+presentation syntax for a hostname, but TXT content is opaque bytes — quote-insensitivity in
+the shared diff path would mask provider bugs. The provider owns its wire format.
+
+Cloudflare/DigitalOcean/AdGuard are untouched: their APIs take raw values, which is already
+the canonical form.
+
+**Tests:** 650 total, 625 pass with a DB (25 skip), 386 pass without one (264 skip), 0 fail.
+48 new: 10 `isWithinZone`, 6 AdGuard zone scoping, 19 TxtRdata, 9 PowerDNS TXT, 4 validator.
+The v022 migration was verified against seeded rows covering every case.
+
+---
+
 ### Phase 11 — TUI Client
 
 Separate repository: `meridian-dns-tui`. Consumes REST API. See `docs/TUI_DESIGN.md`.
@@ -480,6 +529,8 @@ automatically once it is in `kSettings` and exposed in `ui/src/views/SettingsVie
 | `docs/plans/2026-03-22-v1.1.2-bugfixes-system-logging.md` | v1.1.2 implementation plan |
 | `include/common/DnsNameUtils.hpp` | Trailing-dot/FQDN helpers for record comparison |
 | `include/gitops/GitRepoProbe.hpp` | Git remote reachability probe with TTL cache |
+| `include/common/TxtRdata.hpp` | TXT presentation-format parse/render/chunk helpers |
+| `scripts/db/v022/001_normalize_txt_quotes.sql` | Normalise stored TXT values to unquoted |
 | `docs/plans/2026-10-04-git-availability-adguard-drift-design.md` | v1.1.4 design spec |
 | `include/dal/SystemLogRepository.hpp` | System log repository (insert, query, purge) |
 | `include/api/routes/SystemLogRoutes.hpp` | System log API routes (admin only) |

@@ -79,7 +79,18 @@ std::vector<dns::common::ValidationWarning> RecordValidator::validate(
     }
   }
 
-  // Check 4: Multiple SOA.
+  // Check 4: TXT value stored in presentation format.
+  // Accepted and normalised at the provider boundary rather than rejected,
+  // since operators routinely paste quoted values from provider docs. A quote
+  // in the middle of the value is content, so only a fully-wrapped value warns.
+  if (sType == "TXT" && sValue.size() >= 2 && sValue.front() == '"' &&
+      sValue.back() == '"') {
+    vWarnings.push_back({"TXT_QUOTED_VALUE", "warning",
+        "TXT values are stored unquoted — quotes are added automatically when "
+        "deploying, so the surrounding quotes here are unnecessary"});
+  }
+
+  // Check 5: Multiple SOA.
   if (sType == "SOA") {
     bool bExistingSoa = std::any_of(vExisting.begin(), vExisting.end(),
         [&](const dns::dal::RecordRow& r) {

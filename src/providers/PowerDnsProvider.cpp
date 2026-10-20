@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "common/Errors.hpp"
+#include "common/TxtRdata.hpp"
 #include "common/Logger.hpp"
 
 namespace dns::providers {
@@ -81,6 +82,45 @@ common::HealthStatus PowerDnsProvider::testConnectivity() {
   }
 }
 
+std::string PowerDnsProvider::buildTxtContent(const std::string& sValue) {
+  return common::toTxtPresentation(common::normalizeTxtValue(sValue));
+}
+
+std::vector<common::DnsRecord> PowerDnsProvider::prepareDesiredRecords(
+    const std::vector<common::DnsRecord>& vDesired) const {
+  std::vector<common::DnsRecord> vResult;
+  vResult.reserve(vDesired.size());
+
+  for (const auto& dr : vDesired) {
+    common::DnsRecord transformed = dr;
+    if (transformed.sType == "TXT") {
+      // Accept either storage form. Operators often paste values already in
+      // presentation format from a provider's documentation; storing those
+      // verbatim previously produced permanent drift against the parsed live
+      // value.
+      transformed.sValue = common::normalizeTxtValue(transformed.sValue);
+    }
+    vResult.push_back(std::move(transformed));
+  }
+
+  return vResult;
+}
+
+namespace {
+
+/// Build the PowerDNS `content` field for one record: MX/SRV carry their
+/// priority as the first token, and TXT must be in presentation format.
+std::string buildContent(const std::string& sType, const std::string& sValue,
+                         int iPriority) {
+  if (sType == "TXT") return PowerDnsProvider::buildTxtContent(sValue);
+  if ((sType == "MX" || sType == "SRV") && iPriority > 0) {
+    return std::to_string(iPriority) + " " + sValue;
+  }
+  return sValue;
+}
+
+}  // namespace
+
 std::vector<common::DnsRecord> PowerDnsProvider::parseZoneResponse(const std::string& sJson) {
   std::vector<common::DnsRecord> vRecords;
   auto jZone = json::parse(sJson);
@@ -96,11 +136,12 @@ std::vector<common::DnsRecord> PowerDnsProvider::parseZoneResponse(const std::st
 
       std::string sContent = jRecord.at("content").get<std::string>();
 
-      // TXT records: PowerDNS returns values with surrounding quotes — strip them
-      // so they match the unquoted values stored in our database
-      if (sType == "TXT" && sContent.size() >= 2 && sContent.front() == '"' &&
-          sContent.back() == '"') {
-        sContent = sContent.substr(1, sContent.size() - 2);
+      // TXT records: PowerDNS speaks zone-file presentation format. Parse it
+      // into the canonical unquoted value, joining the multiple
+      // character-strings a long value is split across on the wire. A naive
+      // quote strip mangled those into: part1" "part2
+      if (sType == "TXT") {
+        sContent = common::parseTxtPresentation(sContent);
       }
 
       int iPriority = 0;
@@ -169,19 +210,13 @@ common::PushResult PowerDnsProvider::createRecord(const std::string& sZoneName,
     // Zone may not have any records yet — proceed with just the new record
   }
 
-  // Build content string (MX/SRV prefix priority)
-  std::string sContent = drRecord.sValue;
-  if ((drRecord.sType == "MX" || drRecord.sType == "SRV") && drRecord.iPriority > 0) {
-    sContent = std::to_string(drRecord.iPriority) + " " + drRecord.sValue;
-  }
+  // Build content string (MX/SRV priority prefix, TXT presentation format)
+  std::string sContent = buildContent(drRecord.sType, drRecord.sValue, drRecord.iPriority);
 
   // Build records array: existing + new
   json jRecords = json::array();
   for (const auto& dr : vExisting) {
-    std::string sExistingContent = dr.sValue;
-    if ((dr.sType == "MX" || dr.sType == "SRV") && dr.iPriority > 0) {
-      sExistingContent = std::to_string(dr.iPriority) + " " + dr.sValue;
-    }
+    std::string sExistingContent = buildContent(dr.sType, dr.sValue, dr.iPriority);
     jRecords.push_back({{"content", sExistingContent}, {"disabled", false}});
   }
   jRecords.push_back({{"content", sContent}, {"disabled", false}});
@@ -241,16 +276,10 @@ common::PushResult PowerDnsProvider::updateRecord(const std::string& sZoneName,
     parseRecordId(dr.sProviderRecordId, sCheckName, sCheckType, sCheckValue);
     if (sCheckValue == sOldValue) {
       // This is the record to update — use new value
-      sContent = drRecord.sValue;
-      if ((drRecord.sType == "MX" || drRecord.sType == "SRV") && drRecord.iPriority > 0) {
-        sContent = std::to_string(drRecord.iPriority) + " " + drRecord.sValue;
-      }
+      sContent = buildContent(drRecord.sType, drRecord.sValue, drRecord.iPriority);
     } else {
       // Keep existing record as-is
-      sContent = dr.sValue;
-      if ((dr.sType == "MX" || dr.sType == "SRV") && dr.iPriority > 0) {
-        sContent = std::to_string(dr.iPriority) + " " + dr.sValue;
-      }
+      sContent = buildContent(dr.sType, dr.sValue, dr.iPriority);
     }
     jRecords.push_back({{"content", sContent}, {"disabled", false}});
   }
@@ -315,10 +344,7 @@ common::PushResult PowerDnsProvider::deleteRecord(const std::string& sZoneName,
       bFound = true;
       continue;  // skip — this is the one to delete
     }
-    std::string sContent = dr.sValue;
-    if ((dr.sType == "MX" || dr.sType == "SRV") && dr.iPriority > 0) {
-      sContent = std::to_string(dr.iPriority) + " " + dr.sValue;
-    }
+    std::string sContent = buildContent(dr.sType, dr.sValue, dr.iPriority);
     jRecords.push_back({{"content", sContent}, {"disabled", false}});
   }
 
