@@ -323,3 +323,100 @@ TEST(DiffEngineFromFqdnTest, EmptyInputs) {
   EXPECT_EQ(DiffEngine::fromFqdn("", "example.com"), "");
   EXPECT_EQ(DiffEngine::fromFqdn("example.com.", ""), "example.com.");
 }
+
+// ---------------------------------------------------------------------------
+// Trailing-dot insensitivity (v1.1.4)
+//
+// A trailing dot on a hostname-valued record is DNS presentation syntax, not
+// content. Providers disagree about emitting it (AdGuard Home returns rewrite
+// answers dotless), so comparing raw strings produced a permanent Add + Drift
+// pair that no deployment could ever resolve.
+// ---------------------------------------------------------------------------
+
+TEST(DiffEngineTrailingDotTest, CnameDifferingOnlyByTrailingDotIsNotDrift) {
+  std::vector<DnsRecord> vDesired = {
+      makeRecord("www.example.com.", "CNAME", "nas.home.arpa.")};
+  std::vector<DnsRecord> vLive = {
+      makeRecord("www.example.com.", "CNAME", "nas.home.arpa")};
+
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+  EXPECT_TRUE(vDiffs.empty());
+}
+
+TEST(DiffEngineTrailingDotTest, NameDifferingOnlyByTrailingDotIsNotDrift) {
+  std::vector<DnsRecord> vDesired = {makeRecord("www.example.com.", "A", "1.2.3.4")};
+  std::vector<DnsRecord> vLive = {makeRecord("www.example.com", "A", "1.2.3.4")};
+
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+  EXPECT_TRUE(vDiffs.empty());
+}
+
+TEST(DiffEngineTrailingDotTest, AppliesToAllHostnameValuedTypes) {
+  std::vector<DnsRecord> vDesired = {
+      makeRecord("example.com.", "MX", "mail.example.com."),
+      makeRecord("example.com.", "NS", "ns1.example.com."),
+      makeRecord("_sip._tcp.example.com.", "SRV", "sip.example.com."),
+      makeRecord("1.0.0.10.in-addr.arpa.", "PTR", "host.example.com."),
+  };
+  std::vector<DnsRecord> vLive = {
+      makeRecord("example.com.", "MX", "mail.example.com"),
+      makeRecord("example.com.", "NS", "ns1.example.com"),
+      makeRecord("_sip._tcp.example.com.", "SRV", "sip.example.com"),
+      makeRecord("1.0.0.10.in-addr.arpa.", "PTR", "host.example.com"),
+  };
+
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+  EXPECT_TRUE(vDiffs.empty());
+}
+
+// A TXT trailing dot is real content, so it must still register as a change.
+TEST(DiffEngineTrailingDotTest, TxtTrailingDotIsStillAChange) {
+  std::vector<DnsRecord> vDesired = {makeRecord("example.com.", "TXT", "hello.")};
+  std::vector<DnsRecord> vLive = {makeRecord("example.com.", "TXT", "hello")};
+
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+  ASSERT_EQ(vDiffs.size(), 1u);
+  EXPECT_EQ(vDiffs[0].action, DiffAction::Update);
+}
+
+// Canonicalisation governs equality only — the emitted diff must still show
+// each side exactly as it is stored, so the UI reports the truth.
+TEST(DiffEngineTrailingDotTest, DiffPreservesOriginalValuesOnUpdate) {
+  std::vector<DnsRecord> vDesired = {
+      makeRecord("www.example.com.", "CNAME", "new.example.com.")};
+  std::vector<DnsRecord> vLive = {
+      makeRecord("www.example.com.", "CNAME", "old.example.com")};
+
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+  ASSERT_EQ(vDiffs.size(), 1u);
+  EXPECT_EQ(vDiffs[0].action, DiffAction::Update);
+  EXPECT_EQ(vDiffs[0].sSourceValue, "new.example.com.");
+  EXPECT_EQ(vDiffs[0].sProviderValue, "old.example.com");
+}
+
+// The provider record ID is required to execute an update, and is recovered by
+// matching the live record. That lookup must survive canonicalisation.
+TEST(DiffEngineTrailingDotTest, ProviderRecordIdRecoveredOnUpdate) {
+  std::vector<DnsRecord> vDesired = {
+      makeRecord("www.example.com.", "CNAME", "new.example.com.")};
+  auto live = makeRecord("www.example.com.", "CNAME", "old.example.com");
+  live.sProviderRecordId = "www.example.com|old.example.com";
+  std::vector<DnsRecord> vLive = {live};
+
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+  ASSERT_EQ(vDiffs.size(), 1u);
+  EXPECT_EQ(vDiffs[0].action, DiffAction::Update);
+  EXPECT_EQ(vDiffs[0].sProviderRecordId, "www.example.com|old.example.com");
+}
+
+// A genuine change must still produce exactly one Update, not an Add + Drift.
+TEST(DiffEngineTrailingDotTest, GenuineValueChangeStillYieldsSingleUpdate) {
+  std::vector<DnsRecord> vDesired = {
+      makeRecord("www.example.com.", "CNAME", "new.example.com.")};
+  std::vector<DnsRecord> vLive = {
+      makeRecord("www.example.com.", "CNAME", "old.example.com.")};
+
+  auto vDiffs = DiffEngine::computeDiff(vDesired, vLive);
+  ASSERT_EQ(vDiffs.size(), 1u);
+  EXPECT_EQ(vDiffs[0].action, DiffAction::Update);
+}

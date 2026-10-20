@@ -63,6 +63,18 @@ struct ProviderPreviewResult {
   bool bHasDrift = false;
 };
 
+/// Availability of the GitOps mirror assigned to a zone.
+/// Reported on preview so the operator can decide before deploying.
+/// Class abbreviation: gs
+struct GitStatus {
+  bool bConfigured = false;   // zone has a git_repo_id assigned
+  int64_t iRepoId = 0;
+  std::string sRepoName;
+  bool bReachable = false;
+  std::string sError;         // probe failure reason; empty when reachable
+  std::string sCheckedAt;     // ISO8601
+};
+
 /// Result of a preview/diff operation.
 /// Class abbreviation: pr
 struct PreviewResult {

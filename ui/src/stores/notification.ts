@@ -23,6 +23,10 @@ export const useNotificationStore = defineStore('notification', () => {
     add({ severity: 'success', summary, detail })
   }
 
+  function warn(summary: string, detail?: string) {
+    add({ severity: 'warn', summary, detail })
+  }
+
   function error(summary: string, detail?: string) {
     add({ severity: 'error', summary, detail })
   }
@@ -31,5 +35,5 @@ export const useNotificationStore = defineStore('notification', () => {
     messages.value = []
   }
 
-  return { messages, add, success, error, clear }
+  return { messages, add, success, warn, error, clear }
 })

@@ -5,6 +5,7 @@
 #include "gitops/GitRepoManager.hpp"
 
 #include <gtest/gtest.h>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <pqxx/pqxx>
@@ -146,4 +147,130 @@ TEST_F(GitRepoManagerTest, ReadFile_RejectsPathTraversal) {
 
   EXPECT_THROW(mgr.readFile(iRepoId, "../../etc/passwd"),
                dns::common::ValidationError);
+}
+
+// ---------------------------------------------------------------------------
+// Git availability probe (v1.1.4)
+//
+// An unreachable remote used to block the deployment thread until the OS TCP
+// timeout and then fail silently. The probe must detect it fast and report the
+// skip to the caller so the deployment can record it.
+// ---------------------------------------------------------------------------
+
+TEST_F(GitRepoManagerTest, GitStatusNotConfiguredWhenZoneHasNoRepo) {
+  int64_t iViewId = _vrRepo->create("test-view", "Test view");
+  int64_t iZoneId = _zrRepo->create("example.com", iViewId, std::nullopt);
+
+  dns::gitops::GitRepoManager mgr(*_grRepo, *_zrRepo, *_vrRepo, *_rrRepo,
+                                   *_veEngine, _sTmpDir.string());
+  mgr.initialize();
+
+  auto gs = mgr.gitStatusForZone(iZoneId);
+  EXPECT_FALSE(gs.bConfigured);
+}
+
+TEST_F(GitRepoManagerTest, GitStatusReportsUnreachableRemoteWithReason) {
+  // 127.0.0.1:1 is reserved and never listening — a deterministic refusal.
+  int64_t iRepoId = _grRepo->create("dead-repo", "ssh://git@127.0.0.1:1/org/repo.git",
+                                      "none", "", "main", "", "");
+  int64_t iViewId = _vrRepo->create("test-view", "Test view");
+  int64_t iZoneId = _zrRepo->create("example.com", iViewId, std::nullopt,
+                                     false, false, iRepoId);
+
+  dns::gitops::GitRepoManager mgr(*_grRepo, *_zrRepo, *_vrRepo, *_rrRepo,
+                                   *_veEngine, _sTmpDir.string(),
+                                   /*iProbeTimeoutMs=*/1000,
+                                   /*iProbeCacheTtlSeconds=*/0);
+  mgr.initialize();
+
+  auto gs = mgr.gitStatusForZone(iZoneId);
+  EXPECT_TRUE(gs.bConfigured);
+  EXPECT_EQ(gs.iRepoId, iRepoId);
+  EXPECT_EQ(gs.sRepoName, "dead-repo");
+  EXPECT_FALSE(gs.bReachable);
+  EXPECT_FALSE(gs.sError.empty());
+  EXPECT_FALSE(gs.sCheckedAt.empty());
+}
+
+// The mirror must actually be loaded for this to exercise the probe gate
+// rather than the "mirror not loaded" path, so the remote is reachable at
+// startup and only then goes away. A local path remote makes that reproducible:
+// the probe resolves it with a filesystem existence check.
+TEST_F(GitRepoManagerTest, CommitZoneSnapshotSkipsWhenLoadedMirrorsRemoteGoesAway) {
+  auto sRemoteDir = _sTmpDir / "origin.git";
+  ASSERT_EQ(std::system(("git init --bare " + sRemoteDir.string() + " 2>/dev/null").c_str()), 0);
+
+  int64_t iRepoId = _grRepo->create("vanishing-repo", sRemoteDir.string(),
+                                      "none", "", "master", "", "");
+  int64_t iViewId = _vrRepo->create("test-view", "Test view");
+  int64_t iZoneId = _zrRepo->create("example.com", iViewId, std::nullopt,
+                                     false, false, iRepoId);
+
+  dns::gitops::GitRepoManager mgr(*_grRepo, *_zrRepo, *_vrRepo, *_rrRepo,
+                                   *_veEngine, _sTmpDir.string(),
+                                   /*iProbeTimeoutMs=*/1000,
+                                   /*iProbeCacheTtlSeconds=*/0);
+  mgr.initialize();
+
+  // Confirm the mirror really did load, otherwise this test proves nothing.
+  ASSERT_TRUE(mgr.gitStatusForZone(iZoneId).bReachable);
+
+  // Now take the remote away.
+  std::filesystem::remove_all(sRemoteDir);
+
+  auto tStart = std::chrono::steady_clock::now();
+  auto outcome = mgr.commitZoneSnapshot(iZoneId, "test-user");
+  auto iElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - tStart)
+                        .count();
+
+  EXPECT_TRUE(outcome.bConfigured);
+  EXPECT_FALSE(outcome.bCommitted);
+  EXPECT_TRUE(outcome.skipped());
+  EXPECT_EQ(outcome.sRepoName, "vanishing-repo");
+  // Must be the probe gate, not the mirror-not-loaded branch.
+  EXPECT_NE(outcome.sReason.find("unreachable"), std::string::npos)
+      << "actual reason: " << outcome.sReason;
+  EXPECT_LT(iElapsedMs, 5000);
+}
+
+// A remote that was never reachable cannot load a mirror at startup; the commit
+// must still report a skip rather than silently doing nothing.
+TEST_F(GitRepoManagerTest, CommitZoneSnapshotSkipsUnloadableRemoteQuickly) {
+  // 127.0.0.1:1 is reserved and never listening — a deterministic refusal.
+  int64_t iRepoId = _grRepo->create("dead-repo", "ssh://git@127.0.0.1:1/org/repo.git",
+                                      "none", "", "main", "", "");
+  int64_t iViewId = _vrRepo->create("test-view", "Test view");
+  int64_t iZoneId = _zrRepo->create("example.com", iViewId, std::nullopt,
+                                     false, false, iRepoId);
+
+  dns::gitops::GitRepoManager mgr(*_grRepo, *_zrRepo, *_vrRepo, *_rrRepo,
+                                   *_veEngine, _sTmpDir.string(),
+                                   /*iProbeTimeoutMs=*/1000,
+                                   /*iProbeCacheTtlSeconds=*/0);
+  mgr.initialize();
+
+  auto tStart = std::chrono::steady_clock::now();
+  auto outcome = mgr.commitZoneSnapshot(iZoneId, "test-user");
+  auto iElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - tStart)
+                        .count();
+
+  EXPECT_TRUE(outcome.bConfigured);
+  EXPECT_TRUE(outcome.skipped());
+  EXPECT_FALSE(outcome.sReason.empty());
+  EXPECT_LT(iElapsedMs, 5000);
+}
+
+TEST_F(GitRepoManagerTest, CommitZoneSnapshotOutcomeNotConfiguredWhenNoRepo) {
+  int64_t iViewId = _vrRepo->create("test-view", "Test view");
+  int64_t iZoneId = _zrRepo->create("example.com", iViewId, std::nullopt);
+
+  dns::gitops::GitRepoManager mgr(*_grRepo, *_zrRepo, *_vrRepo, *_rrRepo,
+                                   *_veEngine, _sTmpDir.string());
+  mgr.initialize();
+
+  auto outcome = mgr.commitZoneSnapshot(iZoneId, "test-user");
+  EXPECT_FALSE(outcome.bConfigured);
+  EXPECT_FALSE(outcome.skipped());
 }

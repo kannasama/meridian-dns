@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "common/DnsNameUtils.hpp"
 #include "common/Errors.hpp"
 #include "common/Logger.hpp"
 #include "core/VariableEngine.hpp"
@@ -21,6 +22,29 @@
 #include "providers/ProviderFactory.hpp"
 
 namespace dns::core {
+
+namespace {
+
+// Record matching is trailing-dot insensitive: a trailing dot on a name, or on
+// a hostname-valued record's value, is DNS presentation syntax rather than
+// content, and providers disagree about emitting it. Canonicalisation governs
+// equality ONLY — emitted diffs always carry the original strings so the UI
+// reports exactly what each side holds.
+
+std::string makeNameTypeKey(const std::string& sName, const std::string& sType) {
+  return common::canonicalName(sName) + "\t" + sType;
+}
+
+std::string makeKey(const std::string& sName, const std::string& sType,
+                    const std::string& sValue) {
+  return makeNameTypeKey(sName, sType) + "\t" + common::canonicalValue(sType, sValue);
+}
+
+std::string makeKey(const common::DnsRecord& dr) {
+  return makeKey(dr.sName, dr.sType, dr.sValue);
+}
+
+}  // namespace
 
 DiffEngine::DiffEngine(dns::dal::ZoneRepository& zrRepo,
                        dns::dal::ViewRepository& vrRepo,
@@ -40,28 +64,27 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
     const std::vector<common::DnsRecord>& vLive) {
   std::vector<common::RecordDiff> vDiffs;
 
-  // Index live records by (name, type, value) for exact-match lookup
+  // Index live records by canonical (name, type, value) for exact-match lookup,
+  // and keep a pointer back to the original record so an Update can recover its
+  // untouched value and provider record ID.
   std::set<std::string> sLiveKeys;
+  std::map<std::string, const common::DnsRecord*> mLiveByKey;
   for (const auto& dr : vLive) {
-    sLiveKeys.insert(dr.sName + "\t" + dr.sType + "\t" + dr.sValue);
+    auto sKey = makeKey(dr);
+    sLiveKeys.insert(sKey);
+    mLiveByKey.emplace(sKey, &dr);
   }
 
   std::set<std::string> sDesiredKeys;
   for (const auto& dr : vDesired) {
-    sDesiredKeys.insert(dr.sName + "\t" + dr.sType + "\t" + dr.sValue);
+    sDesiredKeys.insert(makeKey(dr));
   }
 
-  // Build (name, type) -> values maps for update detection
-  std::map<std::string, std::vector<std::string>> mDesiredByNameType;
-  for (const auto& dr : vDesired) {
-    std::string sKey = dr.sName + "\t" + dr.sType;
-    mDesiredByNameType[sKey].push_back(dr.sValue);
-  }
-
+  // Build (name, type) -> canonical values map for update detection
   std::map<std::string, std::vector<std::string>> mLiveByNameType;
   for (const auto& dr : vLive) {
-    std::string sKey = dr.sName + "\t" + dr.sType;
-    mLiveByNameType[sKey].push_back(dr.sValue);
+    mLiveByNameType[makeNameTypeKey(dr.sName, dr.sType)].push_back(
+        common::canonicalValue(dr.sType, dr.sValue));
   }
 
   // Track which live values have been consumed by update pairings
@@ -69,7 +92,7 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
 
   // Mark exact matches as consumed so they aren't paired with other desired records
   for (const auto& dr : vDesired) {
-    std::string sExactKey = dr.sName + "\t" + dr.sType + "\t" + dr.sValue;
+    auto sExactKey = makeKey(dr);
     if (sLiveKeys.count(sExactKey)) {
       sConsumedLive.insert(sExactKey);
     }
@@ -77,79 +100,54 @@ std::vector<common::RecordDiff> DiffEngine::computeDiff(
 
   // 1. Check desired records: Add or Update
   for (const auto& dr : vDesired) {
-    std::string sExactKey = dr.sName + "\t" + dr.sType + "\t" + dr.sValue;
+    auto sExactKey = makeKey(dr);
     if (sLiveKeys.count(sExactKey)) continue;  // exact match — no diff
 
-    std::string sNameTypeKey = dr.sName + "\t" + dr.sType;
+    auto sNameTypeKey = makeNameTypeKey(dr.sName, dr.sType);
     auto itLive = mLiveByNameType.find(sNameTypeKey);
-    if (itLive != mLiveByNameType.end() && !itLive->second.empty()) {
-      // Same name+type exists on provider but value differs -> Update
-      std::string sProviderValue;
+
+    const common::DnsRecord* pLiveMatch = nullptr;
+    if (itLive != mLiveByNameType.end()) {
+      // Same name+type exists on provider but value differs -> Update.
+      // Pair with the first live value not claimed by another desired record.
       for (const auto& sLiveVal : itLive->second) {
-        std::string sLiveExact = dr.sName + "\t" + dr.sType + "\t" + sLiveVal;
+        auto sLiveExact = sNameTypeKey + "\t" + sLiveVal;
         if (!sDesiredKeys.count(sLiveExact) && !sConsumedLive.count(sLiveExact)) {
-          sProviderValue = sLiveVal;
+          auto itRec = mLiveByKey.find(sLiveExact);
+          if (itRec != mLiveByKey.end()) {
+            sConsumedLive.insert(sLiveExact);
+            pLiveMatch = itRec->second;
+          }
           break;
         }
       }
-      if (!sProviderValue.empty()) {
-        sConsumedLive.insert(dr.sName + "\t" + dr.sType + "\t" + sProviderValue);
-        common::RecordDiff rd;
-        rd.action = common::DiffAction::Update;
-        rd.sName = dr.sName;
-        rd.sType = dr.sType;
-        rd.sSourceValue = dr.sValue;
-        rd.sProviderValue = sProviderValue;
-        rd.uTtl = dr.uTtl;
-        rd.iPriority = dr.iPriority;
-        rd.jProviderMeta = dr.jProviderMeta;
-        for (const auto& liveDr : vLive) {
-          if (liveDr.sName == dr.sName && liveDr.sType == dr.sType
-              && liveDr.sValue == sProviderValue) {
-            rd.sProviderRecordId = liveDr.sProviderRecordId;
-            break;
-          }
-        }
-        vDiffs.push_back(std::move(rd));
-      } else {
-        common::RecordDiff rd;
-        rd.action = common::DiffAction::Add;
-        rd.sName = dr.sName;
-        rd.sType = dr.sType;
-        rd.sSourceValue = dr.sValue;
-        rd.uTtl = dr.uTtl;
-        rd.iPriority = dr.iPriority;
-        rd.jProviderMeta = dr.jProviderMeta;
-        vDiffs.push_back(std::move(rd));
-      }
-    } else {
-      common::RecordDiff rd;
-      rd.action = common::DiffAction::Add;
-      rd.sName = dr.sName;
-      rd.sType = dr.sType;
-      rd.sSourceValue = dr.sValue;
-      rd.uTtl = dr.uTtl;
-      rd.iPriority = dr.iPriority;
-      rd.jProviderMeta = dr.jProviderMeta;
-      vDiffs.push_back(std::move(rd));
     }
+
+    common::RecordDiff rd;
+    rd.sName = dr.sName;
+    rd.sType = dr.sType;
+    rd.sSourceValue = dr.sValue;
+    rd.uTtl = dr.uTtl;
+    rd.iPriority = dr.iPriority;
+    rd.jProviderMeta = dr.jProviderMeta;
+
+    if (pLiveMatch) {
+      rd.action = common::DiffAction::Update;
+      rd.sProviderValue = pLiveMatch->sValue;
+      rd.sProviderRecordId = pLiveMatch->sProviderRecordId;
+    } else {
+      rd.action = common::DiffAction::Add;
+    }
+    vDiffs.push_back(std::move(rd));
   }
 
   // 2. Check live records for drift
   for (const auto& dr : vLive) {
-    std::string sExactKey = dr.sName + "\t" + dr.sType + "\t" + dr.sValue;
+    auto sExactKey = makeKey(dr);
     if (sDesiredKeys.count(sExactKey)) continue;
 
-    // Check if consumed by an Update
-    bool bConsumedByUpdate = false;
-    for (const auto& diff : vDiffs) {
-      if (diff.action == common::DiffAction::Update && diff.sName == dr.sName &&
-          diff.sType == dr.sType && diff.sProviderValue == dr.sValue) {
-        bConsumedByUpdate = true;
-        break;
-      }
-    }
-    if (bConsumedByUpdate) continue;
+    // Skip live records already claimed by an exact match or an Update pairing
+    if (sConsumedLive.count(sExactKey)) continue;
 
     common::RecordDiff rd;
     rd.action = common::DiffAction::Drift;
