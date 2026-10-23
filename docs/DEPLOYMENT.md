@@ -133,28 +133,28 @@ authentication is required.
 ### Docker Hub
 
 ```bash
-docker pull kannasama/meridian-dns:v1.1.2
+docker pull kannasama/meridian-dns:v1.1.6
 docker pull kannasama/meridian-dns:latest
 ```
 
 ### GitHub Container Registry
 
 ```bash
-docker pull ghcr.io/kannasama/meridian-dns:v1.1.2
+docker pull ghcr.io/kannasama/meridian-dns:v1.1.6
 ```
 
 ### Tag Format
 
 | Tag | Description |
 |-----|-------------|
-| `v1.1.2` | Exact version |
+| `v1.1.6` | Exact version |
 | `latest` | Latest stable release |
 
 To pin to a specific release, set `MERIDIAN_VERSION` before starting the stack:
 
 ```bash
-MERIDIAN_VERSION=v1.1.2 docker compose up -d
-# or add MERIDIAN_VERSION=v1.1.2 to your .env file
+MERIDIAN_VERSION=v1.1.6 docker compose up -d
+# or add MERIDIAN_VERSION=v1.1.6 to your .env file
 ```
 
 ## Database Backup
@@ -294,7 +294,7 @@ services:
 GET /api/v1/health/live
 ```
 
-Returns `200 OK` with `{"status": "alive", "version": "1.1.2"}` if the process is
+Returns `200 OK` with `{"status": "alive", "version": "1.1.6"}` if the process is
 running. No external dependency checks.
 
 ### Readiness Probe

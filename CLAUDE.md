@@ -40,6 +40,7 @@ Include details documented in `tasks/lessons.md` when factoring in planning and 
 - **v1.1.2 complete:** Deployment bug fixes, system logging
 - **v1.1.4 complete:** Git availability gate, AdGuard trailing-dot drift fix
 - **v1.1.5 complete:** AdGuard cross-zone drift fix, PowerDNS TXT quoting
+- **v1.1.6 complete:** Distrust compromised eMudhra CA roots in container images
 - **Next task:** Phase 11 — TUI Client (separate repository)
 - **Tests:** 650 total (625 pass with `DNS_DB_URL`, 25 skip; 386 pass / 264 skip without a DB)
 
@@ -447,6 +448,27 @@ the canonical form.
 **Tests:** 650 total, 625 pass with a DB (25 skip), 386 pass without one (264 skip), 0 fail.
 48 new: 10 `isWithinZone`, 6 AdGuard zone scoping, 19 TxtRdata, 9 PowerDNS TXT, 4 validator.
 The v022 migration was verified against seeded rows covering every case.
+
+---
+
+### v1.1.6 — eMudhra CA Distrust ← COMPLETE
+
+**Summary:** The private keys of eight eMudhra intermediate CAs were compromised
+(Mozilla bug 2083449, RHSB-2026-012). They chain to *emSign ECC Root CA - G3* and Comodo
+*AAA Certificate Services*, which Fedora removed in `ca-certificates-2026.2.92_v9.0.319`
+(FEDORA-2026-0500e01d86). Every outbound TLS client in the app (provider APIs, OIDC, libgit2
+HTTPS remotes) uses the system trust store, so the image is the fix — no code change.
+
+- `Dockerfile` — both Fedora stages require `ca-certificates >= 2026.2.92_v9.0.319-2`. The
+  existing `dnf update` was not enough: a layer cached before the fix keeps the old store
+  silently.
+- `Dockerfile` runtime stage — fails the build if either root is still a `trust list`
+  anchor. Guards against stale caches and a future base image regressing.
+- `node:22-slim` UI stage deliberately untouched: build-time npm fetches only, Node bundles
+  its own CA list, and only static assets ship.
+
+**Ops note:** release images must be built with `--no-cache --pull`; running deployments keep
+the old trust store until redeployed.
 
 ---
 
