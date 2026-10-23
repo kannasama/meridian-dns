@@ -62,3 +62,4 @@ rather than new functionality. It is distinct from a new PATCH release.
 | `v1.1.2` | PATCH — Deployment bug fixes, system logging: fixes and an extension of existing observability |
 | `v1.1.2-1` | Errata — Permission seed fix: correction to the release artifact |
 | `v1.1.2-2` | Errata — System log retention UI missing from release: feature committed to for the release but shipped incomplete |
+| `v1.1.6` | PATCH — eMudhra CA distrust in container images: an external security event after release, not a defect in the v1.1.5 artifact, so not errata |
