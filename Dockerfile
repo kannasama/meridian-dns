@@ -18,7 +18,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
   json-devel spdlog-devel \
   asio-devel \
   pkgconf-pkg-config \
-  git ca-certificates \
+  git 'ca-certificates >= 2026.2.92_v9.0.319-2' \
   lasso-devel libxml2-devel xmlsec1-devel xmlsec1-openssl-devel glib2-devel \
   jansson-devel libcurl-devel cjose-devel \
   autoconf automake libtool \
@@ -38,11 +38,20 @@ RUN dnf update -y --setopt=install_weak_deps=False && dnf clean all
 
 RUN dnf install -y --setopt=install_weak_deps=False \
   libpq libpqxx openssl-libs libgit2 spdlog fmt \
-  git ca-certificates openssh-clients \
+  git 'ca-certificates >= 2026.2.92_v9.0.319-2' openssh-clients \
   lasso libxml2 xmlsec1 xmlsec1-openssl glib2 \
   jansson libcurl cjose \
   curl \
   && dnf clean all
+
+# eMudhra intermediate CA key compromise (Oct 2026, RHSB-2026-012): the
+# compromised intermediates chain to these two roots. Fail the build if a stale
+# layer cache or base image still trusts either of them.
+RUN if trust list --filter=ca-anchors \
+      | grep -E 'label: (emSign ECC Root CA - G3|AAA Certificate Services)$'; then \
+      echo 'ERROR: trust store still contains a distrusted eMudhra root' >&2; \
+      exit 1; \
+    fi
 
 RUN useradd --system --no-create-home meridian-dns
 

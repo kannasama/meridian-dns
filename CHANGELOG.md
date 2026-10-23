@@ -7,6 +7,20 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the project versioning policy.
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-10-23
+
+### Security
+
+- **eMudhra intermediate CA compromise** — The private keys of eight eMudhra intermediate CAs
+  were compromised ([Mozilla bug 2083449](https://bugzilla.mozilla.org/show_bug.cgi?id=2083449),
+  [RHSB-2026-012](https://access.redhat.com/security/vulnerabilities/RHSB-2026-012)). The
+  builder and runtime images now require `ca-certificates >= 2026.2.92_v9.0.319-2`
+  ([FEDORA-2026-0500e01d86](https://bodhi.fedoraproject.org/updates/FEDORA-2026-0500e01d86)),
+  which removes the issuing roots *emSign ECC Root CA - G3* and *AAA Certificate Services*.
+  The runtime build now fails if either root is still trusted. Provider API calls, GitOps
+  HTTPS remotes and OIDC calls all use the system trust store, so existing deployments
+  must be redeployed from a rebuilt image (`docker buildx build --no-cache --pull`).
+
 ## [1.1.2] - 2026-03-24
 
 ### Fixed
